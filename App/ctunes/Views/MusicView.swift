@@ -104,14 +104,29 @@ struct ArtistGroup: Identifiable, Hashable {
             let albums = byArtist[key] ?? []
             let name = albums.first?.parentTitle ?? "Unknown Artist"
             guard !needle.isEmpty else {
-                return ArtistGroup(id: key, name: name, albums: albums)
+                return ArtistGroup(id: key, name: name, albums: newestFirst(albums))
             }
             if name.lowercased().contains(needle) {
-                return ArtistGroup(id: key, name: name, albums: albums)
+                return ArtistGroup(id: key, name: name, albums: newestFirst(albums))
             }
             let matches = albums.filter { $0.title.lowercased().contains(needle) }
-            return matches.isEmpty ? nil : ArtistGroup(id: key, name: name, albums: matches)
+            return matches.isEmpty
+                ? nil
+                : ArtistGroup(id: key, name: name, albums: newestFirst(matches))
         }
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Newest release first. Albums the server has no year for sort last rather
+    /// than to the top, which is where a zero default would put them.
+    private static func newestFirst(_ albums: [PlexAlbum]) -> [PlexAlbum] {
+        albums.sorted { lhs, rhs in
+            switch (lhs.year, rhs.year) {
+            case let (l?, r?) where l != r: return l > r
+            case (nil, .some): return false
+            case (.some, nil): return true
+            default: return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+        }
     }
 }
