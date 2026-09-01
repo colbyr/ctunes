@@ -20,10 +20,11 @@ final class AppModel {
     private var auth: PlexAuth?
     private var token: String?
 
-    /// Scheme Plex forwards back to once the device is approved, which is what
-    /// lets the browser sheet dismiss itself instead of stranding the user.
+    /// ASWebAuthenticationSession requires a callback scheme, but Plex never
+    /// redirects to one: forwardUrl is ignored for a custom scheme and the
+    /// browser lands on watch.plex.tv instead. The sheet is dismissed by
+    /// cancelling its task once polling sees the token.
     private static let callbackScheme = "ctunes"
-    private static let forwardURL = "ctunes://auth"
 
     func bootstrap() async {
         do {
@@ -51,30 +52,49 @@ final class AppModel {
             let pin = try await auth.requestPin()
             state = .linking(code: pin.code)
 
-            let url = await auth.authURL(for: pin, forwardURL: Self.forwardURL)
+            let url = await auth.authURL(for: pin)
 
-            var userCancelled = false
-            do {
-                _ = try await session.authenticate(
-                    using: url,
-                    callbackURLScheme: Self.callbackScheme
-                )
-            } catch ASWebAuthenticationSessionError.canceledLogin {
-                userCancelled = true
-            }
-
-            // Closing the sheet doesn't always mean refusal: if forwardUrl
-            // fails to fire, the user approves and then dismisses manually.
-            // Check once before believing the cancel.
-            if userCancelled {
-                let checked = try await auth.checkPin(pin.id)
-                guard checked.isAuthorized else {
-                    state = .signedOut
-                    return
+            // Poll while the sheet is open rather than after it closes.
+            // Nothing redirects back to the app, so the token has to be
+            // noticed here; seeing it cancels the sheet's task, which
+            // dismisses it.
+            let found = try await withThrowingTaskGroup(of: String?.self, returning: String?.self) { group in
+                group.addTask {
+                    // The sheet finishing tells us nothing on its own; the
+                    // pin check below decides the outcome either way.
+                    _ = try? await session.authenticate(
+                        using: url,
+                        callbackURLScheme: Self.callbackScheme
+                    )
+                    return nil
                 }
+                group.addTask {
+                    try await auth.waitForAuthorization(pin: pin, timeout: .seconds(180))
+                }
+
+                while let result = try await group.next() {
+                    if let token = result {
+                        group.cancelAll()
+                        return token
+                    }
+                    // Browser closed first. Approval may still have landed.
+                    if let checked = try? await auth.checkPin(pin.id),
+                       let token = checked.authToken, !token.isEmpty {
+                        group.cancelAll()
+                        return token
+                    }
+                    group.cancelAll()
+                    return nil
+                }
+                return nil
             }
 
-            token = try await auth.waitForAuthorization(pin: pin, timeout: .seconds(30))
+            guard let found else {
+                state = .signedOut
+                errorMessage = "Sign-in was cancelled before the device was linked."
+                return
+            }
+            token = found
             state = .signedIn
         } catch {
             errorMessage = error.localizedDescription
