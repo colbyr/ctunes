@@ -17,8 +17,10 @@ Toolchain confirmed present: Xcode 26.6, Swift 6.3, iOS 26.5 SDK.
 
 ## Status
 
-All six milestones are implemented. `make test` runs 29 tests in ~40ms with no
-network or simulator; `make run` builds, installs and launches on a device.
+All six milestones are implemented and verified. `make test` runs 27 tests in
+~40ms with no network or simulator; `make live-test` adds two that hit the real
+server, with the token read from 1Password; `make run` builds, installs and
+launches on a device.
 
 | Milestone | State | Verified by |
 |---|---|---|
@@ -26,16 +28,15 @@ network or simulator; `make run` builds, installs and launches on a device.
 | M1 PIN auth | done | signed in on device |
 | M2 server discovery | done | live test reaches the real server in 0.35s |
 | M3 browse | done | live walk of the real library; screenshots |
-| M4 playback + lock screen | **partly** | audio verified in simulator; see below |
+| M4 playback + lock screen | done | confirmed on device |
 | M5 queue + Now Playing | done | playback with artwork, clock advancing |
 
-**Still unverified, and it needs a device:** background audio and the lock
-screen transport controls. The simulator cannot exercise either. `make run`
-with the phone attached, then lock it and confirm audio continues with working
-metadata and controls — the M4 acceptance test above.
+All six milestones are verified, background audio and lock screen controls
+included, the latter on a real device where the simulator cannot test them.
 
-Also unverified on hardware: skipping between tracks and the queue rolling over
-at end-of-track, which were exercised only through the debug autoplay hook.
+The one behaviour never watched end to end is the queue rolling over when a
+track finishes on its own, as opposed to being skipped. Everything else has
+been exercised on hardware.
 
 ## Findings that changed the plan
 
