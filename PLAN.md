@@ -15,6 +15,44 @@ Toolchain confirmed present: Xcode 26.6, Swift 6.3, iOS 26.5 SDK.
 - **Connect over the `plex.direct` HTTPS URI**, not the raw LAN IP: it carries a valid TLS cert, sidestepping App Transport Security entirely. But never trust `local: true` — the real account advertises six connections, four of them local addresses on virtual interfaces that nothing can reach. Probe concurrently and let reachability decide.
 - **Two-part project**: a `PlexKit` SPM package with no UIKit/SwiftUI dependency, and a thin app target. The package stays testable from the command line without booting a simulator.
 
+## Status
+
+All six milestones are implemented. `make test` runs 29 tests in ~40ms with no
+network or simulator; `make run` builds, installs and launches on a device.
+
+| Milestone | State | Verified by |
+|---|---|---|
+| M0 scaffold + signing | done | builds, signs, installs and launches on device |
+| M1 PIN auth | done | signed in on device |
+| M2 server discovery | done | live test reaches the real server in 0.35s |
+| M3 browse | done | live walk of the real library; screenshots |
+| M4 playback + lock screen | **partly** | audio verified in simulator; see below |
+| M5 queue + Now Playing | done | playback with artwork, clock advancing |
+
+**Still unverified, and it needs a device:** background audio and the lock
+screen transport controls. The simulator cannot exercise either. `make run`
+with the phone attached, then lock it and confirm audio continues with working
+metadata and controls — the M4 acceptance test above.
+
+Also unverified on hardware: skipping between tracks and the queue rolling over
+at end-of-track, which were exercised only through the debug autoplay hook.
+
+## Findings that changed the plan
+
+Each of these was assumed one way and measured the other:
+
+- **`/library/metadata/{artist}/children` under-reports albums** for 8 of 54
+  artists — 8 where 13 exist, 0 where 1 exists. Use the filtered section query.
+- **`local: true` does not mean reachable.** Six connections are advertised,
+  four local, none reachable from a machine off that LAN. Probe concurrently.
+- **`forwardUrl` is ignored for a custom scheme.** Nothing redirects back to
+  the app, so auth has to poll while the browser sheet is open.
+- **`INFOPLIST_KEY_UIBackgroundModes` silently produces no key**, because the
+  value is an array. Needs a real Info.plist.
+- **`MPMediaItemArtwork`'s handler runs off the main actor.** Forming it in a
+  main-actor context traps the Swift 6 isolation check the moment the lock
+  screen asks for artwork.
+
 ## Layout
 
 ```

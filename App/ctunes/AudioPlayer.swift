@@ -26,8 +26,8 @@ final class AudioPlayer {
 
     private nonisolated let player = AVPlayer()
     private var library: PlexLibrary?
-    private nonisolated(unsafe) var timeObserver: Any?
-    private nonisolated(unsafe) var endObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
+    @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
     private var commandsConfigured = false
 
     /// Restarting rather than stepping back is the platform convention once
