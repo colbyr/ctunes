@@ -34,5 +34,5 @@ Package.resolved
 *.local.xcconfig
 Secrets.swift
 
-# Local Plex dev token (never commit)
+# Legacy on-disk token — now kept in 1Password, guard stays as a backstop
 .plex-dev.json

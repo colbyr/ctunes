@@ -4,25 +4,31 @@ import Testing
 
 /// Exercises the real plex.tv API and a real server.
 ///
-/// Disabled unless PLEX_LIVE is set and scripts/plex-dev-login.py has written
-/// a token, so the normal suite stays hermetic and offline.
+/// Disabled unless PLEX_LIVE is set, so the normal suite stays hermetic and
+/// offline. Credentials come from the environment — `make live-test` reads
+/// them out of 1Password — so no token is ever written to disk.
 @Suite(
     "Live server",
     .enabled(if: ProcessInfo.processInfo.environment["PLEX_LIVE"] != nil)
 )
 struct LiveServerTests {
-    struct DevCredentials: Decodable {
+    struct DevCredentials {
         let clientIdentifier: String
         let token: String
     }
 
+    struct MissingCredentials: Error, CustomStringConvertible {
+        var description: String {
+            "Set PLEX_DEV_TOKEN and PLEX_DEV_CLIENT_ID, or run `make live-test`."
+        }
+    }
+
     static func credentials() throws -> DevCredentials {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // PlexKitTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // repo root
-            .appendingPathComponent(".plex-dev.json")
-        return try JSONDecoder().decode(DevCredentials.self, from: Data(contentsOf: url))
+        let environment = ProcessInfo.processInfo.environment
+        guard let token = environment["PLEX_DEV_TOKEN"], !token.isEmpty,
+              let clientIdentifier = environment["PLEX_DEV_CLIENT_ID"], !clientIdentifier.isEmpty
+        else { throw MissingCredentials() }
+        return DevCredentials(clientIdentifier: clientIdentifier, token: token)
     }
 
     @Test("discovers and reaches a real server")
