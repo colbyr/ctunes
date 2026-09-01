@@ -29,7 +29,7 @@ public struct PlexIdentity: Sendable {
 
     /// Loads the persisted client identifier, minting and storing one on first run.
     public static func persistent(
-        store: KeychainStore = .standard,
+        store: any SecretStore = KeychainStore.standard,
         product: String = "ctunes"
     ) throws -> PlexIdentity {
         let key = "client-identifier"

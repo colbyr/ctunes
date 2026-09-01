@@ -1,40 +1,45 @@
 import PlexKit
 import SwiftUI
 
-/// M0 smoke screen: proves the app links PlexKit and can mint and persist a
-/// stable client identifier in the keychain. Replaced by AuthView in M1.
 struct ContentView: View {
-    @State private var identity: Result<PlexIdentity, Error>?
+    @State private var model = AppModel()
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .loading:
+                ProgressView()
+            case .signedOut, .linking:
+                AuthView(model: model)
+            case .signedIn:
+                SignedInView(model: model)
+            }
+        }
+        .task { await model.bootstrap() }
+    }
+}
+
+/// Placeholder until M3 replaces this with the library browser.
+struct SignedInView: View {
+    let model: AppModel
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "music.note.list")
+            Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.tint)
-
-            Text("ctunes")
-                .font(.largeTitle.bold())
-
-            switch identity {
-            case .success(let identity):
-                LabeledContent("Product", value: identity.product)
-                LabeledContent("Client ID", value: String(identity.clientIdentifier.prefix(8)))
-                Text("Keychain reachable, PlexKit linked.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            case .failure(let error):
-                Text(error.localizedDescription)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-            case nil:
-                ProgressView()
+                .foregroundStyle(.green)
+            Text("Signed in to Plex")
+                .font(.title2.bold())
+            Text("Library browsing lands in M3.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button("Sign out") {
+                Task { await model.signOut() }
             }
+            .buttonStyle(.bordered)
+            .padding(.top, 8)
         }
         .padding()
-        .task {
-            identity = Result { try PlexIdentity.persistent() }
-        }
     }
 }
 
