@@ -36,6 +36,13 @@ public actor PlexLibrary {
         try await fetch(PlexArtist.self, path: "/library/sections/\(section)/all?type=8")
     }
 
+    /// Every album in the library, in the server's own order (artist, then
+    /// album). The browse list groups these by artist rather than making one
+    /// request per artist, which would be a request per row.
+    public func albums(inSection section: String) async throws -> [PlexAlbum] {
+        try await fetch(PlexAlbum.self, path: "/library/sections/\(section)/all?type=9")
+    }
+
     /// Albums for one artist.
     ///
     /// Deliberately not `/library/metadata/{id}/children`: measured against a

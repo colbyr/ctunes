@@ -58,6 +58,26 @@ struct PlexLibraryTests {
         #expect(beatles.year == 1969)
     }
 
+    @Test("lists every album in a section for the grouped browse list")
+    func allAlbums() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("albums")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        let albums = try await library.albums(inSection: "3")
+        let url = try #require(seen.get())
+        #expect(url.contains("/library/sections/3/all"))
+        #expect(url.contains("type=9"))
+        #expect(!url.contains("artist.id"))
+
+        // The grouping key comes off the album, so it has to decode.
+        let first = try #require(albums.first)
+        #expect(first.parentRatingKey == "1028")
+    }
+
     /// The bug this avoids: /children under-reports albums for some artists.
     @Test("albums query filters by artist rather than walking children")
     func albumsUsesFilteredQuery() async throws {

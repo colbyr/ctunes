@@ -11,7 +11,7 @@ struct LibraryView: View {
         NavigationStack(path: $path) {
             Group {
                 if let section = model.selectedSection {
-                    ArtistsView(model: model, section: section)
+                    MusicView(model: model, section: section)
                 } else {
                     SectionPicker(model: model)
                 }

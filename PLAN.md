@@ -73,9 +73,9 @@ ctunes/
     ├── AudioPlayer.swift             AVQueuePlayer, session, remote commands
     └── Views/
         ├── AuthView.swift
-        ├── LibraryView.swift         artists
-        ├── ArtistView.swift          albums
-        ├── AlbumView.swift           tracks
+        ├── LibraryView.swift         navigation stack root
+        ├── MusicView.swift           albums grouped by artist, searchable
+        ├── TracksView.swift          tracks
         └── NowPlayingView.swift
 ```
 
@@ -132,6 +132,7 @@ gear). That makes local connections fail at DNS rather than at connect.
 ```
 GET /library/sections                                    → filter type == "artist"
 GET /library/sections/{key}/all?type=8                   → artists
+GET /library/sections/{key}/all?type=9                   → every album (browse)
 GET /library/sections/{key}/all?type=9&artist.id={rk}    → albums of an artist
 GET /library/metadata/{albumKey}/children                → tracks of an album
 ```
@@ -150,7 +151,12 @@ Everything comes back wrapped in a `MediaContainer`. Artwork is a relative `thum
 {server}/photo/:/transcode?width=200&height=200&url={thumb}&X-Plex-Token={token}
 ```
 
-Three `NavigationStack` screens: artists → albums → tracks. `AsyncImage` is adequate at this scope.
+Two `NavigationStack` screens: the browse root lists every album grouped under
+its artist — one flat `type=9` query, grouped on the client, since a request per
+artist would be a request per row — and pushes to tracks. A `.searchable` field
+filters the groups: an artist-name match keeps the whole group, otherwise only
+the matching albums, so an album search still shows who made it. `AsyncImage` is
+adequate at this scope.
 
 ### M4 — Playback and lock screen (~3h)
 
