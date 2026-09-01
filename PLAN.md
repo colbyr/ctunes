@@ -10,9 +10,9 @@ Toolchain confirmed present: Xcode 26.6, Swift 6.3, iOS 26.5 SDK.
 
 ## Decisions already made
 
-- **Direct play only.** `AVPlayer(url: partURL)` against the original file. No transcode session lifecycle, no teardown bookkeeping, no restart-on-seek. MP3/AAC/ALAC/FLAC all decode natively on iOS 26. The transcode path gets added when a file actually fails to play or when listening off-LAN — the work is deferred, not wasted.
+- **Direct play only** — now confirmed against the real library rather than assumed. A codec census over both music sections found flac 532, mp3 370, aac 266, pcm 7, and mp3 1077 in audiobooks: all 2,252 tracks decode natively on iOS. No transcode session lifecycle, no teardown bookkeeping, no restart-on-seek.
 - **PIN link flow** for auth, not credential POST. Survives 2FA, and the token is the same either way.
-- **Connect over the `plex.direct` HTTPS URI**, not the raw LAN IP. It resolves to the local address but carries a valid TLS cert, which sidesteps App Transport Security exceptions entirely.
+- **Connect over the `plex.direct` HTTPS URI**, not the raw LAN IP: it carries a valid TLS cert, sidestepping App Transport Security entirely. But never trust `local: true` — the real account advertises six connections, four of them local addresses on virtual interfaces that nothing can reach. Probe concurrently and let reachability decide.
 - **Two-part project**: a `PlexKit` SPM package with no UIKit/SwiftUI dependency, and a thin app target. The package stays testable from the command line without booting a simulator.
 
 ## Layout
@@ -73,20 +73,37 @@ Flow:
 
 `GET https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1` with the token. Filter to entries whose `provides` contains `server`. Each carries a `connections[]` array; rank them:
 
-1. `local == true && relay == false` — the plex.direct HTTPS URI on your LAN, the one you want
+1. `local == true && relay == false` — a LAN address, when one answers
 2. `relay == false` — remote direct
 3. relay — last resort, bandwidth-capped
 
-Probe the chosen URI with `GET /identity` before committing to it, and fall through the ranking on failure. Persist the winner so later launches skip the round trip, but re-resolve when a request fails — LAN addresses move.
+Rank decides preference, not selection. Probe every connection with `GET
+/identity` **concurrently** and keep the best-ranked one that answers:
+unreachable addresses fail by timing out, so probing in rank order stalls for
+the full timeout on each dead entry. Measured on the real account, concurrent
+probing picks a server in 0.35s where sequential would spend 12s on four dead
+local addresses first.
+
+Note the local resolver may refuse to resolve `plex.direct` names that point at
+private IPs (DNS rebinding protection, on by default on much consumer network
+gear). That makes local connections fail at DNS rather than at connect.
 
 ### M3 — Browse (~3h)
 
 ```
-GET /library/sections                          → filter type == "artist"
-GET /library/sections/{key}/all?type=8         → artists
-GET /library/metadata/{ratingKey}/children     → albums of an artist
-GET /library/metadata/{albumKey}/children      → tracks of an album
+GET /library/sections                                    → filter type == "artist"
+GET /library/sections/{key}/all?type=8                   → artists
+GET /library/sections/{key}/all?type=9&artist.id={rk}    → albums of an artist
+GET /library/metadata/{albumKey}/children                → tracks of an album
 ```
+
+**Not** `/library/metadata/{artist}/children` for albums. Measured against the
+real library, it under-reports for 8 of 54 artists — returning 8 albums where
+13 exist, and 0 where 1 exists. The filtered section query is correct for every
+artist checked.
+
+A server can expose more than one music library: audiobooks also report type
+`artist`. The chosen section is remembered rather than asked for each launch.
 
 Everything comes back wrapped in a `MediaContainer`. Artwork is a relative `thumb` path — build a display URL through the photo transcoder so you aren't pulling full-size covers into list cells:
 

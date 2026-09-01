@@ -11,13 +11,29 @@ final class AppModel {
         case signedOut
         /// Waiting on the user to approve the device in a browser.
         case linking(code: String)
+        /// Signed in, looking for a reachable server.
+        case connecting
+        case connectFailed
         case signedIn
     }
 
     private(set) var state: State = .loading
     var errorMessage: String?
 
+    /// Set once a server has been reached; the browse views read it.
+    private(set) var library: PlexLibrary?
+    private(set) var serverName: String?
+
+    /// Music libraries on the server, and the one being browsed. A server can
+    /// expose several (audiobooks also report type "artist"), so the choice is
+    /// remembered rather than asked for on every launch.
+    private(set) var sections: [PlexSection] = []
+    private(set) var selectedSection: PlexSection?
+
+    private static let sectionDefaultsKey = "selected-section-key"
+
     private var auth: PlexAuth?
+    private var client: PlexClient?
     private var token: String?
 
     /// ASWebAuthenticationSession requires a callback scheme, but Plex never
@@ -29,12 +45,15 @@ final class AppModel {
     func bootstrap() async {
         do {
             let identity = try PlexIdentity.persistent()
-            let auth = PlexAuth(client: PlexClient(identity: identity))
+            let client = PlexClient(identity: identity)
+            let auth = PlexAuth(client: client)
+            self.client = client
             self.auth = auth
 
-            if let existing = try await auth.storedToken() {
+            let stored = try await auth.storedToken()
+            if let existing = Self.developmentToken() ?? stored {
                 token = existing
-                state = .signedIn
+                await connect()
             } else {
                 state = .signedOut
             }
@@ -95,11 +114,56 @@ final class AppModel {
                 return
             }
             token = found
-            state = .signedIn
+            await connect()
         } catch {
             errorMessage = error.localizedDescription
             state = .signedOut
         }
+    }
+
+    /// Lets a debug build skip the browser hand-off by taking a token from
+    /// the environment, so the browse screens can be driven in a simulator.
+    /// Compiled out of release builds entirely.
+    private static func developmentToken() -> String? {
+        #if DEBUG
+        let token = ProcessInfo.processInfo.environment["CTUNES_DEV_TOKEN"]
+        return (token?.isEmpty == false) ? token : nil
+        #else
+        return nil
+        #endif
+    }
+
+    /// Finds a reachable server and opens the library on it.
+    func connect() async {
+        guard let client, let token else { return }
+        state = .connecting
+        do {
+            let server = try await PlexServerDirectory(client: client).selectServer(token: token)
+            let library = PlexLibrary(client: client, server: server, token: token)
+            self.library = library
+            serverName = server.name
+
+            sections = try await library.musicSections()
+            let saved = UserDefaults.standard.string(forKey: Self.sectionDefaultsKey)
+            selectedSection = sections.first { $0.key == saved } ?? sections.first.flatMap {
+                sections.count == 1 ? $0 : nil
+            }
+            state = .signedIn
+        } catch {
+            errorMessage = error.localizedDescription
+            state = .connectFailed
+        }
+    }
+
+    func selectSection(_ section: PlexSection) {
+        selectedSection = section
+        UserDefaults.standard.set(section.key, forKey: Self.sectionDefaultsKey)
+    }
+
+    /// Returns to the picker so a different library can be chosen.
+    func clearSectionChoice() {
+        selectedSection = nil
+        UserDefaults.standard.removeObject(forKey: Self.sectionDefaultsKey)
     }
 
     func signOut() async {
@@ -107,6 +171,10 @@ final class AppModel {
         do {
             try await auth.signOut()
             token = nil
+            library = nil
+            serverName = nil
+            sections = []
+            selectedSection = nil
             state = .signedOut
         } catch {
             errorMessage = error.localizedDescription

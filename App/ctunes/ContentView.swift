@@ -11,35 +11,34 @@ struct ContentView: View {
                 ProgressView()
             case .signedOut, .linking:
                 AuthView(model: model)
+            case .connecting:
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Finding your server…").foregroundStyle(.secondary)
+                }
+            case .connectFailed:
+                ConnectFailedView(model: model)
             case .signedIn:
-                SignedInView(model: model)
+                LibraryView(model: model)
             }
         }
         .task { await model.bootstrap() }
     }
 }
 
-/// Placeholder until M3 replaces this with the library browser.
-struct SignedInView: View {
+struct ConnectFailedView: View {
     let model: AppModel
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.green)
-            Text("Signed in to Plex")
-                .font(.title2.bold())
-            Text("Library browsing lands in M3.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Button("Sign out") {
-                Task { await model.signOut() }
-            }
-            .buttonStyle(.bordered)
-            .padding(.top, 8)
+        ContentUnavailableView {
+            Label("Can't reach your server", systemImage: "network.slash")
+        } description: {
+            Text(model.errorMessage ?? "No Plex server answered.")
+        } actions: {
+            Button("Try again") { Task { await model.connect() } }
+                .buttonStyle(.borderedProminent)
+            Button("Sign out") { Task { await model.signOut() } }
         }
-        .padding()
     }
 }
 
