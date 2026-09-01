@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var model = AppModel()
+    @State private var player = AudioPlayer()
 
     var body: some View {
         Group {
@@ -22,6 +23,7 @@ struct ContentView: View {
                 LibraryView(model: model)
             }
         }
+        .environment(player)
         .task { await model.bootstrap() }
     }
 }

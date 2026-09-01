@@ -4,14 +4,37 @@ import SwiftUI
 struct TracksView: View {
     let model: AppModel
     let album: PlexAlbum
+    @Environment(AudioPlayer.self) private var player
 
     @State private var tracks: [PlexTrack] = []
     @State private var loaded = false
+    @State private var showingNowPlaying = false
+
+    /// Debug hooks so playback can be started and inspected in a simulator,
+    /// where there is no way to tap a row.
+    private static var autoPlay: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] == "1"
+        #else
+        false
+        #endif
+    }
+    private static var autoShowNowPlaying: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["CTUNES_DEV_NOWPLAYING"] == "1"
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         List {
             Section {
-                ForEach(tracks) { track in
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    Button {
+                        guard let library = model.library else { return }
+                        player.play(tracks, startingAt: index, library: library)
+                    } label: {
                     HStack(spacing: 12) {
                         Text(track.index.map(String.init) ?? "–")
                             .font(.callout.monospacedDigit())
@@ -25,6 +48,9 @@ struct TracksView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                 }
             } header: {
                 VStack(spacing: 8) {
@@ -49,6 +75,13 @@ struct TracksView: View {
             guard let library = model.library else { return }
             tracks = (try? await library.tracks(inAlbum: album.ratingKey)) ?? []
             loaded = true
+            if Self.autoPlay, !tracks.isEmpty {
+                player.play(tracks, startingAt: 0, library: library)
+                showingNowPlaying = Self.autoShowNowPlaying
+            }
+        }
+        .sheet(isPresented: $showingNowPlaying) {
+            NowPlayingView(model: model)
         }
     }
 

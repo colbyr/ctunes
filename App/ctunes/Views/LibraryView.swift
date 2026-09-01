@@ -36,6 +36,7 @@ struct LibraryView: View {
                     SectionPicker(model: model)
                 }
             }
+            .safeAreaInset(edge: .bottom) { MiniPlayer(model: model) }
         }
     }
 }
