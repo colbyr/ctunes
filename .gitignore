@@ -33,3 +33,6 @@ Package.resolved
 # Local secrets (Plex tokens, team overrides)
 *.local.xcconfig
 Secrets.swift
+
+# Local Plex dev token (never commit)
+.plex-dev.json
