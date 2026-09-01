@@ -45,15 +45,24 @@ public struct PlexArtist: Decodable, Sendable, Identifiable, Hashable {
 public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {
     public let ratingKey: String
     public let title: String
+    public let parentRatingKey: String?
     public let parentTitle: String?
     public let year: Int?
     public let thumb: String?
 
     public var id: String { ratingKey }
 
-    public init(ratingKey: String, title: String, parentTitle: String?, year: Int?, thumb: String?) {
+    public init(
+        ratingKey: String,
+        title: String,
+        parentRatingKey: String? = nil,
+        parentTitle: String?,
+        year: Int?,
+        thumb: String?
+    ) {
         self.ratingKey = ratingKey
         self.title = title
+        self.parentRatingKey = parentRatingKey
         self.parentTitle = parentTitle
         self.year = year
         self.thumb = thumb
