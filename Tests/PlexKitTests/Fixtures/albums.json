@@ -1,0 +1,202 @@
+{
+  "MediaContainer": {
+    "size": 4,
+    "allowSync": true,
+    "art": "/:/resources/artist-fanart.jpg",
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 3,
+    "librarySectionTitle": "Music",
+    "librarySectionUUID": "e50e4ddd-f2e9-4e01-b22e-5f2c2ad4be1c",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1785765644,
+    "nocache": true,
+    "thumb": "/:/resources/artist.png",
+    "title1": "Music",
+    "title2": "All Artists",
+    "viewGroup": "artist",
+    "viewMode": 65592,
+    "Metadata": [
+      {
+        "ratingKey": "1029",
+        "key": "/library/metadata/1029/children",
+        "parentRatingKey": "1028",
+        "guid": "plex://album/5d07c910403c640290c561ad",
+        "parentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "studio": "Quote Unquote Records",
+        "type": "album",
+        "title": "Soulmate Stuff",
+        "parentKey": "/library/metadata/1028",
+        "parentTitle": "Antarctigo Vespucci",
+        "summary": "",
+        "index": 1,
+        "viewCount": 32,
+        "skipCount": 2,
+        "lastViewedAt": 1787751535,
+        "year": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1028/thumb/1787903241",
+        "originallyAvailableAt": "2014-04-08",
+        "addedAt": 1746248190,
+        "updatedAt": 1784019638,
+        "loudnessAnalysisVersion": "2",
+        "Image": [
+          {
+            "alt": "Soulmate Stuff",
+            "type": "coverPoster",
+            "url": "/library/metadata/1029/thumb/1784019638"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "430927",
+          "topRight": "521737",
+          "bottomRight": "81264e",
+          "bottomLeft": "471026"
+        }
+      },
+      {
+        "ratingKey": "2900",
+        "key": "/library/metadata/2900/children",
+        "parentRatingKey": "2899",
+        "guid": "plex://album/5d07c170403c640290844a27",
+        "parentGuid": "plex://artist/5d07bbfd403c6402904a674e",
+        "studio": "UMC",
+        "type": "album",
+        "title": "Abbey Road (2019 mix)",
+        "parentKey": "/library/metadata/2899",
+        "parentTitle": "The Beatles",
+        "summary": "Conventional wisdom holds that the Beatles intended Abbey Road as a grand farewell, a suspicion seemingly confirmed by the elegiac note Paul McCartney strikes at the conclusion of its closing suite. It's hard not to interpret \"And in the end/the love you take/is equal to the love you make\" as a summation not only of Abbey Road but perhaps of the group's entire career, a lovely final sentiment. The truth is perhaps a bit messier than this. The Beatles had tentative plans to move forward after the September 1969 release of Abbey Road, plans that quickly fell apart at the dawn of the new decade, and while the existence of that goal calls into question the intentionality of the album as a finale, it changes not a thing about what a remarkable goodbye the record is. In many ways, Abbey Road stands apart from the rest of the Beatles' catalog, an album that gains considerable strength from its lush, enveloping production -- a recording so luxuriant, it glosses over aesthetic differences between the group's main three songwriters and ties together a series of disconnected unfinished songs into a complete suite. Where Sgt. Pepper pioneered such mind-bending aural techniques, Abbey Road truly seized the possibilities of the studio and, in doing so, pointed the way forward to the album rock era of the 1970s. Many of the studio tricks arrive during that brilliant suite of songs, a sequence that lasts nearly a full side of an album. Here, McCartney's playful eccentricity juts against John Lennon's curdled cynicism, while the band thrills in sudden changes of mood and plays plenty of guitar, culminating in McCartney, Lennon, and George Harrison trading solos on \"The End.\" The depth of sonic detail within \"You Never Give Me Your Money\" and \"She Came in Through the Window\" provided ideas for entire subgenres of pop in the '70s, but Abbey Road also contains a handful of the most enduring Beatles songs, each adding a new emotional maturity to their catalog. The subdued boogie of Lennon's \"Come Together\" contains a sensuality previously unheard in the Beatles -- it's matched by \"Because,\" which may be the best showcase for the group's harmonies -- Harrison's \"Something\" is a love ballad of unusual sensitivity, and his \"Here Comes the Sun\" is incandescent, perhaps his purest expression of joy. As good as these individual moments are, what makes Abbey Road transcendent is how the album is so much greater than the sum of its parts. While a single song or segment can be dazzling, having a succession of marvelous, occasionally intertwined moments is not only a marvel but indeed a summation of everything that made the Beatles great. ~ Stephen Thomas Erlewine",
+        "index": 1,
+        "rating": 10.0,
+        "viewCount": 93,
+        "lastViewedAt": 1788284819,
+        "year": 1969,
+        "thumb": "/library/metadata/2900/thumb/1784019642",
+        "art": "/library/metadata/2899/art/1787903246",
+        "parentThumb": "/library/metadata/2899/thumb/1787903246",
+        "originallyAvailableAt": "1969-09-26",
+        "addedAt": 1777503638,
+        "updatedAt": 1784019642,
+        "loudnessAnalysisVersion": "2",
+        "Image": [
+          {
+            "alt": "Abbey Road (2019 mix)",
+            "type": "coverPoster",
+            "url": "/library/metadata/2900/thumb/1784019642"
+          },
+          {
+            "alt": "Abbey Road (2019 mix)",
+            "type": "background",
+            "url": "/library/metadata/2899/art/1787903246"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "1a351f",
+          "topRight": "2b657f",
+          "bottomRight": "933e49",
+          "bottomLeft": "1b658b"
+        },
+        "Genre": [
+          {
+            "tag": "Pop/Rock"
+          }
+        ]
+      },
+      {
+        "ratingKey": "2933",
+        "key": "/library/metadata/2933/children",
+        "parentRatingKey": "2899",
+        "guid": "plex://album/5d07c170403c6402908456a7",
+        "parentGuid": "plex://artist/5d07bbfd403c6402904a674e",
+        "studio": "UMC",
+        "type": "album",
+        "title": "Revolver (2022 mix)",
+        "parentKey": "/library/metadata/2899",
+        "parentTitle": "The Beatles",
+        "summary": "All the rules fell by the wayside with Revolver, as the Beatles began exploring new sonic territory, lyrical subjects, and styles of composition. It wasn't just Lennon and McCartney, either -- Harrison staked out his own dark territory with the tightly wound, cynical rocker \"Taxman\"; the jaunty yet dissonant \"I Want to Tell You\"; and \"Love You To,\" George's first and best foray into Indian music. Such explorations were bold, yet they were eclipsed by Lennon's trippy kaleidoscopes of sound. His most straightforward number was \"Doctor Robert,\" an ode to his dealer, and things just got stranger from there as he buried \"And Your Bird Can Sing\" in a maze of multi-tracked guitars, gave Ringo a charmingly hallucinogenic slice of childhood whimsy in \"Yellow Submarine,\" and then capped it off with a triptych of bad trips: the spiraling \"She Said She Said\"; the crawling, druggy \"I'm Only Sleeping\"; and \"Tomorrow Never Knows,\" a pure nightmare where John sang portions of the Tibetan Book of the Dead into a suspended microphone over Ringo's thundering, menacing drumbeats and layers of overdubbed, phased guitars and tape loops. McCartney's experiments were formal, as he tried on every pop style from chamber pop to soul, and when placed alongside Lennon's and Harrison's outright experimentations, McCartney's songcraft becomes all the more impressive. The biggest miracle of Revolver may be that the Beatles covered so much new stylistic ground and executed it perfectly on one record, or it may be that all of it holds together perfectly. Either way, its daring sonic adventures and consistently stunning songcraft set the standard for what pop/rock could achieve. Even after Sgt. Pepper, Revolver stands as the ultimate modern pop album and it's still as emulated as it was upon its original release. ~ Stephen Thomas Erlewine",
+        "index": 1,
+        "rating": 10.0,
+        "viewCount": 66,
+        "lastViewedAt": 1783979594,
+        "year": 1966,
+        "thumb": "/library/metadata/2933/thumb/1784019643",
+        "art": "/library/metadata/2899/art/1787903246",
+        "parentThumb": "/library/metadata/2899/thumb/1787903246",
+        "originallyAvailableAt": "1966-08-05",
+        "addedAt": 1777503639,
+        "updatedAt": 1784019643,
+        "loudnessAnalysisVersion": "2",
+        "Image": [
+          {
+            "alt": "Revolver (2022 mix)",
+            "type": "coverPoster",
+            "url": "/library/metadata/2933/thumb/1784019643"
+          },
+          {
+            "alt": "Revolver (2022 mix)",
+            "type": "background",
+            "url": "/library/metadata/2899/art/1787903246"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "232221",
+          "topRight": "53545b",
+          "bottomRight": "1c1d1b",
+          "bottomLeft": "0d0e0b"
+        },
+        "Genre": [
+          {
+            "tag": "Pop/Rock"
+          }
+        ]
+      },
+      {
+        "ratingKey": "2918",
+        "key": "/library/metadata/2918/children",
+        "parentRatingKey": "2899",
+        "guid": "plex://album/5d07c170403c640290845207",
+        "parentGuid": "plex://artist/5d07bbfd403c6402904a674e",
+        "studio": "Apple Records",
+        "type": "album",
+        "title": "Rubber Soul",
+        "parentKey": "/library/metadata/2899",
+        "parentTitle": "The Beatles",
+        "summary": "While the Beatles still largely stuck to love songs on Rubber Soul, the lyrics represented a quantum leap in terms of thoughtfulness, maturity, and complex ambiguities. Musically, too, it was a substantial leap forward, with intricate folk-rock arrangements that reflected the increasing influence of Dylan and the Byrds. The group and George Martin were also beginning to expand the conventional instrumental parameters of the rock group, using a sitar on \"Norwegian Wood (This Bird Has Flown),\" Greek-like guitar lines on \"Michelle\" and \"Girl,\" fuzz bass on \"Think for Yourself,\" and a piano made to sound like a harpsichord on the instrumental break of \"In My Life.\" While John and Paul were beginning to carve separate songwriting identities at this point, the album is full of great tunes, from \"Norwegian Wood (This Bird Has Flown)\" and \"Michelle\" to \"Girl,\" \"I'm Looking Through You,\" \"You Won't See Me,\" \"Drive My Car,\" and \"Nowhere Man\" (the last of which was the first Beatle song to move beyond romantic themes entirely). George Harrison was also developing into a fine songwriter with his two contributions, \"Think for Yourself\" and the Byrds-ish \"If I Needed Someone.\" ~ Richie Unterberger",
+        "index": 1,
+        "rating": 10.0,
+        "viewCount": 45,
+        "lastViewedAt": 1783977844,
+        "year": 1965,
+        "thumb": "/library/metadata/2918/thumb/1784019643",
+        "art": "/library/metadata/2899/art/1787903246",
+        "parentThumb": "/library/metadata/2899/thumb/1787903246",
+        "originallyAvailableAt": "1965-12-03",
+        "addedAt": 1777503639,
+        "updatedAt": 1784019643,
+        "loudnessAnalysisVersion": "2",
+        "Image": [
+          {
+            "alt": "Rubber Soul",
+            "type": "coverPoster",
+            "url": "/library/metadata/2918/thumb/1784019643"
+          },
+          {
+            "alt": "Rubber Soul",
+            "type": "background",
+            "url": "/library/metadata/2899/art/1787903246"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "061e12",
+          "topRight": "051509",
+          "bottomRight": "934017",
+          "bottomLeft": "246759"
+        },
+        "Genre": [
+          {
+            "tag": "Pop/Rock"
+          }
+        ]
+      }
+    ]
+  }
+}

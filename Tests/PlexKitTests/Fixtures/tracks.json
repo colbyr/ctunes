@@ -1,0 +1,254 @@
+{
+  "MediaContainer": {
+    "size": 4,
+    "allowSync": true,
+    "art": "/:/resources/artist-fanart.jpg",
+    "grandparentRatingKey": 1028,
+    "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+    "grandparentTitle": "Antarctigo Vespucci",
+    "identifier": "com.plexapp.plugins.library",
+    "key": "1029",
+    "librarySectionID": 3,
+    "librarySectionTitle": "Music",
+    "librarySectionUUID": "e50e4ddd-f2e9-4e01-b22e-5f2c2ad4be1c",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1785765644,
+    "nocache": true,
+    "parentIndex": 1,
+    "parentTitle": "Soulmate Stuff",
+    "parentYear": 2014,
+    "thumb": "/library/metadata/1029/thumb/1784019638",
+    "title1": "Antarctigo Vespucci",
+    "title2": "Soulmate Stuff",
+    "viewGroup": "track",
+    "viewMode": 65593,
+    "Metadata": [
+      {
+        "ratingKey": "1030",
+        "key": "/library/metadata/1030",
+        "parentRatingKey": "1029",
+        "grandparentRatingKey": "1028",
+        "guid": "plex://track/5d07ebf3403c640290d36aac",
+        "parentGuid": "plex://album/5d07c910403c640290c561ad",
+        "grandparentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "parentStudio": "Quote Unquote Records",
+        "type": "track",
+        "title": "100 Years",
+        "grandparentKey": "/library/metadata/1028",
+        "parentKey": "/library/metadata/1029",
+        "grandparentTitle": "Antarctigo Vespucci",
+        "parentTitle": "Soulmate Stuff",
+        "summary": "",
+        "index": 1,
+        "parentIndex": 1,
+        "ratingCount": 6771,
+        "parentYear": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1029/thumb/1784019638",
+        "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+        "duration": 98061,
+        "addedAt": 1746248190,
+        "updatedAt": 1785392279,
+        "Media": [
+          {
+            "id": 918,
+            "duration": 98061,
+            "bitrate": 1368,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1017,
+                "key": "/library/parts/1017/1746246593/file.flac",
+                "duration": 98061,
+                "file": "/Users/colby/Media/Music/Antarctigo Vespucci/Soulmate Stuff/Antarctigo Vespucci - Soulmate Stuff - 01 100 Years.flac",
+                "size": 16889209,
+                "container": "flac",
+                "hasThumbnail": "1"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "100 Years",
+            "type": "coverPoster",
+            "url": "/library/metadata/1028/thumb/1787903241"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1031",
+        "key": "/library/metadata/1031",
+        "parentRatingKey": "1029",
+        "grandparentRatingKey": "1028",
+        "guid": "plex://track/5d07ebf3403c640290d36fa7",
+        "parentGuid": "plex://album/5d07c910403c640290c561ad",
+        "grandparentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "parentStudio": "Quote Unquote Records",
+        "type": "track",
+        "title": "Sometimes",
+        "grandparentKey": "/library/metadata/1028",
+        "parentKey": "/library/metadata/1029",
+        "grandparentTitle": "Antarctigo Vespucci",
+        "parentTitle": "Soulmate Stuff",
+        "summary": "",
+        "index": 2,
+        "parentIndex": 1,
+        "ratingCount": 10981,
+        "parentYear": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1029/thumb/1784019638",
+        "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+        "duration": 131254,
+        "addedAt": 1746248190,
+        "updatedAt": 1785392279,
+        "Media": [
+          {
+            "id": 919,
+            "duration": 131254,
+            "bitrate": 1843,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1018,
+                "key": "/library/parts/1018/1746246593/file.flac",
+                "duration": 131254,
+                "file": "/Users/colby/Media/Music/Antarctigo Vespucci/Soulmate Stuff/Antarctigo Vespucci - Soulmate Stuff - 02 Sometimes.flac",
+                "size": 30356664,
+                "container": "flac",
+                "hasThumbnail": "1"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Sometimes",
+            "type": "coverPoster",
+            "url": "/library/metadata/1028/thumb/1787903241"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1032",
+        "key": "/library/metadata/1032",
+        "parentRatingKey": "1029",
+        "grandparentRatingKey": "1028",
+        "guid": "plex://track/5d07ebf3403c640290d3658a",
+        "parentGuid": "plex://album/5d07c910403c640290c561ad",
+        "grandparentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "parentStudio": "Quote Unquote Records",
+        "type": "track",
+        "title": "I'm Giving Up on U2",
+        "grandparentKey": "/library/metadata/1028",
+        "parentKey": "/library/metadata/1029",
+        "grandparentTitle": "Antarctigo Vespucci",
+        "parentTitle": "Soulmate Stuff",
+        "summary": "",
+        "index": 3,
+        "parentIndex": 1,
+        "ratingCount": 12288,
+        "viewCount": 3,
+        "lastViewedAt": 1779389947,
+        "parentYear": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1029/thumb/1784019638",
+        "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+        "duration": 186104,
+        "addedAt": 1746248190,
+        "updatedAt": 1785392279,
+        "Media": [
+          {
+            "id": 920,
+            "duration": 186104,
+            "bitrate": 1939,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1019,
+                "key": "/library/parts/1019/1746246593/file.flac",
+                "duration": 186104,
+                "file": "/Users/colby/Media/Music/Antarctigo Vespucci/Soulmate Stuff/Antarctigo Vespucci - Soulmate Stuff - 03 I'm Giving Up On U2.flac",
+                "size": 45217198,
+                "container": "flac",
+                "hasThumbnail": "1"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "I'm Giving Up on U2",
+            "type": "coverPoster",
+            "url": "/library/metadata/1028/thumb/1787903241"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1033",
+        "key": "/library/metadata/1033",
+        "parentRatingKey": "1029",
+        "grandparentRatingKey": "1028",
+        "guid": "plex://track/5d07ebf3403c640290d362d1",
+        "parentGuid": "plex://album/5d07c910403c640290c561ad",
+        "grandparentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "parentStudio": "Quote Unquote Records",
+        "type": "track",
+        "title": "Guest List Spots",
+        "grandparentKey": "/library/metadata/1028",
+        "parentKey": "/library/metadata/1029",
+        "grandparentTitle": "Antarctigo Vespucci",
+        "parentTitle": "Soulmate Stuff",
+        "summary": "",
+        "index": 4,
+        "parentIndex": 1,
+        "ratingCount": 6657,
+        "parentYear": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1029/thumb/1784019638",
+        "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+        "duration": 152528,
+        "addedAt": 1746248190,
+        "updatedAt": 1785392279,
+        "Media": [
+          {
+            "id": 921,
+            "duration": 152528,
+            "bitrate": 1872,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1020,
+                "key": "/library/parts/1020/1746246593/file.flac",
+                "duration": 152528,
+                "file": "/Users/colby/Media/Music/Antarctigo Vespucci/Soulmate Stuff/Antarctigo Vespucci - Soulmate Stuff - 04 Guest List Spots.flac",
+                "size": 35806108,
+                "container": "flac",
+                "hasThumbnail": "1"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Guest List Spots",
+            "type": "coverPoster",
+            "url": "/library/metadata/1028/thumb/1787903241"
+          }
+        ]
+      }
+    ]
+  }
+}

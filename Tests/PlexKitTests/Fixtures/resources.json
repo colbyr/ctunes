@@ -1,0 +1,84 @@
+[
+  {
+    "name": "Colby\u2019s Mac Mini",
+    "product": "Plex Media Server",
+    "productVersion": "1.43.3.10828-00f62d37d",
+    "platform": "MacOSX",
+    "platformVersion": "26.5.2",
+    "device": "Mac16,10",
+    "clientIdentifier": "9a15661acefaea71c409969584cc78a6b2e6953d",
+    "provides": "server",
+    "ownerId": null,
+    "sourceTitle": null,
+    "publicAddress": "38.42.101.254",
+    "accessToken": "<REDACTED>",
+    "searchEnabled": true,
+    "createdAt": "2025-01-05T01:38:14Z",
+    "lastSeenAt": "2026-09-01T14:01:05Z",
+    "owned": true,
+    "home": false,
+    "synced": false,
+    "relay": true,
+    "presence": true,
+    "httpsRequired": false,
+    "publicAddressMatches": false,
+    "dnsRebindingProtection": false,
+    "natLoopbackSupported": true,
+    "connections": [
+      {
+        "protocol": "https",
+        "address": "192.168.0.193",
+        "port": 32400,
+        "uri": "https://192-168-0-193.80c4ef0152a04e1786cfa44d62bcefde.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "192.168.0.95",
+        "port": 32400,
+        "uri": "https://192-168-0-95.80c4ef0152a04e1786cfa44d62bcefde.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "192.168.139.3",
+        "port": 32400,
+        "uri": "https://192-168-139-3.80c4ef0152a04e1786cfa44d62bcefde.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "192.168.97.0",
+        "port": 32400,
+        "uri": "https://192-168-97-0.80c4ef0152a04e1786cfa44d62bcefde.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "38.42.101.254",
+        "port": 10186,
+        "uri": "https://38-42-101-254.80c4ef0152a04e1786cfa44d62bcefde.plex.direct:10186",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "45.56.104.126",
+        "port": 8443,
+        "uri": "https://45-56-104-126.80c4ef0152a04e1786cfa44d62bcefde.plex.direct:8443",
+        "local": false,
+        "relay": true,
+        "IPv6": false
+      }
+    ]
+  }
+]

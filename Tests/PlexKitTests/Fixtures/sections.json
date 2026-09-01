@@ -1,0 +1,109 @@
+{
+  "MediaContainer": {
+    "size": 4,
+    "allowSync": false,
+    "title1": "Plex Library",
+    "Directory": [
+      {
+        "allowSync": true,
+        "filters": true,
+        "refreshing": false,
+        "key": "1",
+        "type": "movie",
+        "title": "Movies",
+        "agent": "tv.plex.agents.movie",
+        "scanner": "Plex Movie",
+        "language": "en-US",
+        "uuid": "c28e86ff-0708-461b-aa55-b6d2f1bc1e13",
+        "updatedAt": 1785195165,
+        "createdAt": 1736041247,
+        "scannedAt": 1749394073,
+        "content": true,
+        "directory": true,
+        "contentChangedAt": 20922,
+        "hidden": 0,
+        "Location": [
+          {
+            "id": 3,
+            "path": "/Users/colby/Media/Movies"
+          }
+        ]
+      },
+      {
+        "allowSync": true,
+        "filters": true,
+        "refreshing": false,
+        "key": "2",
+        "type": "show",
+        "title": "TV Shows",
+        "agent": "tv.plex.agents.series",
+        "scanner": "Plex TV Series",
+        "language": "en-US",
+        "uuid": "077e7dae-faad-4e01-b9e2-d9cb35180118",
+        "updatedAt": 1785195165,
+        "createdAt": 1736041295,
+        "scannedAt": 1749394073,
+        "content": true,
+        "directory": true,
+        "contentChangedAt": 0,
+        "hidden": 0,
+        "Location": [
+          {
+            "id": 2,
+            "path": "/Users/colby/Media/TV Shows"
+          }
+        ]
+      },
+      {
+        "allowSync": true,
+        "filters": true,
+        "refreshing": false,
+        "key": "4",
+        "type": "artist",
+        "title": "Audio Books",
+        "agent": "tv.plex.agents.music",
+        "scanner": "Plex Music",
+        "language": "en-US",
+        "uuid": "9fa103ff-7cd1-4728-ab18-32489d6fc3a3",
+        "updatedAt": 1785195165,
+        "createdAt": 1736095352,
+        "scannedAt": 1782759881,
+        "content": true,
+        "directory": true,
+        "contentChangedAt": 260737,
+        "hidden": 0,
+        "Location": [
+          {
+            "id": 5,
+            "path": "/Users/colby/Media/Audio Books"
+          }
+        ]
+      },
+      {
+        "allowSync": true,
+        "filters": true,
+        "refreshing": false,
+        "key": "3",
+        "type": "artist",
+        "title": "Music",
+        "agent": "tv.plex.agents.music",
+        "scanner": "Plex Music",
+        "language": "en-US",
+        "uuid": "e50e4ddd-f2e9-4e01-b22e-5f2c2ad4be1c",
+        "updatedAt": 1785195165,
+        "createdAt": 1736041404,
+        "scannedAt": 1788289424,
+        "content": true,
+        "directory": true,
+        "contentChangedAt": 300226,
+        "hidden": 0,
+        "Location": [
+          {
+            "id": 4,
+            "path": "/Users/colby/Media/Music"
+          }
+        ]
+      }
+    ]
+  }
+}
