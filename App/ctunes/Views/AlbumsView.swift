@@ -28,9 +28,6 @@ struct AlbumsView: View {
             else if albums.isEmpty { ContentUnavailableView("No albums", systemImage: "square.stack") }
         }
         .navigationTitle(artist.title)
-        .navigationDestination(for: PlexAlbum.self) { album in
-            TracksView(model: model, album: album)
-        }
         .task {
             guard let library = model.library else { return }
             albums = (try? await library.albums(

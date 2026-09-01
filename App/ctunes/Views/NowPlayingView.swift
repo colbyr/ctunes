@@ -55,22 +55,34 @@ struct NowPlayingView: View {
     }
 
     private var scrubber: some View {
-        VStack(spacing: 4) {
+        // Read unconditionally rather than behind `scrubbing ?? …`. Observation
+        // registers only the properties actually touched while the body runs,
+        // so a short-circuited read drops the dependency on currentTime and the
+        // clock stops updating until the view is rebuilt.
+        let elapsed = player.currentTime
+        let total = max(player.duration, 1)
+        let shown = min(scrubbing ?? elapsed, total)
+
+        return VStack(spacing: 4) {
             Slider(
                 value: Binding(
-                    get: { scrubbing ?? player.currentTime },
+                    get: { shown },
                     set: { scrubbing = $0 }
                 ),
-                in: 0...max(player.duration, 1),
+                in: 0...total,
                 onEditingChanged: { editing in
-                    if !editing, let target = scrubbing {
-                        player.seek(to: target)
+                    if editing {
+                        // Pin the starting point so the thumb doesn't fight the
+                        // time observer mid-drag.
+                        scrubbing = scrubbing ?? elapsed
+                    } else {
+                        if let target = scrubbing { player.seek(to: target) }
                         scrubbing = nil
                     }
                 }
             )
             HStack {
-                Text(TracksView.duration(scrubbing ?? player.currentTime))
+                Text(TracksView.duration(shown))
                 Spacer()
                 Text(TracksView.duration(player.duration))
             }
@@ -78,6 +90,8 @@ struct NowPlayingView: View {
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal)
+        // A track change mid-scrub would otherwise leave the thumb stuck.
+        .onChange(of: player.currentTrack?.id) { scrubbing = nil }
     }
 }
 
