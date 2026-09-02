@@ -19,7 +19,13 @@ final class AudioPlayer {
     private(set) var isPlaying = false
     private(set) var currentTime: Double = 0
     private(set) var duration: Double = 0
+    private(set) var repeatMode: RepeatMode = .off
+    /// True once the last item has played out with nothing to follow it. The
+    /// current track stays put so the header still has something to show;
+    /// `resume` plays it again and `restart` goes back to the top.
+    private(set) var hasEnded = false
 
+    var isShuffled: Bool { queue.isShuffled }
     var currentTrack: PlexTrack? { queue.current }
     var upcoming: ArraySlice<PlayQueue<PlexTrack>.Entry> { queue.upcoming }
 
@@ -33,6 +39,9 @@ final class AudioPlayer {
     /// timeline reports together.
     private var sessionIdentifier = UUID().uuidString
     private var lastReportedProgress: Double = 0
+    /// Set once the current play-through has been handled as ended, so the
+    /// notification and the clock fallback can't both advance the queue.
+    private var itemEndHandled = false
     /// Plex counts a play from the periodic reports, so these have to keep
     /// flowing while a track plays; every 10s is what Plexamp does.
     private let reportInterval: Double = 10
@@ -70,6 +79,11 @@ final class AudioPlayer {
 
     func resume() {
         guard currentTrack != nil else { return }
+        // Nothing left to resume: a lock-screen play after the end starts over.
+        if hasEnded {
+            restart()
+            return
+        }
         activateSession()
         player.play()
         isPlaying = true
@@ -84,17 +98,65 @@ final class AudioPlayer {
         reportTimeline(.paused)
     }
 
+    /// A manual skip. Repeat-one is deliberately ignored here: skipping past
+    /// a track you asked to hear again should still skip it.
     func next() {
-        guard !queue.upcoming.isEmpty else {
-            pause()
-            seek(to: 0)
-            reportTimeline(.stopped)
-            return
-        }
+        advance(wrapping: repeatMode == .all)
+    }
+
+    /// Plays the queue again from the top, whatever the repeat mode.
+    func restart() {
+        guard !queue.isEmpty else { return }
+        reportTimeline(.stopped)
+        queue.jump(to: 0)
+        loadCurrentItem(autoPlay: true)
+    }
+
+    private func advance(wrapping: Bool) {
         // Report before the cursor moves so the stop lands on the right track.
         reportTimeline(.stopped)
-        _ = queue.advance()
+        guard queue.advance(wrapping: wrapping) else {
+            finish()
+            return
+        }
         loadCurrentItem(autoPlay: true)
+    }
+
+    /// The end of the line: stop where we are and flag it so the UI can say
+    /// so. The head stays at the end rather than rewinding.
+    private func finish() {
+        player.pause()
+        isPlaying = false
+        updateNowPlayingPlaybackState()
+        hasEnded = true
+        // Not `pause()`: the session is over, so the last report is a stop.
+        reportTimeline(.stopped)
+    }
+
+    /// Reached from the end-of-item notification and from the clock fallback
+    /// below, so it has to be safe to hit twice for one play-through.
+    private func currentItemEnded() {
+        guard !itemEndHandled else { return }
+        itemEndHandled = true
+        guard repeatMode != .one else {
+            seek(to: 0)
+            player.play()
+            reportTimeline(.playing)
+            return
+        }
+        advance(wrapping: repeatMode == .all)
+    }
+
+    // MARK: - Modes
+
+    func toggleShuffle() {
+        if queue.isShuffled { queue.unshuffle() } else { queue.shuffle() }
+        updateNowPlayingModes()
+    }
+
+    func cycleRepeat() {
+        repeatMode = repeatMode.next
+        updateNowPlayingModes()
     }
 
     func previous() {
@@ -113,6 +175,8 @@ final class AudioPlayer {
     }
 
     func seek(to seconds: Double) {
+        // Moving the head is a fresh run at the end of the item.
+        itemEndHandled = false
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         player.seek(to: time) { [weak self] _ in
             Task { @MainActor in
@@ -146,6 +210,7 @@ final class AudioPlayer {
         guard queue.current != nil else {
             player.replaceCurrentItem(with: nil)
             pause()
+            hasEnded = false
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
         }
@@ -177,6 +242,8 @@ final class AudioPlayer {
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         currentTime = 0
         duration = track.durationSeconds ?? 0
+        hasEnded = false
+        itemEndHandled = false
 
         if autoPlay {
             player.play()
@@ -234,8 +301,22 @@ final class AudioPlayer {
                 }
                 self.updateNowPlayingPlaybackState()
                 self.reportProgressIfDue()
+                self.finishIfRunPastEnd()
             }
         }
+    }
+
+    /// After a seek close to the end of a track, AVPlayer was observed to keep
+    /// running the clock past the item's duration at rate 1 without ever
+    /// posting `AVPlayerItemDidPlayToEndTime`. Treat the clock as the source
+    /// of truth once it passes the end.
+    private func finishIfRunPastEnd() {
+        guard isPlaying, !itemEndHandled,
+              let itemDuration = player.currentItem?.duration.seconds,
+              itemDuration.isFinite, itemDuration > 0,
+              currentTime >= itemDuration - 0.25
+        else { return }
+        currentItemEnded()
     }
 
     private func observeItemEnd() {
@@ -244,7 +325,7 @@ final class AudioPlayer {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.next() }
+            Task { @MainActor in self?.currentItemEnded() }
         }
     }
 
@@ -281,6 +362,44 @@ final class AudioPlayer {
             }
             Task { @MainActor in self?.seek(to: event.positionTime) }
             return .success
+        }
+        center.changeShuffleModeCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangeShuffleModeCommandEvent else {
+                return .commandFailed
+            }
+            Task { @MainActor in
+                guard let self, self.isShuffled != (event.shuffleType != .off) else { return }
+                self.toggleShuffle()
+            }
+            return .success
+        }
+        center.changeRepeatModeCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangeRepeatModeCommandEvent else {
+                return .commandFailed
+            }
+            Task { @MainActor in
+                guard let self else { return }
+                switch event.repeatType {
+                case .off: self.repeatMode = .off
+                case .one: self.repeatMode = .one
+                case .all: self.repeatMode = .all
+                @unknown default: break
+                }
+                self.updateNowPlayingModes()
+            }
+            return .success
+        }
+        updateNowPlayingModes()
+    }
+
+    /// Mirrors shuffle and repeat onto the lock-screen buttons.
+    private func updateNowPlayingModes() {
+        let center = MPRemoteCommandCenter.shared()
+        center.changeShuffleModeCommand.currentShuffleType = isShuffled ? .items : .off
+        center.changeRepeatModeCommand.currentRepeatType = switch repeatMode {
+        case .off: .off
+        case .one: .one
+        case .all: .all
         }
     }
 

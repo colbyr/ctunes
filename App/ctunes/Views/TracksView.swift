@@ -14,7 +14,16 @@ struct TracksView: View {
     /// where there is no way to tap a row.
     private static var autoPlay: Bool {
         #if DEBUG
-        ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] == "1"
+        ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil
+        #else
+        false
+        #endif
+    }
+    /// `last` starts on the final track a few seconds from its end, so the
+    /// queue runs out almost immediately.
+    private static var autoPlayLast: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] == "last"
         #else
         false
         #endif
@@ -90,7 +99,13 @@ struct TracksView: View {
                 ImageLoader.shared.prewarm(library.artworkURL(thumb, size: 600))
             }
             if Self.autoPlay, !tracks.isEmpty {
-                player.play(tracks, startingAt: 0, library: library)
+                let start = Self.autoPlayLast ? tracks.count - 1 : 0
+                player.play(tracks, startingAt: start, library: library)
+                if Self.autoPlayLast, let seconds = tracks[start].durationSeconds {
+                    // Let the item become ready before seeking near its end.
+                    try? await Task.sleep(for: .seconds(2))
+                    player.seek(to: max(0, seconds - 4))
+                }
                 showingNowPlaying = Self.autoShowNowPlaying
             }
             if Self.autoEnqueue, !tracks.isEmpty {

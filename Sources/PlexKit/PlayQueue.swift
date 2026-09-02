@@ -16,6 +16,12 @@ public struct PlayQueue<Item: Sendable>: Sendable {
     public private(set) var currentIndex = 0
     private var nextID = 0
 
+    /// The pre-shuffle order, kept so shuffle can be undone. Entries added or
+    /// removed while shuffled are reconciled against it on restore.
+    private var unshuffled: [Entry]?
+
+    public var isShuffled: Bool { unshuffled != nil }
+
     public init() {}
 
     public init(_ items: [Item], startingAt index: Int) {
@@ -78,10 +84,16 @@ public struct PlayQueue<Item: Sendable>: Sendable {
         return true
     }
 
-    /// False, and unchanged, at the last item.
-    public mutating func advance() -> Bool {
-        guard currentIndex + 1 < entries.count else { return false }
-        currentIndex += 1
+    /// False, and unchanged, at the last item unless `wrapping`, which loops
+    /// back to the first.
+    public mutating func advance(wrapping: Bool = false) -> Bool {
+        guard !entries.isEmpty else { return false }
+        if currentIndex + 1 < entries.count {
+            currentIndex += 1
+            return true
+        }
+        guard wrapping else { return false }
+        currentIndex = 0
         return true
     }
 
@@ -92,8 +104,63 @@ public struct PlayQueue<Item: Sendable>: Sendable {
         return true
     }
 
+    // MARK: - Shuffle
+
+    /// Keeps the current item where the listener is, moves it to the front
+    /// and shuffles everything else behind it, Apple Music style. Shuffling an
+    /// already shuffled queue reshuffles against the original order.
+    public mutating func shuffle(using generator: inout some RandomNumberGenerator) {
+        guard !entries.isEmpty else { return }
+        let original = unshuffled ?? entries
+        unshuffled = original
+        guard let current = currentEntry else { return }
+        var rest = original.filter { $0.id != current.id }
+        rest.shuffle(using: &generator)
+        entries = [current] + rest
+        currentIndex = 0
+    }
+
+    public mutating func shuffle() {
+        var generator = SystemRandomNumberGenerator()
+        shuffle(using: &generator)
+    }
+
+    /// Restores the order from before `shuffle`. Items removed meanwhile stay
+    /// removed; items added meanwhile keep their place relative to the current
+    /// item, since that is the only order they were ever seen in.
+    public mutating func unshuffle() {
+        guard let original = unshuffled else { return }
+        unshuffled = nil
+        let currentID = currentEntry?.id
+        let present = Set(entries.map(\.id))
+        let known = Set(original.map(\.id))
+        var restored = original.filter { present.contains($0.id) }
+        let added = entries.filter { !known.contains($0.id) }
+        if let currentID, let at = restored.firstIndex(where: { $0.id == currentID }) {
+            restored.insert(contentsOf: added, at: at + 1)
+        } else {
+            restored.append(contentsOf: added)
+        }
+        entries = restored
+        currentIndex = currentID.flatMap { id in entries.firstIndex { $0.id == id } } ?? 0
+    }
+
     private mutating func makeEntries(_ items: [Item]) -> [Entry] {
         defer { nextID += items.count }
         return items.enumerated().map { Entry(id: nextID + $0.offset, item: $0.element) }
+    }
+}
+
+/// How playback continues once the current item ends.
+public enum RepeatMode: String, CaseIterable, Sendable {
+    case off, all, one
+
+    /// Cycles off → all → one → off, the order the button steps through.
+    public var next: RepeatMode {
+        switch self {
+        case .off: .all
+        case .all: .one
+        case .one: .off
+        }
     }
 }

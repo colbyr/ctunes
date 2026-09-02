@@ -56,7 +56,10 @@ no call site should build them by hand. `PlexAuth`, `PlexServerDirectory` and
 `AVPlayer` and advances the queue by hand on `AVPlayerItemDidPlayToEndTime`.
 AVQueuePlayer's implicit advancement lets the index, now-playing metadata and
 UI drift apart. Gapless playback is out of scope and would need a different
-design.
+design. **`AVPlayerItemDidPlayToEndTime` is not reliable after a seek near the
+end of a track**: the clock runs past the item's duration at rate 1 and the
+notification never posts, so the periodic time observer also treats
+`currentTime >= duration` as the end, guarded by a per-item flag.
 
 ## Plex API constraints
 
@@ -124,7 +127,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 |---|---|
 | `CTUNES_DEV_TOKEN` | skips sign-in with a token from the environment |
 | `CTUNES_DEV_ALBUM` | `ratingKey\|title\|artist\|artistKey`, pushes that album onto the stack |
-| `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load |
+| `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load; `last` starts on the final track 3s from its end, so the queue finishes at once |
 | `CTUNES_DEV_NOWPLAYING` | `1` opens the Now Playing sheet |
 | `CTUNES_DEV_ENQUEUE` | `1` appends the album to the queue again, so Up Next has duplicates |
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |

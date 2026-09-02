@@ -12,6 +12,7 @@ struct NowPlayingView: View {
     var body: some View {
         // Read unconditionally so the list observes queue mutations.
         let upcoming = player.upcoming
+        let ended = player.hasEnded
 
         List {
             // The header scrolls with the queue, Spotify-style, so Up Next
@@ -21,9 +22,12 @@ struct NowPlayingView: View {
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
             }
-            Section("Up Next") {
-                if upcoming.isEmpty {
-                    Text("End of queue").foregroundStyle(.secondary)
+            // No header once the queue has ended: there is nothing next.
+            Section {
+                if ended {
+                    endOfQueue
+                } else if upcoming.isEmpty {
+                    Text("Last track").foregroundStyle(.secondary)
                 }
                 ForEach(upcoming) { entry in
                     Button { player.jump(to: entry) } label: {
@@ -42,30 +46,49 @@ struct NowPlayingView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.row)
+                    // Zero insets so the press highlight reaches the row edges;
+                    // the label pads itself back to the standard inset.
+                    .listRowInsets(EdgeInsets())
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) { player.remove(entry) } label: {
                             Label("Remove", systemImage: "trash")
                         }
                     }
                 }
+            } header: {
+                if !ended { Text("Up Next") }
             }
         }
         .listStyle(.plain)
     }
 
+    private var endOfQueue: some View {
+        VStack(spacing: 12) {
+            Text("That's everything")
+                .font(.headline)
+            Text("The queue has finished playing.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .listRowSeparator(.hidden)
+    }
+
     private var header: some View {
         VStack(spacing: 24) {
-            Capsule()
-                .fill(.quaternary)
-                .frame(width: 40, height: 5)
-                .padding(.top, 8)
-
-            Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 600),
-                    size: 300, corner: 12)
+            // Edge to edge less a margin, so the art is as big as the sheet
+            // allows rather than a fixed 300pt. Inset from the top by the same
+            // 28pt it is from the sides (16 header + 12 here).
+            Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 900),
+                    size: nil, corner: 14)
                 .shadow(radius: 12, y: 6)
-                .padding(.top, 12)
+                .padding(.horizontal, 12)
+                .padding(.top, 28)
 
             HStack(alignment: .top) {
                 // Balances the heart so the text stays centred.
@@ -88,25 +111,94 @@ struct NowPlayingView: View {
 
             scrubber
 
-            HStack(spacing: 48) {
-                Button { player.previous() } label: {
-                    Image(systemName: "backward.fill").font(.title)
-                }
-                Button { player.togglePlayPause() } label: {
-                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 64))
-                }
-                Button { player.next() } label: {
-                    Image(systemName: "forward.fill").font(.title)
-                }
-            }
-            // Plain so a tap on a control isn't swallowed as a row tap.
-            .buttonStyle(.plain)
-            .foregroundStyle(.primary)
+            transport
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal)
         .padding(.bottom, 8)
+        // Overlaid rather than in the stack so it takes no vertical space.
+        .overlay(alignment: .top) {
+            Capsule()
+                .fill(.quaternary)
+                .frame(width: 40, height: 5)
+                .padding(.top, 8)
+        }
+    }
+
+    /// Once the queue has ended the only sensible action is to start over,
+    /// so the play button becomes a restart and the rest dims.
+    private var transport: some View {
+        let ended = player.hasEnded
+        let dimmed = ended ? 0.35 : 1.0
+        return HStack {
+            modeButton(
+                systemImage: "shuffle",
+                active: player.isShuffled,
+                label: player.isShuffled ? "Shuffle on" : "Shuffle off"
+            ) { player.toggleShuffle() }
+            .opacity(dimmed)
+            Spacer()
+            Button { player.previous() } label: {
+                Image(systemName: "backward.fill").font(.title)
+            }
+            .opacity(dimmed)
+            Spacer()
+            if ended {
+                Button { player.restart() } label: {
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                        .font(.system(size: 64))
+                }
+                .foregroundStyle(.tint)
+                .accessibilityLabel("Play again")
+            } else {
+                Button { player.togglePlayPause() } label: {
+                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 64))
+                        .contentTransition(.symbolEffect(.replace))
+                }
+            }
+            Spacer()
+            Button { player.next() } label: {
+                Image(systemName: "forward.fill").font(.title)
+            }
+            .opacity(dimmed)
+            Spacer()
+            modeButton(
+                systemImage: player.repeatMode == .one ? "repeat.1" : "repeat",
+                active: player.repeatMode != .off,
+                label: repeatLabel
+            ) { player.cycleRepeat() }
+            .opacity(dimmed)
+        }
+        .animation(.default, value: ended)
+        .padding(.horizontal, 8)
+        // Plain so a tap on a control isn't swallowed as a row tap.
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+    }
+
+    private var repeatLabel: String {
+        switch player.repeatMode {
+        case .off: "Repeat off"
+        case .all: "Repeat all"
+        case .one: "Repeat one"
+        }
+    }
+
+    /// Shuffle and repeat: tinted while on, dimmed while off, with a
+    /// generous hit area since the glyphs are small.
+    private func modeButton(
+        systemImage: String, active: Bool, label: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(active ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
+        }
+        .accessibilityLabel(label)
     }
 
     private var scrubber: some View {
@@ -173,4 +265,20 @@ struct HeartButton: View {
         .disabled(track == nil)
         .accessibilityLabel(favorite ? "Unfavorite" : "Favorite")
     }
+}
+
+/// A list row that highlights while pressed, the way a plain table cell does.
+/// SwiftUI's `.plain` style hit-tests only the label's opaque content and
+/// gives no feedback, so a tap in the row's empty space went nowhere.
+struct RowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+            .background(configuration.isPressed ? Color(.systemGray4) : .clear)
+    }
+}
+
+extension ButtonStyle where Self == RowButtonStyle {
+    static var row: RowButtonStyle { RowButtonStyle() }
 }
