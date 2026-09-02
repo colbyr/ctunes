@@ -119,7 +119,10 @@ struct TracksView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Artwork(url: model.library?.artworkURL(album.thumb, size: 600),
+            // Fall back to the tracks' art: a track's thumb is its album's, so
+            // this covers an album record with no thumb of its own (which is
+            // also what the CTUNES_DEV_ALBUM hook produces).
+            Artwork(url: model.library?.artworkURL(album.thumb ?? tracks.first?.thumb, size: 600),
                     size: 180, corner: 10)
                 .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
             Text(album.title).font(.headline)
