@@ -331,11 +331,11 @@ private struct PlayMixCard: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Image(systemName: "play.fill")
+                Image(systemName: kind.systemImage)
                     .font(.title3)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(empty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(kind.accent))
                     .frame(width: 44, height: 44)
-                    .background(empty ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(Color(.label)), in: .circle)
+                    .background(empty ? AnyShapeStyle(.fill.tertiary) : AnyShapeStyle(kind.accent.opacity(0.14)), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(empty ? "Build a mix" : "Play Mix")
                         .font(.headline)
