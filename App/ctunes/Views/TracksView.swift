@@ -39,6 +39,28 @@ struct TracksView: View {
     var body: some View {
         List {
             Section {
+                Button(action: shuffle) {
+                    HStack {
+                        Label("Shuffle", systemImage: "shuffle")
+                        Spacer()
+                    }
+                }
+                .disabled(tracks.isEmpty)
+            } header: {
+                VStack(spacing: 8) {
+                    Artwork(url: model.library?.artworkURL(album.thumb, size: 600),
+                            size: 180, corner: 10)
+                    Text(album.title).font(.headline)
+                    if let artist = album.parentTitle {
+                        Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .textCase(nil)
+            }
+
+            Section {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     let favorite = model.isFavorite(track)
                     Button {
@@ -87,18 +109,6 @@ struct TracksView: View {
                         .tint(.pink)
                     }
                 }
-            } header: {
-                VStack(spacing: 8) {
-                    Artwork(url: model.library?.artworkURL(album.thumb, size: 600),
-                            size: 180, corner: 10)
-                    Text(album.title).font(.headline)
-                    if let artist = album.parentTitle {
-                        Text(artist).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .textCase(nil)
             }
         }
         .overlay {
@@ -134,6 +144,13 @@ struct TracksView: View {
         .sheet(isPresented: $showingNowPlaying) {
             NowPlayingView(model: model)
         }
+    }
+
+    /// Shuffled once at enqueue time, the same way Shuffle Favorites does it.
+    private func shuffle() {
+        guard let library = model.library, !tracks.isEmpty else { return }
+        player.play(tracks.shuffled(), startingAt: 0, library: library)
+        showingNowPlaying = true
     }
 
     private func enqueue(_ tracks: [PlexTrack], next: Bool) {
