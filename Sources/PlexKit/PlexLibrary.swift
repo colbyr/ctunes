@@ -88,6 +88,37 @@ public actor PlexLibrary {
         try await client.data(for: request)
     }
 
+    // MARK: - Timeline
+
+    /// Tells the server where playback stands. This is the only way a play
+    /// gets counted: the server marks the track played once progress reports
+    /// cross ~90%, so `.playing` has to be sent periodically, not just once.
+    /// `sessionIdentifier` groups the reports for one listening session.
+    public func reportTimeline(
+        _ track: PlexTrack,
+        state: PlaybackState,
+        time: Double,
+        sessionIdentifier: String
+    ) async throws {
+        var components = URLComponents(
+            url: server.baseURL.appending(path: "/:/timeline"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [
+            .init(name: "ratingKey", value: track.ratingKey),
+            .init(name: "key", value: "/library/metadata/\(track.ratingKey)"),
+            .init(name: "state", value: state.rawValue),
+            .init(name: "time", value: String(Int(time * 1000))),
+            .init(name: "duration", value: String(track.duration ?? 0)),
+            .init(name: "playbackTime", value: String(Int(time * 1000))),
+            .init(name: "hasMDE", value: "1"),
+        ]
+        guard let url = components?.url else { throw PlexError.noServerReachable }
+        var request = await client.request(url: url, token: token)
+        request.setValue(sessionIdentifier, forHTTPHeaderField: "X-Plex-Session-Identifier")
+        try await client.data(for: request)
+    }
+
     // MARK: - URLs
 
     /// The audio file itself. AVPlayer won't attach custom headers to media
@@ -108,4 +139,9 @@ public actor PlexLibrary {
             + "/photo/:/transcode?width=\(size)&height=\(size)&minSize=1"
             + "&url=\(encoded)&X-Plex-Token=\(token)")
     }
+}
+
+/// The `state` values the timeline endpoint accepts.
+public enum PlaybackState: String, Sendable {
+    case playing, paused, stopped
 }

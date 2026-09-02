@@ -162,6 +162,34 @@ struct PlexLibraryTests {
         #expect(calls[1].hasSuffix("rating=-1"))
     }
 
+    @Test("timeline reports carry state, progress and a session id")
+    func reportTimeline() async throws {
+        let tracksBody = try Fixture.string("tracks")
+        let seen = Locked<[URLRequest]>([])
+        let library = library { request in
+            guard request.url?.path.hasSuffix("/timeline") == true else { return .json(tracksBody) }
+            seen.set(seen.get() + [request])
+            return .init(body: Data())
+        }
+        let track = try #require(try await library.tracks(inAlbum: "1029").first)
+
+        try await library.reportTimeline(track, state: .playing, time: 12.5, sessionIdentifier: "S1")
+        try await library.reportTimeline(track, state: .stopped, time: 0, sessionIdentifier: "S1")
+
+        let calls = seen.get()
+        #expect(calls.count == 2)
+        let first = calls[0].url?.absoluteString ?? ""
+        #expect(first.hasPrefix("https://example.plex.direct:32400/:/timeline?"))
+        #expect(first.contains("ratingKey=\(track.ratingKey)"))
+        #expect(first.contains("key=/library/metadata/\(track.ratingKey)"))
+        #expect(first.contains("state=playing"))
+        #expect(first.contains("time=12500"))
+        #expect(first.contains("duration=\(track.duration ?? -1)"))
+        #expect(calls[0].value(forHTTPHeaderField: "X-Plex-Session-Identifier") == "S1")
+        #expect(calls[0].value(forHTTPHeaderField: "X-Plex-Token") == "TOKEN")
+        #expect(calls[1].url?.absoluteString.contains("state=stopped") == true)
+    }
+
     @Test("stream URL carries the token in the query, not a header")
     func streamURL() async throws {
         let body = try Fixture.string("tracks")

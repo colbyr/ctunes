@@ -29,6 +29,14 @@ final class AudioPlayer {
     @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
     private var commandsConfigured = false
 
+    /// One id per `play` call, so the server groups a listening session's
+    /// timeline reports together.
+    private var sessionIdentifier = UUID().uuidString
+    private var lastReportedProgress: Double = 0
+    /// Plex counts a play from the periodic reports, so these have to keep
+    /// flowing while a track plays; every 10s is what Plexamp does.
+    private let reportInterval: Double = 10
+
     /// Restarting rather than stepping back is the platform convention once
     /// playback is a few seconds in.
     private let restartThreshold: Double = 3
@@ -47,8 +55,10 @@ final class AudioPlayer {
     // MARK: - Playback
 
     func play(_ tracks: [PlexTrack], startingAt index: Int, library: PlexLibrary) {
+        reportTimeline(.stopped)
         self.library = library
         queue = PlayQueue(tracks, startingAt: index)
+        sessionIdentifier = UUID().uuidString
         activateSession()
         configureRemoteCommands()
         loadCurrentItem(autoPlay: true)
@@ -64,20 +74,26 @@ final class AudioPlayer {
         player.play()
         isPlaying = true
         updateNowPlayingPlaybackState()
+        reportTimeline(.playing)
     }
 
     func pause() {
         player.pause()
         isPlaying = false
         updateNowPlayingPlaybackState()
+        reportTimeline(.paused)
     }
 
     func next() {
-        guard queue.advance() else {
+        guard !queue.upcoming.isEmpty else {
             pause()
             seek(to: 0)
+            reportTimeline(.stopped)
             return
         }
+        // Report before the cursor moves so the stop lands on the right track.
+        reportTimeline(.stopped)
+        _ = queue.advance()
         loadCurrentItem(autoPlay: true)
     }
 
@@ -87,10 +103,12 @@ final class AudioPlayer {
             seek(to: 0)
             return
         }
-        guard queue.retreat() else {
+        guard queue.currentIndex > 0 else {
             seek(to: 0)
             return
         }
+        reportTimeline(.stopped)
+        _ = queue.retreat()
         loadCurrentItem(autoPlay: true)
     }
 
@@ -115,12 +133,16 @@ final class AudioPlayer {
     }
 
     func jump(to entry: PlayQueue<PlexTrack>.Entry) {
-        guard let index = queue.index(of: entry.id), queue.jump(to: index) else { return }
+        guard let index = queue.index(of: entry.id), index != queue.currentIndex else { return }
+        reportTimeline(.stopped)
+        queue.jump(to: index)
         loadCurrentItem(autoPlay: true)
     }
 
     func remove(_ entry: PlayQueue<PlexTrack>.Entry) {
-        guard let index = queue.index(of: entry.id), queue.remove(at: index) else { return }
+        guard let index = queue.index(of: entry.id) else { return }
+        if index == queue.currentIndex { reportTimeline(.stopped) }
+        guard queue.remove(at: index) else { return }
         guard queue.current != nil else {
             player.replaceCurrentItem(with: nil)
             pause()
@@ -161,6 +183,30 @@ final class AudioPlayer {
             isPlaying = true
         }
         updateNowPlayingInfo(for: track)
+        reportTimeline(isPlaying ? .playing : .paused)
+    }
+
+    // MARK: - Timeline
+
+    /// Fire and forget: a slow server must never stall playback, and a lost
+    /// report just means the next one carries the update.
+    private func reportTimeline(_ state: PlaybackState) {
+        guard let track = currentTrack, let library else { return }
+        lastReportedProgress = currentTime
+        let time = currentTime
+        let session = sessionIdentifier
+        Task {
+            try? await library.reportTimeline(
+                track, state: state, time: time, sessionIdentifier: session
+            )
+        }
+    }
+
+    private func reportProgressIfDue() {
+        guard isPlaying else { return }
+        // A seek can move the clock backwards, so compare on distance.
+        guard abs(currentTime - lastReportedProgress) >= reportInterval else { return }
+        reportTimeline(.playing)
     }
 
     /// Without an active `.playback` session, audio plays in the foreground and
@@ -187,6 +233,7 @@ final class AudioPlayer {
                     self.duration = itemDuration
                 }
                 self.updateNowPlayingPlaybackState()
+                self.reportProgressIfDue()
             }
         }
     }
