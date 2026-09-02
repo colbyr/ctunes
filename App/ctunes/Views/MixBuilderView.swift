@@ -130,7 +130,7 @@ struct MixBuilderView: View {
                 .listRowSeparator(.hidden)
             if !picks.isEmpty {
                 grid(picks, selected: true)
-                    .listRowInsets(.init(top: 4, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 Rectangle()
                     .fill(.separator)
                     .frame(height: 1)
@@ -144,13 +144,15 @@ struct MixBuilderView: View {
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-                .listRowInsets(.init(top: 12, leading: Self.margin + 8, bottom: 0, trailing: Self.margin))
+                .listRowInsets(.init(top: 14, leading: Self.margin + 8, bottom: 0, trailing: Self.margin))
                 .listRowSeparator(.hidden)
             }
             grid(rest, selected: false)
-                .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 10, trailing: Self.margin))
+                .listRowInsets(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
         }
         .listStyle(.plain)
+        // The separator is a 1pt row; the default minimum centres it in 44pt.
+        .environment(\.defaultMinListRowHeight, 1)
         .scrollDismissesKeyboard(.immediately)
         .contentMargins(.bottom, 72, for: .scrollContent)
         .overlay {
@@ -300,7 +302,7 @@ struct MixBuilderView: View {
                     .clipShape(.circle)
                     .overlay {
                         if selected {
-                            Circle().stroke(kind.accent, lineWidth: 2.5).padding(-4)
+                            Circle().stroke(kind.accent, lineWidth: 2)
                         }
                     }
             case .album:
@@ -308,7 +310,7 @@ struct MixBuilderView: View {
                     .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
                     .overlay {
                         if selected {
-                            RoundedRectangle(cornerRadius: 12).stroke(kind.accent, lineWidth: 2.5).padding(-4)
+                            RoundedRectangle(cornerRadius: 8).stroke(kind.accent, lineWidth: 2)
                         }
                     }
             }
