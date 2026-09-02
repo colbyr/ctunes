@@ -115,6 +115,18 @@ struct PlexLibraryTests {
         #expect(abs((first.durationSeconds ?? 0) - 98.061) < 0.001)
     }
 
+    /// The fixture credits one track to a featured artist and puts the last
+    /// two on a second disc.
+    @Test("decodes the credited artist and disc number")
+    func trackArtistAndDisc() async throws {
+        let body = try Fixture.string("tracks")
+        let tracks = try await library { _ in .json(body) }.tracks(inAlbum: "1029")
+
+        #expect(tracks[0].trackArtist == nil)
+        #expect(tracks[1].trackArtist == "Antarctigo Vespucci feat. Laura Stevenson")
+        #expect(tracks.map(\.parentIndex) == [1, 1, 1, 1, 1, 2, 2])
+    }
+
     /// The fixture has two tracks rated 10 and five never rated.
     @Test("a full 10 is a favorite, an absent rating is not")
     func favorite() async throws {

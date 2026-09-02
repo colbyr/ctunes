@@ -124,12 +124,25 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     public let grandparentRatingKey: String?
     public let grandparentTitle: String?
     public let parentTitle: String?
+    /// The disc number. Plex numbers discs from 1 and sends it for every
+    /// track, single-disc albums included.
+    public let parentIndex: Int?
+    /// The track's own artist when it differs from the album artist — the
+    /// credited artist on a compilation, or a featured guest. Plex reuses the
+    /// `originalTitle` field for this and omits it otherwise.
+    public let originalTitle: String?
     public let thumb: String?
     /// Plex's 0–10 star scale; absent when never rated.
     public let userRating: Double?
     public let media: [PlexMedia]?
 
     public var id: String { ratingKey }
+
+    /// The credited artist when it differs from the album artist, else nil.
+    public var trackArtist: String? {
+        guard let originalTitle, !originalTitle.isEmpty, originalTitle != grandparentTitle else { return nil }
+        return originalTitle
+    }
 
     /// The app treats ratings as binary: a full 10 is a favorite, anything else is
     /// not. Lower stars set by other clients are deliberately not favorites.
@@ -144,7 +157,8 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case ratingKey, title, index, duration, grandparentRatingKey, grandparentTitle, parentTitle, thumb, userRating
+        case ratingKey, title, index, duration, grandparentRatingKey, grandparentTitle, parentTitle
+        case parentIndex, originalTitle, thumb, userRating
         case media = "Media"
     }
 }

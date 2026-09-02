@@ -36,103 +36,42 @@ struct TracksView: View {
         #endif
     }
 
+    /// Tracks grouped by disc, in playback order. `offset` indexes the flat
+    /// `tracks` array so a tap can start the whole album from that row.
+    private var discs: [(number: Int?, rows: [(offset: Int, track: PlexTrack)])] {
+        var result: [(number: Int?, rows: [(offset: Int, track: PlexTrack)])] = []
+        for (offset, track) in tracks.enumerated() {
+            if let last = result.indices.last, result[last].number == track.parentIndex {
+                result[last].rows.append((offset, track))
+            } else {
+                result.append((track.parentIndex, [(offset, track)]))
+            }
+        }
+        return result
+    }
+
     var body: some View {
+        let discs = discs
         List {
             Section {
-                Button(action: shuffle) {
-                    HStack {
-                        Label("Shuffle", systemImage: "shuffle")
-                        Spacer()
-                    }
-                }
-                .disabled(tracks.isEmpty)
-            } header: {
-                VStack(spacing: 8) {
-                    Artwork(url: model.library?.artworkURL(album.thumb, size: 600),
-                            size: 180, corner: 10)
-                    Text(album.title).font(.headline)
-                    HStack(spacing: 10) {
-                        if let artist = album.parentTitle {
-                            Text(artist).font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        if let artistKey = album.parentRatingKey, !model.roster.listeners.isEmpty {
-                            Divider().frame(height: 16)
-                            ListenerVetoes(model: model, artistKey: artistKey)
-                        }
-                    }
-                    if let artistKey = album.parentRatingKey {
-                        let listening = model.roster.active.filter { $0.vetoedArtistKeys.contains(artistKey) }
-                        if !listening.isEmpty {
-                            Label(
-                                "Hidden right now — \(ListenerRoster.joinNames(listening.map(\.name))) \(listening.count == 1 ? "is" : "are") listening",
-                                systemImage: "eye.slash"
-                            )
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.fill.tertiary, in: .capsule)
-                            .transition(.opacity)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .textCase(nil)
+                header
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
 
-            Section {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    let favorite = model.isFavorite(track)
-                    Button {
-                        guard let library = model.library else { return }
-                        player.play(tracks, startingAt: index, library: library)
-                        showingNowPlaying = true
-                    } label: {
-                    HStack(spacing: 12) {
-                        Text(track.index.map(String.init) ?? "–")
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24, alignment: .trailing)
-                        Text(track.title)
-                        Spacer()
-                        if favorite {
-                            Image(systemName: "heart.fill")
-                                .font(.caption)
-                                .foregroundStyle(.pink)
-                        }
-                        if let seconds = track.durationSeconds {
-                            Text(Self.duration(seconds))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
+            ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
+                Section {
+                    ForEach(disc.rows, id: \.track.id) { offset, track in
+                        row(track, at: offset)
                     }
-                    .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button { enqueue([track], next: true) } label: {
-                            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-                        }
-                        .tint(.orange)
-                        Button { enqueue([track], next: false) } label: {
-                            Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
-                        }
-                        .tint(.blue)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        Button {
-                            Task { await model.toggleFavorite(track) }
-                        } label: {
-                            Label(favorite ? "Unfavorite" : "Favorite",
-                                  systemImage: favorite ? "heart.slash" : "heart.fill")
-                        }
-                        .tint(.pink)
+                } header: {
+                    if discs.count > 1, let number = disc.number {
+                        Text(verbatim: "Disc \(number)")
                     }
                 }
             }
         }
+        .listStyle(.plain)
         .overlay {
             if !loaded { ProgressView() }
         }
@@ -140,19 +79,6 @@ struct TracksView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 72, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            Menu {
-                Button { enqueue(tracks, next: true) } label: {
-                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-                }
-                Button { enqueue(tracks, next: false) } label: {
-                    Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .disabled(tracks.isEmpty)
-        }
         .task {
             guard let library = model.library else { return }
             tracks = (try? await library.tracks(inAlbum: album.ratingKey)) ?? []
@@ -174,6 +100,134 @@ struct TracksView: View {
         .sheet(isPresented: $showingNowPlaying) {
             NowPlayingView(model: model)
         }
+    }
+
+    private var header: some View {
+        VStack(spacing: 8) {
+            Artwork(url: model.library?.artworkURL(album.thumb, size: 600),
+                    size: 180, corner: 10)
+                .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
+            Text(album.title).font(.headline)
+            HStack(spacing: 10) {
+                if let artist = album.parentTitle {
+                    Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                }
+                if let artistKey = album.parentRatingKey, !model.roster.listeners.isEmpty {
+                    Divider().frame(height: 16)
+                    ListenerVetoes(model: model, artistKey: artistKey)
+                }
+            }
+            if let artistKey = album.parentRatingKey {
+                let listening = model.roster.active.filter { $0.vetoedArtistKeys.contains(artistKey) }
+                if !listening.isEmpty {
+                    Label(
+                        "Hidden right now — \(ListenerRoster.joinNames(listening.map(\.name))) \(listening.count == 1 ? "is" : "are") listening",
+                        systemImage: "eye.slash"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.fill.tertiary, in: .capsule)
+                    .transition(.opacity)
+                }
+            }
+            actions
+                .padding(.top, 16)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Play, shuffle and the two queue actions as a centered row of icon
+    /// buttons, so nothing hides behind a menu.
+    private var actions: some View {
+        HStack(spacing: 12) {
+            Button { enqueue(tracks, next: true) } label: {
+                Image(systemName: "text.line.first.and.arrowtriangle.forward")
+            }
+            .accessibilityLabel("Play Next")
+            Button { enqueue(tracks, next: false) } label: {
+                Image(systemName: "text.line.last.and.arrowtriangle.forward")
+            }
+            .accessibilityLabel("Add to Queue")
+            Button(action: shuffle) {
+                Image(systemName: "shuffle")
+            }
+            .accessibilityLabel("Shuffle")
+            Button(action: play) {
+                Image(systemName: "play.fill")
+            }
+            .accessibilityLabel("Play")
+            .buttonStyle(.borderedProminent)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .disabled(tracks.isEmpty)
+    }
+
+    private func row(_ track: PlexTrack, at index: Int) -> some View {
+        let favorite = model.isFavorite(track)
+        return Button {
+            guard let library = model.library else { return }
+            player.play(tracks, startingAt: index, library: library)
+            showingNowPlaying = true
+        } label: {
+            HStack(spacing: 12) {
+                Text(track.index.map(String.init) ?? "–")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, alignment: .trailing)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                    if let artist = track.trackArtist {
+                        Text(artist)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                if favorite {
+                    Image(systemName: "heart.fill")
+                        .font(.caption)
+                        .foregroundStyle(.pink)
+                }
+                if let seconds = track.durationSeconds {
+                    Text(Self.duration(seconds))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button { enqueue([track], next: true) } label: {
+                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+            .tint(.orange)
+            Button { enqueue([track], next: false) } label: {
+                Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+            }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .trailing) {
+            Button {
+                Task { await model.toggleFavorite(track) }
+            } label: {
+                Label(favorite ? "Unfavorite" : "Favorite",
+                      systemImage: favorite ? "heart.slash" : "heart.fill")
+            }
+            .tint(.pink)
+        }
+    }
+
+    private func play() {
+        guard let library = model.library, !tracks.isEmpty else { return }
+        player.play(tracks, startingAt: 0, library: library)
+        showingNowPlaying = true
     }
 
     /// Shuffled once at enqueue time, the same way Shuffle Favorites does it.
