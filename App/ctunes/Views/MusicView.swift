@@ -1,8 +1,9 @@
 import PlexKit
 import SwiftUI
 
-/// Browse root: every album in the library, grouped under its artist. The
-/// query comes from the floating search pill and matches either name.
+/// Browse root: every album in the library, sorted and grouped however the
+/// ⋯ menu last left it. The query from the floating search pill switches to
+/// a flat grid ranked by match quality.
 struct MusicView: View {
     let model: AppModel
     let section: PlexSection
@@ -11,7 +12,7 @@ struct MusicView: View {
     @Environment(AudioPlayer.self) private var player
 
     @State private var albums: [PlexAlbum] = []
-    /// Fetched with the albums so the shuffle row can say how many tracks
+    /// Fetched with the albums so the shuffle card can say how many tracks
     /// it would play; nil until the request lands.
     @State private var favorites: [PlexTrack]?
     @State private var loaded = false
@@ -19,73 +20,80 @@ struct MusicView: View {
     @State private var noFavorites = false
     @State private var everyFavoriteHidden = false
     @State private var showingListeners = false
+    @AppStorage("albumSort") private var sort: AlbumSort = .recentlyAdded
+    @AppStorage("albumGrouping") private var grouping: AlbumGrouping = .artist
 
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
-    private var groups: [ArtistGroup] {
-        ArtistGroup.grouped(albums, matching: query, hiding: hidden)
+    private var groups: [AlbumGroup] {
+        AlbumBrowse.groups(albums, sort: sort, grouping: grouping, hiding: hidden)
     }
-    /// Artists actually in this library that the active listeners hide, so
-    /// the count under the chips doesn't include vetoes from another section.
-    private var hiddenCount: Int {
-        ArtistGroup.grouped(albums, matching: "").filter { hidden.contains($0.id) }.count
+    private var results: [PlexAlbum] {
+        AlbumBrowse.search(albums, query: query, sort: sort, hiding: hidden)
     }
+    /// Every artist in the library, for the listeners sheet and the count
+    /// under the title. Unfiltered, so a veto from another section doesn't
+    /// count here.
+    private var artists: [AlbumGroup] {
+        AlbumBrowse.groups(albums, sort: .name, grouping: .artist)
+    }
+    private var hiddenCount: Int { artists.filter { hidden.contains($0.id) }.count }
+
+    /// Tiles push onto the path by hand: a NavigationLink in a List row makes
+    /// the whole row a link too, so one tap pushed two albums and back landed
+    /// on the wrong one.
+    private func grid(_ albums: [PlexAlbum], minimum: CGFloat, spacing: CGFloat, showArtist: Bool) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: spacing, alignment: .top)], alignment: .leading, spacing: spacing) {
+            ForEach(albums) { album in
+                Button { path.append(album) } label: {
+                    AlbumTile(model: model, album: album, showArtist: showArtist)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .listRowSeparator(.hidden)
+    }
+
+    /// Matches the nav bar's large title and the bottom pills.
+    private static let margin: CGFloat = 16
 
     var body: some View {
         List {
-            if !model.roster.listeners.isEmpty {
-                Section {
+            if !query.isEmpty {
+                grid(results, minimum: 100, spacing: 12, showArtist: true)
+                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
+            } else {
+                if !model.roster.listeners.isEmpty {
                     ListenerChips(model: model)
-                        .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
                 }
-                .listSectionSpacing(8)
-            }
-            if query.isEmpty {
-                Section {
-                    Button(action: shuffleFavorites) {
-                        HStack {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Shuffle Favorites")
-                                    if let subtitle = favoritesSubtitle {
-                                        Text(subtitle)
-                                            .font(.caption).foregroundStyle(Color.secondary)
-                                    }
-                                }
-                            } icon: {
-                                Image(systemName: "heart.fill").foregroundStyle(.pink)
-                            }
-                            Spacer()
-                            if loadingFavorites {
-                                ProgressView()
-                            } else {
-                                Image(systemName: "shuffle").foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .disabled(loadingFavorites)
-                }
-            }
-            ForEach(groups) { group in
-                Section(group.name) {
-                    // Tiles push onto the path by hand: a NavigationLink in a
-                    // List row makes the whole row a link too, so one tap
-                    // pushed two albums and back landed on the wrong one.
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12, alignment: .top)], alignment: .leading, spacing: 12) {
-                        ForEach(group.albums) { album in
-                            Button { path.append(album) } label: {
-                                AlbumTile(model: model, album: album)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 4, trailing: 12))
-                    .listRowBackground(Color.clear)
+                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 12, trailing: Self.margin))
                     .listRowSeparator(.hidden)
+                ForEach(groups) { group in
+                    Section {
+                        grid(group.albums, minimum: 100, spacing: 12, showArtist: grouping != .artist)
+                            .listRowInsets(.init(top: 4, leading: Self.margin, bottom: 10, trailing: Self.margin))
+                    } header: {
+                        if !group.name.isEmpty {
+                            Text(group.name)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(Color.primary)
+                                .textCase(nil)
+                                // A touch past the grid: text flush with the
+                                // artwork edge reads as misaligned.
+                                .padding(.leading, Self.margin + 8)
+                                .padding(.vertical, 6)
+                                .listRowInsets(EdgeInsets())
+                        }
+                    }
                 }
-                .listSectionSpacing(2)
             }
         }
+        .listStyle(.plain)
+        // The collapsed title and subtitle sit over artwork once you scroll;
+        // the soft edge effect leaves the subtitle hard to read.
+        .scrollEdgeEffectStyle(.hard, for: .top)
         .scrollDismissesKeyboard(.immediately)
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 72, for: .scrollContent)
@@ -94,18 +102,27 @@ struct MusicView: View {
                 ProgressView()
             } else if albums.isEmpty {
                 ContentUnavailableView("No albums", systemImage: "square.stack")
-            } else if groups.isEmpty {
+            } else if !query.isEmpty && results.isEmpty {
                 ContentUnavailableView.search(text: query)
             }
         }
-        .navigationTitle(section.title)
-        // What the active listeners hide, said once under the title.
+        .navigationTitle("Tunes")
+        // Always present so the title doesn't jump when listeners toggle.
         .navigationSubtitle(hiddenCount > 0
             ? "\(hiddenCount) artist\(hiddenCount == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))"
-            : "")
+            : "Everything")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Picker("Sort By", systemImage: "arrow.up.arrow.down", selection: $sort) {
+                        ForEach(AlbumSort.allCases, id: \.self) { Text($0.title) }
+                    }
+                    .pickerStyle(.menu)
+                    Picker("Group By", systemImage: "square.grid.2x2", selection: $grouping) {
+                        ForEach(AlbumGrouping.allCases, id: \.self) { Text($0.title) }
+                    }
+                    .pickerStyle(.menu)
+                    Divider()
                     Button("Listeners…", systemImage: "person.2") { showingListeners = true }
                     if model.sections.count > 1 {
                         Button("Change library") { model.clearSectionChoice() }
@@ -141,7 +158,7 @@ struct MusicView: View {
             Text("Every favorite is by an artist hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name))).")
         }
         .sheet(isPresented: $showingListeners) {
-            ListenersSheet(model: model, artists: ArtistGroup.grouped(albums, matching: ""))
+            ListenersSheet(model: model, artists: artists)
         }
     }
 
@@ -217,6 +234,7 @@ private struct ListenerChips: View {
             }
             .scrollIndicators(.hidden)
             .scrollClipDisabled()
+            .contentMargins(.horizontal, 16, for: .scrollContent)
         }
         .padding(.vertical, 4)
     }
@@ -241,6 +259,7 @@ private struct ListenerChips: View {
 private struct AlbumTile: View {
     let model: AppModel
     let album: PlexAlbum
+    let showArtist: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -250,8 +269,9 @@ private struct AlbumTile: View {
                 Text(album.title)
                     .font(.footnote)
                     .lineLimit(1)
-                Text(album.year.map(String.init) ?? "—")
+                Text(showArtist ? (album.parentTitle ?? "—") : (album.year.map(String.init) ?? "—"))
                     .font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -259,60 +279,42 @@ private struct AlbumTile: View {
     }
 }
 
-/// One artist's albums. Grouping happens on the client because the flat
-/// section query is a single request; asking per artist would be one per row.
-struct ArtistGroup: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let albums: [PlexAlbum]
+/// Sits above the grid as a raised card so it reads as the one action on
+/// the page rather than another row.
+private struct ShuffleFavoritesCard: View {
+    let subtitle: String?
+    let loading: Bool
+    let action: () -> Void
 
-    /// Groups albums by artist, drops hidden artists, and applies the search
-    /// text. An artist-name
-    /// match keeps the whole group; otherwise only the matching albums remain,
-    /// so searching a title still shows who made it.
-    static func grouped(
-        _ albums: [PlexAlbum],
-        matching query: String,
-        hiding hidden: Set<String> = []
-    ) -> [ArtistGroup] {
-        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-
-        var order: [String] = []
-        var byArtist: [String: [PlexAlbum]] = [:]
-        for album in albums {
-            let key = album.parentRatingKey ?? album.parentTitle ?? album.ratingKey
-            if hidden.contains(key) { continue }
-            if byArtist[key] == nil { order.append(key) }
-            byArtist[key, default: []].append(album)
-        }
-
-        return order.compactMap { key in
-            let albums = byArtist[key] ?? []
-            let name = albums.first?.parentTitle ?? "Unknown Artist"
-            guard !needle.isEmpty else {
-                return ArtistGroup(id: key, name: name, albums: newestFirst(albums))
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: "heart.fill")
+                    .font(.title3)
+                    .foregroundStyle(.pink)
+                    .frame(width: 44, height: 44)
+                    .background(.pink.opacity(0.14), in: .circle)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shuffle Favorites").font(.headline)
+                    if let subtitle {
+                        Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if loading {
+                    ProgressView()
+                } else {
+                    Image(systemName: "shuffle")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.pink)
+                }
             }
-            if name.lowercased().contains(needle) {
-                return ArtistGroup(id: key, name: name, albums: newestFirst(albums))
-            }
-            let matches = albums.filter { $0.title.lowercased().contains(needle) }
-            return matches.isEmpty
-                ? nil
-                : ArtistGroup(id: key, name: name, albums: newestFirst(matches))
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .contentShape(.rect(cornerRadius: 18))
         }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
-    /// Newest release first. Albums the server has no year for sort to the
-    /// top, ahead of the dated ones.
-    private static func newestFirst(_ albums: [PlexAlbum]) -> [PlexAlbum] {
-        albums.sorted { lhs, rhs in
-            switch (lhs.year, rhs.year) {
-            case let (l?, r?) where l != r: return l > r
-            case (nil, .some): return true
-            case (.some, nil): return false
-            default: return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-            }
-        }
+        .buttonStyle(.plain)
+        .disabled(loading)
     }
 }

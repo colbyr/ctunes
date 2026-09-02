@@ -49,6 +49,15 @@ public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {
     public let parentTitle: String?
     public let year: Int?
     public let thumb: String?
+    /// Unix seconds when the album entered the library.
+    public let addedAt: Int?
+    /// Unix seconds of the last time any track on it was played.
+    public let lastViewedAt: Int?
+    /// Total track plays across the album.
+    public let viewCount: Int?
+    /// `yyyy-MM-dd`, finer than `year` when the server has it.
+    public let originallyAvailableAt: String?
+    public let genres: [String]
 
     public var id: String { ratingKey }
 
@@ -58,7 +67,12 @@ public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {
         parentRatingKey: String? = nil,
         parentTitle: String?,
         year: Int?,
-        thumb: String?
+        thumb: String?,
+        addedAt: Int? = nil,
+        lastViewedAt: Int? = nil,
+        viewCount: Int? = nil,
+        originallyAvailableAt: String? = nil,
+        genres: [String] = []
     ) {
         self.ratingKey = ratingKey
         self.title = title
@@ -66,7 +80,38 @@ public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {
         self.parentTitle = parentTitle
         self.year = year
         self.thumb = thumb
+        self.addedAt = addedAt
+        self.lastViewedAt = lastViewedAt
+        self.viewCount = viewCount
+        self.originallyAvailableAt = originallyAvailableAt
+        self.genres = genres
     }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ratingKey = try c.decode(String.self, forKey: .ratingKey)
+        title = try c.decode(String.self, forKey: .title)
+        parentRatingKey = try c.decodeIfPresent(String.self, forKey: .parentRatingKey)
+        parentTitle = try c.decodeIfPresent(String.self, forKey: .parentTitle)
+        year = try c.decodeIfPresent(Int.self, forKey: .year)
+        thumb = try c.decodeIfPresent(String.self, forKey: .thumb)
+        addedAt = try c.decodeIfPresent(Int.self, forKey: .addedAt)
+        lastViewedAt = try c.decodeIfPresent(Int.self, forKey: .lastViewedAt)
+        viewCount = try c.decodeIfPresent(Int.self, forKey: .viewCount)
+        originallyAvailableAt = try c.decodeIfPresent(String.self, forKey: .originallyAvailableAt)
+        genres = try c.decodeIfPresent([PlexTag].self, forKey: .genres)?.map(\.tag) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case ratingKey, title, parentRatingKey, parentTitle, year, thumb
+        case addedAt, lastViewedAt, viewCount, originallyAvailableAt
+        case genres = "Genre"
+    }
+}
+
+/// `{"tag": "Pop/Rock"}` — how Plex lists genres, styles and moods.
+struct PlexTag: Decodable, Sendable, Hashable {
+    let tag: String
 }
 
 public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {

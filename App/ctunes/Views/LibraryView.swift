@@ -43,9 +43,10 @@ struct LibraryView: View {
                 path.append(album)
             }
             #if DEBUG
-            if ProcessInfo.processInfo.environment["CTUNES_DEV_SEARCH"] == "1" {
+            if let seed = ProcessInfo.processInfo.environment["CTUNES_DEV_SEARCH"], !seed.isEmpty {
                 try? await Task.sleep(for: .seconds(3))
                 searching = true
+                if seed != "1" { query = seed }
             }
             #endif
         }

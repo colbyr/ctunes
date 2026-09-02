@@ -7,7 +7,7 @@ import SwiftUI
 struct ListenersSheet: View {
     let model: AppModel
     /// Every artist in the library, so a veto list can be edited in one place.
-    let artists: [ArtistGroup]
+    let artists: [AlbumGroup]
     @Environment(\.dismiss) private var dismiss
     @State private var path: [Listener.ID] = []
 
@@ -87,7 +87,7 @@ struct ListenersSheet: View {
 private struct ListenerDetail: View {
     let model: AppModel
     let id: Listener.ID
-    let artists: [ArtistGroup]
+    let artists: [AlbumGroup]
     @Environment(\.dismiss) private var dismiss
 
     private var listener: Listener? { model.roster.listener(id) }
@@ -170,7 +170,7 @@ private struct ListenerDetail: View {
         }
     }
 
-    private func row(_ artist: ArtistGroup, symbol: String, tint: Color) -> some View {
+    private func row(_ artist: AlbumGroup, symbol: String, tint: Color) -> some View {
         Button {
             withAnimation(.snappy) { model.toggleVeto(artistKey: artist.id, for: id) }
         } label: {
