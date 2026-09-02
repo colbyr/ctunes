@@ -1,16 +1,16 @@
 import PlexKit
 import SwiftUI
 
-/// Browse root: every album in the library, grouped under its artist, with a
-/// search field that matches either name.
+/// Browse root: every album in the library, grouped under its artist. The
+/// query comes from the floating search pill and matches either name.
 struct MusicView: View {
     let model: AppModel
     let section: PlexSection
+    @Binding var query: String
     @Environment(AudioPlayer.self) private var player
 
     @State private var albums: [PlexAlbum] = []
     @State private var loaded = false
-    @State private var query = ""
     @State private var loadingFavorites = false
     @State private var noFavorites = false
 
@@ -48,11 +48,7 @@ struct MusicView: View {
                 }
             }
         }
-        .searchable(
-            text: $query,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Artists and albums"
-        )
+        .scrollDismissesKeyboard(.immediately)
         .overlay {
             if !loaded {
                 ProgressView()

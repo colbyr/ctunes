@@ -6,12 +6,14 @@ import SwiftUI
 struct LibraryView: View {
     let model: AppModel
     @State private var path = NavigationPath()
+    @State private var query = ""
+    @State private var searching = false
 
     var body: some View {
         NavigationStack(path: $path) {
             Group {
                 if let section = model.selectedSection {
-                    MusicView(model: model, section: section)
+                    MusicView(model: model, section: section, query: $query)
                 } else {
                     SectionPicker(model: model)
                 }
@@ -24,11 +26,28 @@ struct LibraryView: View {
         // Attached to the stack, not to its root view: on the root view the
         // inset is replaced along with the content on every push, so the
         // mini player vanishes as soon as you navigate anywhere.
-        .safeAreaInset(edge: .bottom) { MiniPlayer(model: model) }
+        .safeAreaInset(edge: .bottom) {
+            BottomBar(model: model, query: $query, searching: $searching)
+        }
+        // Results live on the root, so opening search from deeper in the
+        // stack pops back to it. Pushing an album folds the pill back to its
+        // icon but keeps the filter, so popping returns to the same results.
+        .onChange(of: searching) { _, active in
+            if active && !path.isEmpty { path = NavigationPath() }
+        }
+        .onChange(of: path.isEmpty) { _, atRoot in
+            if !atRoot { searching = false }
+        }
         .task {
             if let album = Self.developmentAlbum {
                 path.append(album)
             }
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_SEARCH"] == "1" {
+                try? await Task.sleep(for: .seconds(3))
+                searching = true
+            }
+            #endif
         }
     }
 

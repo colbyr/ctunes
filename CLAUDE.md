@@ -127,6 +127,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load |
 | `CTUNES_DEV_NOWPLAYING` | `1` opens the Now Playing sheet |
 | `CTUNES_DEV_ENQUEUE` | `1` appends the album to the queue again, so Up Next has duplicates |
+| `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
 disk; `scripts/plex-token.sh` reads it. `.plex-dev.json` is a retired path kept
