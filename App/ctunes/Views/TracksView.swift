@@ -86,6 +86,7 @@ struct TracksView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
