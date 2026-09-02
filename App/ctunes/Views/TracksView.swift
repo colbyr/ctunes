@@ -116,6 +116,8 @@ struct TracksView: View {
             if !loaded { ProgressView() }
         }
         .navigationTitle(album.title)
+        // Room to scroll the last row clear of the floating bottom pills.
+        .contentMargins(.bottom, 72, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             Menu {

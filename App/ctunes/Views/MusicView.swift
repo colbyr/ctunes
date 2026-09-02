@@ -49,6 +49,8 @@ struct MusicView: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
+        // Room to scroll the last row clear of the floating bottom pills.
+        .contentMargins(.bottom, 72, for: .scrollContent)
         .overlay {
             if !loaded {
                 ProgressView()
