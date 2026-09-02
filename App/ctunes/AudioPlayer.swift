@@ -10,19 +10,18 @@ import SwiftUI
 /// on end-of-item keeps the current index, the now-playing metadata and the UI
 /// in agreement, which AVQueuePlayer's implicit item advancement makes fiddly.
 /// Gapless playback is explicitly out of scope and would need a different
-/// design.
+/// design. The index bookkeeping itself lives in `PlayQueue` so it is tested
+/// natively on macOS.
 @MainActor
 @Observable
 final class AudioPlayer {
-    private(set) var queue: [PlexTrack] = []
-    private(set) var currentIndex = 0
+    private(set) var queue = PlayQueue<PlexTrack>()
     private(set) var isPlaying = false
     private(set) var currentTime: Double = 0
     private(set) var duration: Double = 0
 
-    var currentTrack: PlexTrack? {
-        queue.indices.contains(currentIndex) ? queue[currentIndex] : nil
-    }
+    var currentTrack: PlexTrack? { queue.current }
+    var upcoming: ArraySlice<PlayQueue<PlexTrack>.Entry> { queue.upcoming }
 
     private nonisolated let player = AVPlayer()
     private var library: PlexLibrary?
@@ -49,8 +48,7 @@ final class AudioPlayer {
 
     func play(_ tracks: [PlexTrack], startingAt index: Int, library: PlexLibrary) {
         self.library = library
-        queue = tracks
-        currentIndex = index
+        queue = PlayQueue(tracks, startingAt: index)
         activateSession()
         configureRemoteCommands()
         loadCurrentItem(autoPlay: true)
@@ -75,21 +73,24 @@ final class AudioPlayer {
     }
 
     func next() {
-        guard currentIndex + 1 < queue.count else {
+        guard queue.advance() else {
             pause()
             seek(to: 0)
             return
         }
-        currentIndex += 1
         loadCurrentItem(autoPlay: true)
     }
 
     func previous() {
-        if currentTime > restartThreshold || currentIndex == 0 {
+        // Check the threshold before retreating: retreat() moves the cursor.
+        if currentTime > restartThreshold {
             seek(to: 0)
             return
         }
-        currentIndex -= 1
+        guard queue.retreat() else {
+            seek(to: 0)
+            return
+        }
         loadCurrentItem(autoPlay: true)
     }
 
@@ -101,6 +102,46 @@ final class AudioPlayer {
                 self?.updateNowPlayingPlaybackState()
             }
         }
+    }
+
+    // MARK: - Queue
+
+    func playNext(_ tracks: [PlexTrack], library: PlexLibrary) {
+        enqueue(tracks, library: library) { $0.playNext(tracks) }
+    }
+
+    func addToQueue(_ tracks: [PlexTrack], library: PlexLibrary) {
+        enqueue(tracks, library: library) { $0.append(tracks) }
+    }
+
+    func jump(to entry: PlayQueue<PlexTrack>.Entry) {
+        guard let index = queue.index(of: entry.id), queue.jump(to: index) else { return }
+        loadCurrentItem(autoPlay: true)
+    }
+
+    func remove(_ entry: PlayQueue<PlexTrack>.Entry) {
+        guard let index = queue.index(of: entry.id), queue.remove(at: index) else { return }
+        guard queue.current != nil else {
+            player.replaceCurrentItem(with: nil)
+            pause()
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+        loadCurrentItem(autoPlay: isPlaying)
+    }
+
+    /// With nothing queued, enqueueing is just starting playback; `library`
+    /// is only needed on that path, since `play` is what stores it.
+    private func enqueue(
+        _ tracks: [PlexTrack],
+        library: PlexLibrary,
+        _ mutate: (inout PlayQueue<PlexTrack>) -> Void
+    ) {
+        guard !queue.isEmpty else {
+            play(tracks, startingAt: 0, library: library)
+            return
+        }
+        mutate(&queue)
     }
 
     // MARK: - Item loading

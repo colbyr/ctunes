@@ -26,6 +26,15 @@ struct TracksView: View {
         false
         #endif
     }
+    /// Appends the album to the queue a second time, so Up Next is populated
+    /// with duplicate tracks — the case the queue's entry ids exist for.
+    private static var autoEnqueue: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["CTUNES_DEV_ENQUEUE"] == "1"
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         List {
@@ -57,6 +66,16 @@ struct TracksView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button { enqueue([track], next: true) } label: {
+                            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                        }
+                        .tint(.orange)
+                        Button { enqueue([track], next: false) } label: {
+                            Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+                        }
+                        .tint(.blue)
+                    }
                     .swipeActions(edge: .trailing) {
                         Button {
                             Task { await model.toggleFavorite(track) }
@@ -86,6 +105,19 @@ struct TracksView: View {
         }
         .navigationTitle(album.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            Menu {
+                Button { enqueue(tracks, next: true) } label: {
+                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                Button { enqueue(tracks, next: false) } label: {
+                    Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .disabled(tracks.isEmpty)
+        }
         .task {
             guard let library = model.library else { return }
             tracks = (try? await library.tracks(inAlbum: album.ratingKey)) ?? []
@@ -94,10 +126,19 @@ struct TracksView: View {
                 player.play(tracks, startingAt: 0, library: library)
                 showingNowPlaying = Self.autoShowNowPlaying
             }
+            if Self.autoEnqueue, !tracks.isEmpty {
+                player.addToQueue(tracks, library: library)
+            }
         }
         .sheet(isPresented: $showingNowPlaying) {
             NowPlayingView(model: model)
         }
+    }
+
+    private func enqueue(_ tracks: [PlexTrack], next: Bool) {
+        guard let library = model.library else { return }
+        next ? player.playNext(tracks, library: library)
+             : player.addToQueue(tracks, library: library)
     }
 
     static func duration(_ seconds: Double) -> String {

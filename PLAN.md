@@ -65,13 +65,14 @@ ctunes/
 │   ├── PlexAuth.swift                PIN flow, Keychain persistence
 │   ├── PlexLibraryModels.swift       Codable DTOs for MediaContainer
 │   ├── PlexServer.swift              resource discovery, connection ranking
-│   └── PlexLibrary.swift             sections, artists, albums, tracks, URLs
+│   ├── PlexLibrary.swift             sections, artists, albums, tracks, URLs
+│   └── PlayQueue.swift               ordered entries + cursor, pure value type
 ├── Tests/PlexKitTests/
 │   └── PlexLibraryTests.swift        decode fixtures captured from the server
 └── App/
     ├── ctunesApp.swift
     ├── AppModel.swift                @Observable root state
-    ├── AudioPlayer.swift             AVQueuePlayer, session, remote commands
+    ├── AudioPlayer.swift             AVPlayer over a PlayQueue, session, remote commands
     └── Views/
         ├── AuthView.swift
         ├── LibraryView.swift         navigation stack root

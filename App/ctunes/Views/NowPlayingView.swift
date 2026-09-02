@@ -10,14 +10,17 @@ struct NowPlayingView: View {
     @State private var scrubbing: Double?
 
     var body: some View {
-        VStack(spacing: 24) {
+        // Read unconditionally so the list observes queue mutations.
+        let upcoming = player.upcoming
+
+        VStack(spacing: 16) {
             Capsule()
                 .fill(.quaternary)
                 .frame(width: 40, height: 5)
                 .padding(.top, 8)
 
             Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 900),
-                    size: 300, corner: 12)
+                    size: 240, corner: 12)
                 .shadow(radius: 12, y: 6)
                 .padding(.top, 12)
 
@@ -56,9 +59,46 @@ struct NowPlayingView: View {
             }
             .foregroundStyle(.primary)
 
-            Spacer()
+            upNext(upcoming)
         }
         .padding()
+    }
+
+    private func upNext(_ upcoming: ArraySlice<PlayQueue<PlexTrack>.Entry>) -> some View {
+        List {
+            Section("Up Next") {
+                if upcoming.isEmpty {
+                    Text("End of queue").foregroundStyle(.secondary)
+                }
+                ForEach(upcoming) { entry in
+                    Button { player.jump(to: entry) } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.item.title).lineLimit(1)
+                                Text(entry.item.grandparentTitle ?? "")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if let seconds = entry.item.durationSeconds {
+                                Text(TracksView.duration(seconds))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) { player.remove(entry) } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     private var scrubber: some View {
@@ -98,7 +138,9 @@ struct NowPlayingView: View {
         }
         .padding(.horizontal)
         // A track change mid-scrub would otherwise leave the thumb stuck.
-        .onChange(of: player.currentTrack?.id) { scrubbing = nil }
+        // Keyed on the queue entry, not the track: two adjacent copies of the
+        // same track share a ratingKey and would otherwise not reset it.
+        .onChange(of: player.queue.currentEntry?.id) { scrubbing = nil }
     }
 }
 
