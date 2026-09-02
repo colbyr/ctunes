@@ -58,6 +58,7 @@ private struct MiniPlayerPill: View {
                     }
                 }
                 .frame(maxWidth: compact ? nil : .infinity, alignment: .leading)
+                .contentShape(.rect)
             }
             .buttonStyle(.plain)
             if !compact {
@@ -65,12 +66,14 @@ private struct MiniPlayerPill: View {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title3)
                         .frame(width: 32, height: 40)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 Button { player.next() } label: {
                     Image(systemName: "forward.fill")
                         .font(.body)
                         .frame(width: 32, height: 40)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)
@@ -78,6 +81,9 @@ private struct MiniPlayerPill: View {
         }
         .padding(6)
         .padding(.trailing, compact ? 0 : 6)
+        // Plain buttons only hit-test their opaque content, so without this
+        // a tap in the padding lands on the list row underneath the pill.
+        .contentShape(.capsule)
         .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
@@ -112,6 +118,7 @@ private struct SearchPill: View {
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
+                .contentShape(.capsule)
             } else {
                 Button {
                     searching = true
@@ -120,6 +127,7 @@ private struct SearchPill: View {
                         .font(.title3.weight(filtering ? .bold : .regular))
                         .foregroundStyle(filtering ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                         .frame(width: 52, height: 52)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Search")
