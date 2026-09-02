@@ -70,6 +70,12 @@ struct MusicView: View {
                 ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 12, trailing: Self.margin))
                     .listRowSeparator(.hidden)
+                HStack(spacing: 12) {
+                    MixTile(kind: .artist) { path.append(MixKind.artist) }
+                    MixTile(kind: .album) { path.append(MixKind.album) }
+                }
+                .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 12, trailing: Self.margin))
+                .listRowSeparator(.hidden)
                 ForEach(groups) { group in
                     Section {
                         grid(group.albums, minimum: 100, spacing: 12, showArtist: grouping != .artist)
@@ -316,5 +322,31 @@ private struct ShuffleFavoritesCard: View {
         }
         .buttonStyle(.plain)
         .disabled(loading)
+    }
+}
+
+/// Half-width entry to a mix builder, sharing the hero card's chrome.
+private struct MixTile: View {
+    let kind: MixKind
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: kind.systemImage)
+                    .font(.subheadline)
+                    .foregroundStyle(kind.accent)
+                    .frame(width: 36, height: 36)
+                    .background(kind.accent.opacity(0.14), in: .circle)
+                Text(kind.title).font(.headline)
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .contentShape(.rect(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
     }
 }

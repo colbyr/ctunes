@@ -8,6 +8,9 @@ struct LibraryView: View {
     @State private var path = NavigationPath()
     @State private var query = ""
     @State private var searching = false
+    /// True while a mix builder is on top of the stack; the search pill then
+    /// filters the builder's pool instead of popping back to the root.
+    @State private var buildingMix = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -22,6 +25,11 @@ struct LibraryView: View {
             .navigationDestination(for: PlexAlbum.self) { album in
                 TracksView(model: model, album: album)
             }
+            .navigationDestination(for: MixKind.self) { kind in
+                if let section = model.selectedSection {
+                    MixBuilderView(model: model, section: section, kind: kind, query: $query, building: $buildingMix)
+                }
+            }
         }
         // Attached to the stack, not to its root view: on the root view the
         // inset is replaced along with the content on every push, so the
@@ -33,7 +41,7 @@ struct LibraryView: View {
         // stack pops back to it. Pushing an album folds the pill back to its
         // icon but keeps the filter, so popping returns to the same results.
         .onChange(of: searching) { _, active in
-            if active && !path.isEmpty { path = NavigationPath() }
+            if active && !path.isEmpty && !buildingMix { path = NavigationPath() }
         }
         .onChange(of: path.isEmpty) { _, atRoot in
             if !atRoot { searching = false }
@@ -43,6 +51,10 @@ struct LibraryView: View {
                 path.append(album)
             }
             #if DEBUG
+            if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
+               let kind = MixKind(rawValue: String(raw.prefix { $0 != ":" })) {
+                path.append(kind)
+            }
             if let seed = ProcessInfo.processInfo.environment["CTUNES_DEV_SEARCH"], !seed.isEmpty {
                 try? await Task.sleep(for: .seconds(3))
                 searching = true

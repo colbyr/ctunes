@@ -115,6 +115,25 @@ struct PlexLibraryTests {
         #expect(abs((first.durationSeconds ?? 0) - 98.061) < 0.001)
     }
 
+    @Test("artist tracks query filters the section by artist")
+    func tracksForArtist() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("tracks")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        let tracks = try await library.tracks(forArtist: "1028", inSection: "3")
+        let url = try #require(seen.get())
+        #expect(url.contains("/library/sections/3/all"))
+        #expect(url.contains("type=10"))
+        #expect(url.contains("artist.id=1028"))
+        #expect(!url.contains("/children"))
+        #expect(tracks.count == 7)
+        #expect(tracks.first?.grandparentRatingKey == "1028")
+    }
+
     /// The fixture credits one track to a featured artist and puts the last
     /// two on a second disc.
     @Test("decodes the credited artist and disc number")
