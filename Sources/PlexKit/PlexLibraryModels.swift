@@ -75,6 +75,8 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     public let index: Int?
     /// Milliseconds.
     public let duration: Int?
+    /// The artist's ratingKey; matches `PlexAlbum.parentRatingKey`.
+    public let grandparentRatingKey: String?
     public let grandparentTitle: String?
     public let parentTitle: String?
     public let thumb: String?
@@ -97,7 +99,7 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case ratingKey, title, index, duration, grandparentTitle, parentTitle, thumb, userRating
+        case ratingKey, title, index, duration, grandparentRatingKey, grandparentTitle, parentTitle, thumb, userRating
         case media = "Media"
     }
 }

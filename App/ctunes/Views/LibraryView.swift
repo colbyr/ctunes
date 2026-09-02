@@ -58,10 +58,11 @@ struct LibraryView: View {
         #if DEBUG
         guard let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_ALBUM"],
               !raw.isEmpty else { return nil }
-        let parts = raw.split(separator: "|", maxSplits: 2).map(String.init)
+        let parts = raw.split(separator: "|", maxSplits: 3).map(String.init)
         return PlexAlbum(
             ratingKey: parts[0],
             title: parts.count > 1 ? parts[1] : "Album",
+            parentRatingKey: parts.count > 3 ? parts[3] : nil,
             parentTitle: parts.count > 2 ? parts[2] : nil,
             year: nil,
             thumb: nil

@@ -36,7 +36,12 @@ final class AppModel {
     /// every copy.
     private var favoriteOverrides: [String: Bool] = [:]
 
+    /// People who share the phone and the artists they'd rather skip. Kept on
+    /// the device, never in Plex, so it survives sign-out like any setting.
+    private(set) var roster = ListenerRoster()
+
     private static let sectionDefaultsKey = "selected-section-key"
+    private static let rosterDefaultsKey = "listeners"
 
     private var auth: PlexAuth?
     private var client: PlexClient?
@@ -47,6 +52,11 @@ final class AppModel {
     /// browser lands on watch.plex.tv instead. The sheet is dismissed by
     /// cancelling its task once polling sees the token.
     private static let callbackScheme = "ctunes"
+
+    init() {
+        roster = Self.loadRoster()
+        seedDevelopmentListeners()
+    }
 
     func bootstrap() async {
         do {
@@ -170,6 +180,66 @@ final class AppModel {
     func clearSectionChoice() {
         selectedSection = nil
         UserDefaults.standard.removeObject(forKey: Self.sectionDefaultsKey)
+    }
+
+    // MARK: - Listeners
+
+    func addListener(name: String) -> Listener {
+        let listener = roster.add(name: name, paletteSize: ListenerPalette.colors.count)
+        saveRoster()
+        return listener
+    }
+
+    func removeListener(_ id: Listener.ID) {
+        roster.remove(id)
+        saveRoster()
+    }
+
+    func renameListener(_ id: Listener.ID, name: String) {
+        roster.update(id) { $0.name = name }
+        saveRoster()
+    }
+
+    func setListenerColor(_ id: Listener.ID, index: Int) {
+        roster.update(id) { $0.colorIndex = index }
+        saveRoster()
+    }
+
+    func toggleListening(_ id: Listener.ID) {
+        roster.toggleActive(id)
+        saveRoster()
+    }
+
+    func toggleVeto(artistKey: String, for id: Listener.ID) {
+        roster.toggleVeto(artistKey: artistKey, for: id)
+        saveRoster()
+    }
+
+    private static func loadRoster() -> ListenerRoster {
+        guard let data = UserDefaults.standard.data(forKey: rosterDefaultsKey),
+              let roster = try? JSONDecoder().decode(ListenerRoster.self, from: data)
+        else { return ListenerRoster() }
+        return roster
+    }
+
+    private func saveRoster() {
+        guard let data = try? JSONEncoder().encode(roster) else { return }
+        UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+    }
+
+    /// Puts two listeners on an empty roster so the chips show up in a
+    /// simulator without tapping through setup. The value is an artist
+    /// ratingKey Laura vetoes, so the hidden line and the album header can
+    /// be checked too; `1` seeds without a veto. Compiled out of release.
+    private func seedDevelopmentListeners() {
+        #if DEBUG
+        guard let value = ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS"],
+              !value.isEmpty, roster.listeners.isEmpty else { return }
+        let laura = addListener(name: "Laura")
+        _ = addListener(name: "Kids")
+        toggleListening(laura.id)
+        if value != "1" { toggleVeto(artistKey: value, for: laura.id) }
+        #endif
     }
 
     // MARK: - Favorites

@@ -51,8 +51,29 @@ struct TracksView: View {
                     Artwork(url: model.library?.artworkURL(album.thumb, size: 600),
                             size: 180, corner: 10)
                     Text(album.title).font(.headline)
-                    if let artist = album.parentTitle {
-                        Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        if let artist = album.parentTitle {
+                            Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        if let artistKey = album.parentRatingKey, !model.roster.listeners.isEmpty {
+                            Divider().frame(height: 16)
+                            ListenerVetoes(model: model, artistKey: artistKey)
+                        }
+                    }
+                    if let artistKey = album.parentRatingKey {
+                        let listening = model.roster.active.filter { $0.vetoedArtistKeys.contains(artistKey) }
+                        if !listening.isEmpty {
+                            Label(
+                                "Hidden right now — \(ListenerRoster.joinNames(listening.map(\.name))) \(listening.count == 1 ? "is" : "are") listening",
+                                systemImage: "eye.slash"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.fill.tertiary, in: .capsule)
+                            .transition(.opacity)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -171,5 +192,28 @@ struct TracksView: View {
     static func duration(_ seconds: Double) -> String {
         let total = Int(seconds.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// One avatar per listener beside the artist name. Tapping strikes the
+/// listener out: "not for Laura". A veto is per artist, not per album.
+private struct ListenerVetoes: View {
+    let model: AppModel
+    let artistKey: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(model.roster.listeners) { listener in
+                let vetoed = listener.vetoedArtistKeys.contains(artistKey)
+                Button {
+                    withAnimation(.snappy) { model.toggleVeto(artistKey: artistKey, for: listener.id) }
+                } label: {
+                    ListenerAvatar(listener: listener, size: 28, struck: vetoed)
+                        .opacity(vetoed ? 0.35 : 1)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(vetoed ? "Not for \(listener.name), tap to allow" : "\(listener.name) listens, tap to hide")
+            }
+        }
     }
 }

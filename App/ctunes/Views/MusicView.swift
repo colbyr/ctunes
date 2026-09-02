@@ -10,20 +10,47 @@ struct MusicView: View {
     @Environment(AudioPlayer.self) private var player
 
     @State private var albums: [PlexAlbum] = []
+    /// Fetched with the albums so the shuffle row can say how many tracks
+    /// it would play; nil until the request lands.
+    @State private var favorites: [PlexTrack]?
     @State private var loaded = false
     @State private var loadingFavorites = false
     @State private var noFavorites = false
+    @State private var everyFavoriteHidden = false
+    @State private var showingListeners = false
 
-    private var groups: [ArtistGroup] { ArtistGroup.grouped(albums, matching: query) }
+    private var hidden: Set<String> { model.roster.hiddenArtistKeys }
+    private var groups: [ArtistGroup] {
+        ArtistGroup.grouped(albums, matching: query, hiding: hidden)
+    }
+    /// Artists actually in this library that the active listeners hide, so
+    /// the count under the chips doesn't include vetoes from another section.
+    private var hiddenCount: Int {
+        ArtistGroup.grouped(albums, matching: "").filter { hidden.contains($0.id) }.count
+    }
 
     var body: some View {
         List {
+            if !model.roster.listeners.isEmpty {
+                Section {
+                    ListenerChips(model: model)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                }
+                .listSectionSpacing(8)
+            }
             if query.isEmpty {
                 Section {
                     Button(action: shuffleFavorites) {
                         HStack {
                             Label {
-                                Text("Shuffle Favorites")
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Shuffle Favorites")
+                                    if let subtitle = favoritesSubtitle {
+                                        Text(subtitle)
+                                            .font(.caption).foregroundStyle(Color.secondary)
+                                    }
+                                }
                             } icon: {
                                 Image(systemName: "heart.fill").foregroundStyle(.pink)
                             }
@@ -61,9 +88,14 @@ struct MusicView: View {
             }
         }
         .navigationTitle(section.title)
+        // What the active listeners hide, said once under the title.
+        .navigationSubtitle(hiddenCount > 0
+            ? "\(hiddenCount) artist\(hiddenCount == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))"
+            : "")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button("Listeners…", systemImage: "person.2") { showingListeners = true }
                     if model.sections.count > 1 {
                         Button("Change library") { model.clearSectionChoice() }
                     }
@@ -77,14 +109,46 @@ struct MusicView: View {
         }
         .task {
             guard let library = model.library else { return }
+            async let favoriteTracks = library.favoriteTracks(inSection: section.key)
             albums = (try? await library.albums(inSection: section.key)) ?? []
             loaded = true
+            favorites = try? await favoriteTracks
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS_SHEET"] != nil {
+                showingListeners = true
+            }
+            #endif
         }
         .alert("No favorites yet", isPresented: $noFavorites) {
             Button("OK") {}
         } message: {
             Text("Swipe a track left, or tap the heart in Now Playing, to favorite it.")
         }
+        .alert("Nothing to shuffle", isPresented: $everyFavoriteHidden) {
+            Button("OK") {}
+        } message: {
+            Text("Every favorite is by an artist hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name))).")
+        }
+        .sheet(isPresented: $showingListeners) {
+            ListenersSheet(model: model, artists: ArtistGroup.grouped(albums, matching: ""))
+        }
+    }
+
+    /// "32 tracks for you & Laura"; just the count with no listeners set up,
+    /// just the listeners until the count arrives, nothing with neither.
+    private var favoritesSubtitle: String? {
+        let names = model.roster.active.map(\.name)
+        let who = model.roster.listeners.isEmpty
+            ? nil
+            : "for " + (names.isEmpty ? "just you" : ListenerRoster.joinNames(["you"] + names))
+        let count = favorites.map { allowed($0).count }
+            .map { "\($0) track\($0 == 1 ? "" : "s")" }
+        let parts = [count, who].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    private func allowed(_ tracks: [PlexTrack]) -> [PlexTrack] {
+        tracks.filter { !hidden.contains($0.grandparentRatingKey ?? "") }
     }
 
     /// Every favorite track in the library, in a fresh random order each tap.
@@ -95,12 +159,70 @@ struct MusicView: View {
         loadingFavorites = true
         Task {
             defer { loadingFavorites = false }
-            let favorites = (try? await library.favoriteTracks(inSection: section.key)) ?? []
-            guard !favorites.isEmpty else {
+            // Fetched fresh rather than reusing the count's copy: hearts may
+            // have been toggled since the screen loaded.
+            let fetched = (try? await library.favoriteTracks(inSection: section.key)) ?? []
+            favorites = fetched
+            guard !fetched.isEmpty else {
                 noFavorites = true
                 return
             }
-            player.play(favorites.shuffled(), startingAt: 0, library: library)
+            let playable = allowed(fetched)
+            guard !playable.isEmpty else {
+                everyFavoriteHidden = true
+                return
+            }
+            player.play(playable.shuffled(), startingAt: 0, library: library)
+        }
+    }
+}
+
+/// Who's in the car. The owner is always in; each listener toggles.
+private struct ListenerChips: View {
+    let model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    Chip(active: true) {
+                        OwnerAvatar()
+                        Text("You")
+                    }
+                    ForEach(model.roster.listeners) { listener in
+                        let active = model.roster.isActive(listener.id)
+                        Button {
+                            withAnimation(.snappy) { model.toggleListening(listener.id) }
+                        } label: {
+                            Chip(active: active) {
+                                ListenerAvatar(listener: listener).opacity(active ? 1 : 0.45)
+                                Text(listener.name)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+            .scrollClipDisabled()
+        }
+        .padding(.vertical, 4)
+    }
+
+    private struct Chip<Content: View>: View {
+        let active: Bool
+        @ViewBuilder let content: Content
+
+        var body: some View {
+            HStack(spacing: 7) { content }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(active ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.secondary))
+                .padding(.leading, 5)
+                .padding(.trailing, 14)
+                .frame(height: 34)
+                .background(active ? AnyShapeStyle(.primary) : AnyShapeStyle(.background), in: .capsule)
+                .contentShape(.capsule)
         }
     }
 }
@@ -129,16 +251,22 @@ struct ArtistGroup: Identifiable, Hashable {
     let name: String
     let albums: [PlexAlbum]
 
-    /// Groups albums by artist and applies the search text. An artist-name
+    /// Groups albums by artist, drops hidden artists, and applies the search
+    /// text. An artist-name
     /// match keeps the whole group; otherwise only the matching albums remain,
     /// so searching a title still shows who made it.
-    static func grouped(_ albums: [PlexAlbum], matching query: String) -> [ArtistGroup] {
+    static func grouped(
+        _ albums: [PlexAlbum],
+        matching query: String,
+        hiding hidden: Set<String> = []
+    ) -> [ArtistGroup] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
 
         var order: [String] = []
         var byArtist: [String: [PlexAlbum]] = [:]
         for album in albums {
             let key = album.parentRatingKey ?? album.parentTitle ?? album.ratingKey
+            if hidden.contains(key) { continue }
             if byArtist[key] == nil { order.append(key) }
             byArtist[key, default: []].append(album)
         }
