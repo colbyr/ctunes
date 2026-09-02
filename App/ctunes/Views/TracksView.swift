@@ -44,6 +44,7 @@ struct TracksView: View {
                     Button {
                         guard let library = model.library else { return }
                         player.play(tracks, startingAt: index, library: library)
+                        showingNowPlaying = true
                     } label: {
                     HStack(spacing: 12) {
                         Text(track.index.map(String.init) ?? "–")
