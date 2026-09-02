@@ -7,6 +7,7 @@ struct MusicView: View {
     let model: AppModel
     let section: PlexSection
     @Binding var query: String
+    @Binding var path: NavigationPath
     @Environment(AudioPlayer.self) private var player
 
     @State private var albums: [PlexAlbum] = []
@@ -67,12 +68,22 @@ struct MusicView: View {
             }
             ForEach(groups) { group in
                 Section(group.name) {
-                    ForEach(group.albums) { album in
-                        NavigationLink(value: album) {
-                            AlbumRow(model: model, album: album)
+                    // Tiles push onto the path by hand: a NavigationLink in a
+                    // List row makes the whole row a link too, so one tap
+                    // pushed two albums and back landed on the wrong one.
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12, alignment: .top)], alignment: .leading, spacing: 12) {
+                        ForEach(group.albums) { album in
+                            Button { path.append(album) } label: {
+                                AlbumTile(model: model, album: album)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 4, trailing: 12))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
+                .listSectionSpacing(2)
             }
         }
         .scrollDismissesKeyboard(.immediately)
@@ -227,20 +238,24 @@ private struct ListenerChips: View {
     }
 }
 
-private struct AlbumRow: View {
+private struct AlbumTile: View {
     let model: AppModel
     let album: PlexAlbum
 
     var body: some View {
-        HStack(spacing: 12) {
-            Artwork(url: model.library?.artworkURL(album.thumb))
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
+            Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
+                .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(album.title)
-                if let year = album.year {
-                    Text(String(year)).font(.caption).foregroundStyle(.secondary)
-                }
+                    .font(.footnote)
+                    .lineLimit(1)
+                Text(album.year.map(String.init) ?? "—")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
     }
 }
 
@@ -288,14 +303,14 @@ struct ArtistGroup: Identifiable, Hashable {
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// Newest release first. Albums the server has no year for sort last rather
-    /// than to the top, which is where a zero default would put them.
+    /// Newest release first. Albums the server has no year for sort to the
+    /// top, ahead of the dated ones.
     private static func newestFirst(_ albums: [PlexAlbum]) -> [PlexAlbum] {
         albums.sorted { lhs, rhs in
             switch (lhs.year, rhs.year) {
             case let (l?, r?) where l != r: return l > r
-            case (nil, .some): return false
-            case (.some, nil): return true
+            case (nil, .some): return true
+            case (.some, nil): return false
             default: return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
             }
         }

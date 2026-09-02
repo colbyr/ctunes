@@ -4,27 +4,32 @@ import SwiftUI
 /// cached by `ImageLoader`.
 struct Artwork: View {
     let url: URL?
-    var size: CGFloat = 52
+    /// Fixed edge length, or nil to fill the available width as a square.
+    var size: CGFloat? = 52
     var corner: CGFloat = 6
 
     @State private var image: UIImage?
 
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
-            } else {
-                Rectangle()
-                    .fill(.quaternary)
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .font(.system(size: size * 0.35))
-                            .foregroundStyle(.secondary)
-                    )
+        // The square owns the size and the image is overlaid, so non-square
+        // art is cropped to the square rather than stretching it.
+        Color.clear
+            .frame(width: size, height: size)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    Rectangle()
+                        .fill(.quaternary)
+                        .overlay(
+                            Image(systemName: "music.note")
+                                .font(.system(size: (size ?? 80) * 0.35))
+                                .foregroundStyle(.secondary)
+                        )
+                }
             }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: corner))
+            .clipShape(RoundedRectangle(cornerRadius: corner))
         .task(id: url) {
             guard let url else { image = nil; return }
             // Synchronous hit avoids a placeholder flash on reused rows.
