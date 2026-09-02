@@ -13,14 +13,57 @@ struct NowPlayingView: View {
         // Read unconditionally so the list observes queue mutations.
         let upcoming = player.upcoming
 
-        VStack(spacing: 16) {
+        List {
+            // The header scrolls with the queue, Spotify-style, so Up Next
+            // gets the whole sheet rather than whatever is left under the art.
+            Section {
+                header
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+            }
+            Section("Up Next") {
+                if upcoming.isEmpty {
+                    Text("End of queue").foregroundStyle(.secondary)
+                }
+                ForEach(upcoming) { entry in
+                    Button { player.jump(to: entry) } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.item.title).lineLimit(1)
+                                Text(entry.item.grandparentTitle ?? "")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if let seconds = entry.item.durationSeconds {
+                                Text(TracksView.duration(seconds))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) { player.remove(entry) } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+    }
+
+    private var header: some View {
+        VStack(spacing: 24) {
             Capsule()
                 .fill(.quaternary)
                 .frame(width: 40, height: 5)
                 .padding(.top, 8)
 
             Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 900),
-                    size: 240, corner: 12)
+                    size: 300, corner: 12)
                 .shadow(radius: 12, y: 6)
                 .padding(.top, 12)
 
@@ -57,48 +100,13 @@ struct NowPlayingView: View {
                     Image(systemName: "forward.fill").font(.title)
                 }
             }
+            // Plain so a tap on a control isn't swallowed as a row tap.
+            .buttonStyle(.plain)
             .foregroundStyle(.primary)
-
-            upNext(upcoming)
         }
-        .padding()
-    }
-
-    private func upNext(_ upcoming: ArraySlice<PlayQueue<PlexTrack>.Entry>) -> some View {
-        List {
-            Section("Up Next") {
-                if upcoming.isEmpty {
-                    Text("End of queue").foregroundStyle(.secondary)
-                }
-                ForEach(upcoming) { entry in
-                    Button { player.jump(to: entry) } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.item.title).lineLimit(1)
-                                Text(entry.item.grandparentTitle ?? "")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            if let seconds = entry.item.durationSeconds {
-                                Text(TracksView.duration(seconds))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) { player.remove(entry) } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
-                    }
-                }
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal)
+        .padding(.bottom, 8)
     }
 
     private var scrubber: some View {
