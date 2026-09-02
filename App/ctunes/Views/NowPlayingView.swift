@@ -62,7 +62,7 @@ struct NowPlayingView: View {
                 .frame(width: 40, height: 5)
                 .padding(.top, 8)
 
-            Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 900),
+            Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 600),
                     size: 300, corner: 12)
                 .shadow(radius: 12, y: 6)
                 .padding(.top, 12)

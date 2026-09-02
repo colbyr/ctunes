@@ -136,6 +136,12 @@ struct TracksView: View {
             guard let library = model.library else { return }
             tracks = (try? await library.tracks(inAlbum: album.ratingKey)) ?? []
             loaded = true
+            // The header already fetches the album cover at 600; warm the
+            // same size for any track that carries its own art so Now
+            // Playing and the lock screen open without a network round trip.
+            for thumb in Set(tracks.compactMap(\.thumb)) where thumb != album.thumb {
+                ImageLoader.shared.prewarm(library.artworkURL(thumb, size: 600))
+            }
             if Self.autoPlay, !tracks.isEmpty {
                 player.play(tracks, startingAt: 0, library: library)
                 showingNowPlaying = Self.autoShowNowPlaying

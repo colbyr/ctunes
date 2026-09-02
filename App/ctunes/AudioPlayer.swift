@@ -258,21 +258,24 @@ final class AudioPlayer {
         guard let library, let url = library.artworkURL(track.thumb, size: 600) else { return }
         let ratingKey = track.ratingKey
 
-        // Detached so the request handler below is built outside the main
-        // actor. MediaPlayer invokes that handler on its own serial queue, and
-        // a closure formed in a main-actor context traps the isolation check
-        // when it does.
-        Task.detached {
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let image = UIImage(data: data) else { return }
-            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        Task {
+            // Same URL the album and Now Playing views use, so this is
+            // normally a cache hit.
+            guard let image = await ImageLoader.shared.image(for: url) else { return }
 
-            await MainActor.run { [weak self] in
-                // The queue may have moved on while this was in flight.
-                guard let self, self.currentTrack?.ratingKey == ratingKey else { return }
-                var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                info[MPMediaItemPropertyArtwork] = artwork
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            // Detached so the request handler below is built outside the main
+            // actor. MediaPlayer invokes that handler on its own serial queue,
+            // and a closure formed in a main-actor context traps the isolation
+            // check when it does.
+            Task.detached {
+                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                await MainActor.run { [weak self] in
+                    // The queue may have moved on while this was in flight.
+                    guard let self, self.currentTrack?.ratingKey == ratingKey else { return }
+                    var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                    info[MPMediaItemPropertyArtwork] = artwork
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                }
             }
         }
     }
