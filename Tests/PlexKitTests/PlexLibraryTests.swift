@@ -101,7 +101,7 @@ struct PlexLibraryTests {
         let body = try Fixture.string("tracks")
         let tracks = try await library { _ in .json(body) }.tracks(inAlbum: "1029")
 
-        #expect(tracks.count == 4)
+        #expect(tracks.count == 7)
         let first = try #require(tracks.first)
         #expect(first.title == "100 Years")
         #expect(first.index == 1)
@@ -112,6 +112,53 @@ struct PlexLibraryTests {
         #expect(part.key == "/library/parts/1017/1746246593/file.flac")
         #expect(first.media?.first?.audioCodec == "flac")
         #expect(abs((first.durationSeconds ?? 0) - 98.061) < 0.001)
+    }
+
+    /// The fixture has two tracks rated 10 and five never rated.
+    @Test("a full 10 is a favorite, an absent rating is not")
+    func favorite() async throws {
+        let body = try Fixture.string("tracks")
+        let tracks = try await library { _ in .json(body) }.tracks(inAlbum: "1029")
+
+        let favorites = tracks.filter(\.isFavorite).map(\.ratingKey)
+        #expect(favorites == ["1030", "1034"])
+        #expect(tracks.first { $0.ratingKey == "1031" }?.userRating == nil)
+    }
+
+    @Test("favorite tracks query matches rating 10 exactly")
+    func favoriteTracksQuery() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("tracks")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        _ = try await library.favoriteTracks(inSection: "3")
+        let url = try #require(seen.get())
+        #expect(url.contains("/library/sections/3/all"))
+        #expect(url.contains("type=10"))
+        #expect(url.contains("userRating=10"))
+    }
+
+    @Test("favoriting a track PUTs a 10 to /:/rate, unfavoriting PUTs -1")
+    func setFavorite() async throws {
+        let seen = Locked<[String]>([])
+        let library = library { request in
+            seen.set(seen.get() + ["\(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")"])
+            return .init(body: Data())
+        }
+
+        try await library.setFavorite("1030", true)
+        try await library.setFavorite("1030", false)
+
+        let calls = seen.get()
+        #expect(calls.count == 2)
+        #expect(calls[0].hasPrefix("PUT https://example.plex.direct:32400/:/rate?"))
+        #expect(calls[0].contains("identifier=com.plexapp.plugins.library"))
+        #expect(calls[0].contains("key=1030"))
+        #expect(calls[0].hasSuffix("rating=10"))
+        #expect(calls[1].hasSuffix("rating=-1"))
     }
 
     @Test("stream URL carries the token in the query, not a header")

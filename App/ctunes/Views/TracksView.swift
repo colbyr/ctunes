@@ -31,6 +31,7 @@ struct TracksView: View {
         List {
             Section {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    let favorite = model.isFavorite(track)
                     Button {
                         guard let library = model.library else { return }
                         player.play(tracks, startingAt: index, library: library)
@@ -42,6 +43,11 @@ struct TracksView: View {
                             .frame(width: 24, alignment: .trailing)
                         Text(track.title)
                         Spacer()
+                        if favorite {
+                            Image(systemName: "heart.fill")
+                                .font(.caption)
+                                .foregroundStyle(.pink)
+                        }
                         if let seconds = track.durationSeconds {
                             Text(Self.duration(seconds))
                                 .font(.caption.monospacedDigit())
@@ -51,6 +57,15 @@ struct TracksView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                    .swipeActions(edge: .trailing) {
+                        Button {
+                            Task { await model.toggleFavorite(track) }
+                        } label: {
+                            Label(favorite ? "Unfavorite" : "Favorite",
+                                  systemImage: favorite ? "heart.slash" : "heart.fill")
+                        }
+                        .tint(.pink)
+                    }
                 }
             } header: {
                 VStack(spacing: 8) {

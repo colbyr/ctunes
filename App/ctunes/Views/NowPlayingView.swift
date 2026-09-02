@@ -21,15 +21,22 @@ struct NowPlayingView: View {
                 .shadow(radius: 12, y: 6)
                 .padding(.top, 12)
 
-            VStack(spacing: 6) {
-                Text(player.currentTrack?.title ?? "Nothing playing")
-                    .font(.title3.bold())
-                    .multilineTextAlignment(.center)
-                Text(player.currentTrack?.grandparentTitle ?? "")
-                    .foregroundStyle(.secondary)
-                Text(player.currentTrack?.parentTitle ?? "")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
+            HStack(alignment: .top) {
+                // Balances the heart so the text stays centred.
+                Color.clear.frame(width: 44, height: 1)
+                VStack(spacing: 6) {
+                    Text(player.currentTrack?.title ?? "Nothing playing")
+                        .font(.title3.bold())
+                        .multilineTextAlignment(.center)
+                    Text(player.currentTrack?.grandparentTitle ?? "")
+                        .foregroundStyle(.secondary)
+                    Text(player.currentTrack?.parentTitle ?? "")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                HeartButton(model: model, track: player.currentTrack)
+                    .frame(width: 44)
             }
             .padding(.horizontal)
 
@@ -92,6 +99,29 @@ struct NowPlayingView: View {
         .padding(.horizontal)
         // A track change mid-scrub would otherwise leave the thumb stuck.
         .onChange(of: player.currentTrack?.id) { scrubbing = nil }
+    }
+}
+
+/// Heart toggle for one track. Disabled when there's no track to rate.
+struct HeartButton: View {
+    let model: AppModel
+    let track: PlexTrack?
+
+    var body: some View {
+        // Read unconditionally so observation tracks the override map.
+        let favorite = track.map { model.isFavorite($0) } ?? false
+        Button {
+            guard let track else { return }
+            Task { await model.toggleFavorite(track) }
+        } label: {
+            Image(systemName: favorite ? "heart.fill" : "heart")
+                .font(.title2)
+                .foregroundStyle(favorite ? AnyShapeStyle(.pink) : AnyShapeStyle(.secondary))
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .disabled(track == nil)
+        .accessibilityLabel(favorite ? "Unfavorite" : "Favorite")
     }
 }
 

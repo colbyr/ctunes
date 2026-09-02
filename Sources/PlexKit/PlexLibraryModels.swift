@@ -78,9 +78,15 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     public let grandparentTitle: String?
     public let parentTitle: String?
     public let thumb: String?
+    /// Plex's 0–10 star scale; absent when never rated.
+    public let userRating: Double?
     public let media: [PlexMedia]?
 
     public var id: String { ratingKey }
+
+    /// The app treats ratings as binary: a full 10 is a favorite, anything else is
+    /// not. Lower stars set by other clients are deliberately not favorites.
+    public var isFavorite: Bool { (userRating ?? 0) >= 10 }
 
     /// The file to stream. Direct play only — every track in the library
     /// decodes natively on iOS, so there is no transcode fallback yet.
@@ -91,7 +97,7 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case ratingKey, title, index, duration, grandparentTitle, parentTitle, thumb
+        case ratingKey, title, index, duration, grandparentTitle, parentTitle, thumb, userRating
         case media = "Media"
     }
 }

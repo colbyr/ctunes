@@ -1,6 +1,6 @@
 {
   "MediaContainer": {
-    "size": 4,
+    "size": 7,
     "allowSync": true,
     "art": "/:/resources/artist-fanart.jpg",
     "grandparentRatingKey": 1028,
@@ -42,6 +42,8 @@
         "index": 1,
         "parentIndex": 1,
         "ratingCount": 6771,
+        "userRating": 10.0,
+        "lastRatedAt": 1788313957,
         "parentYear": 2014,
         "thumb": "/library/metadata/1029/thumb/1784019638",
         "parentThumb": "/library/metadata/1029/thumb/1784019638",
@@ -244,6 +246,179 @@
         "Image": [
           {
             "alt": "Guest List Spots",
+            "type": "coverPoster",
+            "url": "/library/metadata/1028/thumb/1787903241"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1034",
+        "key": "/library/metadata/1034",
+        "parentRatingKey": "1029",
+        "grandparentRatingKey": "1028",
+        "guid": "plex://track/5d07ebf3403c640290d36645",
+        "parentGuid": "plex://album/5d07c910403c640290c561ad",
+        "grandparentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "parentStudio": "Quote Unquote Records",
+        "type": "track",
+        "title": "Don't Die in Yr Hometown",
+        "grandparentKey": "/library/metadata/1028",
+        "parentKey": "/library/metadata/1029",
+        "grandparentTitle": "Antarctigo Vespucci",
+        "parentTitle": "Soulmate Stuff",
+        "summary": "",
+        "index": 5,
+        "parentIndex": 1,
+        "ratingCount": 8710,
+        "userRating": 10.0,
+        "viewCount": 29,
+        "skipCount": 2,
+        "lastViewedAt": 1787751535,
+        "lastRatedAt": 1746250285,
+        "parentYear": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1029/thumb/1784019638",
+        "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+        "duration": 182823,
+        "addedAt": 1746248190,
+        "updatedAt": 1785392279,
+        "Media": [
+          {
+            "id": 922,
+            "duration": 182823,
+            "bitrate": 1907,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1021,
+                "key": "/library/parts/1021/1746246593/file.flac",
+                "duration": 182823,
+                "file": "/Users/colby/Media/Music/Antarctigo Vespucci/Soulmate Stuff/Antarctigo Vespucci - Soulmate Stuff - 05 Don't Die In Yr Hometown.flac",
+                "size": 43690980,
+                "container": "flac",
+                "hasThumbnail": "1"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Don't Die in Yr Hometown",
+            "type": "coverPoster",
+            "url": "/library/metadata/1028/thumb/1787903241"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1035",
+        "key": "/library/metadata/1035",
+        "parentRatingKey": "1029",
+        "grandparentRatingKey": "1028",
+        "guid": "plex://track/5d07ebf3403c640290d368fe",
+        "parentGuid": "plex://album/5d07c910403c640290c561ad",
+        "grandparentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "parentStudio": "Quote Unquote Records",
+        "type": "track",
+        "title": "100 Years 2: 200 Years",
+        "grandparentKey": "/library/metadata/1028",
+        "parentKey": "/library/metadata/1029",
+        "grandparentTitle": "Antarctigo Vespucci",
+        "parentTitle": "Soulmate Stuff",
+        "summary": "",
+        "index": 6,
+        "parentIndex": 1,
+        "ratingCount": 5370,
+        "parentYear": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1029/thumb/1784019638",
+        "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+        "duration": 103087,
+        "addedAt": 1746248190,
+        "updatedAt": 1785392279,
+        "Media": [
+          {
+            "id": 923,
+            "duration": 103087,
+            "bitrate": 1531,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1022,
+                "key": "/library/parts/1022/1746246593/file.flac",
+                "duration": 103087,
+                "file": "/Users/colby/Media/Music/Antarctigo Vespucci/Soulmate Stuff/Antarctigo Vespucci - Soulmate Stuff - 06 100 Years 2- 200 Years.flac",
+                "size": 19841745,
+                "container": "flac",
+                "hasThumbnail": "1"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "100 Years 2: 200 Years",
+            "type": "coverPoster",
+            "url": "/library/metadata/1028/thumb/1787903241"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1036",
+        "key": "/library/metadata/1036",
+        "parentRatingKey": "1029",
+        "grandparentRatingKey": "1028",
+        "guid": "plex://track/5d07ebf3403c640290d36dab",
+        "parentGuid": "plex://album/5d07c910403c640290c561ad",
+        "grandparentGuid": "plex://artist/5d07be69403c64029068f1eb",
+        "parentStudio": "Quote Unquote Records",
+        "type": "track",
+        "title": "Bang!",
+        "grandparentKey": "/library/metadata/1028",
+        "parentKey": "/library/metadata/1029",
+        "grandparentTitle": "Antarctigo Vespucci",
+        "parentTitle": "Soulmate Stuff",
+        "summary": "",
+        "index": 7,
+        "parentIndex": 1,
+        "ratingCount": 14955,
+        "parentYear": 2014,
+        "thumb": "/library/metadata/1029/thumb/1784019638",
+        "parentThumb": "/library/metadata/1029/thumb/1784019638",
+        "grandparentThumb": "/library/metadata/1028/thumb/1787903241",
+        "duration": 232786,
+        "addedAt": 1746248190,
+        "updatedAt": 1785392279,
+        "Media": [
+          {
+            "id": 924,
+            "duration": 232786,
+            "bitrate": 1822,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 1023,
+                "key": "/library/parts/1023/1746246593/file.flac",
+                "duration": 232786,
+                "file": "/Users/colby/Media/Music/Antarctigo Vespucci/Soulmate Stuff/Antarctigo Vespucci - Soulmate Stuff - 07 Bang!.flac",
+                "size": 53145064,
+                "container": "flac",
+                "hasThumbnail": "1"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Bang!",
             "type": "coverPoster",
             "url": "/library/metadata/1028/thumb/1787903241"
           }

@@ -6,15 +6,38 @@ import SwiftUI
 struct MusicView: View {
     let model: AppModel
     let section: PlexSection
+    @Environment(AudioPlayer.self) private var player
 
     @State private var albums: [PlexAlbum] = []
     @State private var loaded = false
     @State private var query = ""
+    @State private var loadingFavorites = false
+    @State private var noFavorites = false
 
     private var groups: [ArtistGroup] { ArtistGroup.grouped(albums, matching: query) }
 
     var body: some View {
         List {
+            if query.isEmpty {
+                Section {
+                    Button(action: shuffleFavorites) {
+                        HStack {
+                            Label {
+                                Text("Shuffle Favorites")
+                            } icon: {
+                                Image(systemName: "heart.fill").foregroundStyle(.pink)
+                            }
+                            Spacer()
+                            if loadingFavorites {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "shuffle").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(loadingFavorites)
+                }
+            }
             ForEach(groups) { group in
                 Section(group.name) {
                     ForEach(group.albums) { album in
@@ -58,6 +81,28 @@ struct MusicView: View {
             guard let library = model.library else { return }
             albums = (try? await library.albums(inSection: section.key)) ?? []
             loaded = true
+        }
+        .alert("No favorites yet", isPresented: $noFavorites) {
+            Button("OK") {}
+        } message: {
+            Text("Swipe a track left, or tap the heart in Now Playing, to favorite it.")
+        }
+    }
+
+    /// Every favorite track in the library, in a fresh random order each tap.
+    /// Shuffling once at enqueue time is all this needs; the player has no
+    /// shuffle mode of its own.
+    private func shuffleFavorites() {
+        guard let library = model.library, !loadingFavorites else { return }
+        loadingFavorites = true
+        Task {
+            defer { loadingFavorites = false }
+            let favorites = (try? await library.favoriteTracks(inSection: section.key)) ?? []
+            guard !favorites.isEmpty else {
+                noFavorites = true
+                return
+            }
+            player.play(favorites.shuffled(), startingAt: 0, library: library)
         }
     }
 }

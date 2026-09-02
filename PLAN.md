@@ -30,6 +30,7 @@ launches on a device.
 | M3 browse | done | live walk of the real library; screenshots |
 | M4 playback + lock screen | done | confirmed on device |
 | M5 queue + Now Playing | done | playback with artwork, clock advancing |
+| M6 favorites | done | hearts and shuffle rendered in simulator; rating round-trip verified with curl |
 
 All six milestones are verified, background audio and lock screen controls
 included, the latter on a real device where the simulator cannot test them.
@@ -62,11 +63,11 @@ ctunes/
 ├── Sources/PlexKit/
 │   ├── PlexClient.swift              actor: URLSession + header injection
 │   ├── PlexAuth.swift                PIN flow, Keychain persistence
-│   ├── PlexModels.swift              Codable DTOs for MediaContainer
+│   ├── PlexLibraryModels.swift       Codable DTOs for MediaContainer
 │   ├── PlexServer.swift              resource discovery, connection ranking
 │   └── PlexLibrary.swift             sections, artists, albums, tracks, URLs
 ├── Tests/PlexKitTests/
-│   └── PlexModelsTests.swift         decode fixtures captured from the server
+│   └── PlexLibraryTests.swift        decode fixtures captured from the server
 └── App/
     ├── ctunesApp.swift
     ├── AppModel.swift                @Observable root state
@@ -175,6 +176,31 @@ Verify by locking the phone and confirming metadata, artwork, and working transp
 `AVQueuePlayer` built from the album's tracks, entering at the tapped index. Wire `AVPlayerItemDidPlayToEndTime` to advance now-playing metadata as items roll over. Previous-track behavior should follow the platform convention: restart the current track if past ~3 seconds, otherwise step back.
 
 `NowPlayingView` — large artwork, title/artist/album, a scrubber bound to the same periodic observer feeding the lock screen, transport controls, and the upcoming queue below.
+
+### M6 — Favorites (~2h)
+
+Plex keeps a 0–10 `userRating` per item. The app collapses that to a heart:
+a favorite means exactly 10, unheart clears with `rating=-1`. Lower star ratings
+set by other clients are deliberately not favorites.
+
+```
+PUT /:/rate?identifier=com.plexapp.plugins.library&key={rk}&rating=10
+PUT /:/rate?identifier=com.plexapp.plugins.library&key={rk}&rating=-1
+GET /library/sections/{key}/all?type=10&userRating=10
+```
+
+The filter has to be an exact match: measured against the real server,
+`userRating>>=10` returns nothing while `userRating=10` returns every favorite
+track.
+
+Hearts appear in the Now Playing sheet and as a trailing swipe action on album
+track rows; a favorite row also shows a small filled heart. Toggles are layered
+over the immutable `PlexTrack` values in `AppModel` (optimistic, reverted on
+error) rather than pushed into every fetched copy and the player's queue.
+"Shuffle Favorites" on the browse root fetches every favorite track and hands a
+shuffled array to the existing `play(_:startingAt:library:)`; the player has
+no shuffle mode of its own and doesn't need one for this. The lock-screen
+`likeCommand` is skipped because iOS no longer displays it.
 
 ## Gotchas
 

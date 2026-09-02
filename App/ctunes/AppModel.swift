@@ -30,6 +30,12 @@ final class AppModel {
     private(set) var sections: [PlexSection] = []
     private(set) var selectedSection: PlexSection?
 
+    /// Hearts toggled in this session, keyed by ratingKey. Tracks are
+    /// immutable values fetched per screen and also held in the player's
+    /// queue, so a toggle is layered over them here rather than pushed into
+    /// every copy.
+    private var favoriteOverrides: [String: Bool] = [:]
+
     private static let sectionDefaultsKey = "selected-section-key"
 
     private var auth: PlexAuth?
@@ -166,6 +172,26 @@ final class AppModel {
         UserDefaults.standard.removeObject(forKey: Self.sectionDefaultsKey)
     }
 
+    // MARK: - Favorites
+
+    func isFavorite(_ track: PlexTrack) -> Bool {
+        favoriteOverrides[track.ratingKey] ?? track.isFavorite
+    }
+
+    /// Flips the heart optimistically and reverts if the server refuses.
+    func toggleFavorite(_ track: PlexTrack) async {
+        guard let library else { return }
+        let previous = favoriteOverrides[track.ratingKey]
+        let favorite = !isFavorite(track)
+        favoriteOverrides[track.ratingKey] = favorite
+        do {
+            try await library.setFavorite(track.ratingKey, favorite)
+        } catch {
+            favoriteOverrides[track.ratingKey] = previous
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func signOut() async {
         guard let auth else { return }
         do {
@@ -175,6 +201,7 @@ final class AppModel {
             serverName = nil
             sections = []
             selectedSection = nil
+            favoriteOverrides = [:]
             state = .signedOut
         } catch {
             errorMessage = error.localizedDescription

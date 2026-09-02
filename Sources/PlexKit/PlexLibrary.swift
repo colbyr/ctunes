@@ -63,6 +63,31 @@ public actor PlexLibrary {
         try await fetch(PlexTrack.self, path: "/library/metadata/\(albumRatingKey)/children")
     }
 
+    // MARK: - Ratings
+
+    /// Every track rated a full 10 in the section.
+    ///
+    /// Exact match, not `>>=`: measured against a real server, `userRating=10`
+    /// returns every favorite track while `userRating>>=10` returns nothing.
+    public func favoriteTracks(inSection section: String) async throws -> [PlexTrack] {
+        try await fetch(
+            PlexTrack.self,
+            path: "/library/sections/\(section)/all?type=10&userRating=10"
+        )
+    }
+
+    /// Sets the rating to 10, or clears it. `rating=-1` is how Plex unrates.
+    public func setFavorite(_ ratingKey: String, _ favorite: Bool) async throws {
+        let rating = favorite ? 10 : -1
+        guard let url = URL(string:
+            server.baseURL.absoluteString
+            + "/:/rate?identifier=com.plexapp.plugins.library"
+            + "&key=\(ratingKey)&rating=\(rating)")
+        else { throw PlexError.noServerReachable }
+        let request = await client.request("PUT", url: url, token: token)
+        try await client.data(for: request)
+    }
+
     // MARK: - URLs
 
     /// The audio file itself. AVPlayer won't attach custom headers to media

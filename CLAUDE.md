@@ -83,6 +83,10 @@ appears to offer.
   Write DTOs against captured fixtures, not assumptions.
 - A server can expose several libraries of type `artist` (audiobooks included),
   so the section choice is persisted rather than inferred.
+- **Ratings: `PUT /:/rate?identifier=com.plexapp.plugins.library&key={ratingKey}&rating=N`**,
+  `N` in 0–10, `-1` clears. The app treats only a full 10 as a favorite. Query
+  favorite tracks with `/library/sections/{key}/all?type=10&userRating=10` —
+  exact match. `userRating>>=10` returns nothing even though `>>=1` works.
 
 ## Concurrency hazards hit here
 
