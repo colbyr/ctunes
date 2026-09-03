@@ -53,10 +53,8 @@ struct MixBuilderView: View {
     @State private var loadingMix = false
     @State private var nothingToPlay = false
     @State private var showingNowPlaying = false
-    /// The album pool is the same browser as the main screen, so it binds
-    /// the root's keys and a change here shows up there. The artist pool
-    /// has its own sort: ordering artists by play count shouldn't reorder
-    /// the album grid behind it.
+    /// Per builder rather than the root's keys: arranging a pool by play
+    /// count shouldn't reorder the album grid behind it.
     @AppStorage private var sort: AlbumSort
     @AppStorage private var grouping: AlbumGrouping
     /// Comma-joined ratingKeys, so the last mix is waiting next time.
@@ -68,8 +66,8 @@ struct MixBuilderView: View {
         self.kind = kind
         _query = query
         _building = building
-        _sort = AppStorage(wrappedValue: .recentlyAdded, kind == .album ? "albumSort" : "mixSort.artist")
-        _grouping = AppStorage(wrappedValue: .artist, kind == .album ? "albumGrouping" : "mixGrouping.artist")
+        _sort = AppStorage(wrappedValue: .recentlyAdded, "mixSort.\(kind.rawValue)")
+        _grouping = AppStorage(wrappedValue: .artist, "mixGrouping.\(kind.rawValue)")
         _savedSelection = AppStorage(wrappedValue: "", "mixSelection.\(kind.rawValue)")
     }
 
@@ -210,7 +208,7 @@ struct MixBuilderView: View {
             .listRowSeparator(.hidden)
             if hiddenCount > 0 {
                 HiddenArtistsLine(model: model, count: hiddenCount)
-                    .listRowInsets(.init(top: 12, leading: Self.margin + 8, bottom: 0, trailing: Self.margin))
+                    .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
             }
             if kind == .album && needle.isEmpty {

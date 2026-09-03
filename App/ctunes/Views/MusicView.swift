@@ -86,7 +86,7 @@ struct MusicView: View {
                     .listRowSeparator(.hidden)
                 if hiddenCount > 0 {
                     HiddenArtistsLine(model: model, count: hiddenCount)
-                        .listRowInsets(.init(top: 12, leading: Self.margin + 8, bottom: 0, trailing: Self.margin))
+                        .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
                         .listRowSeparator(.hidden)
                 }
                 ForEach(groups) { group in
@@ -127,10 +127,6 @@ struct MusicView: View {
             }
         }
         .navigationTitle("Tunes")
-        // Always present so the title doesn't jump when listeners toggle.
-        .navigationSubtitle(hiddenCount > 0
-            ? "\(hiddenCount) artist\(hiddenCount == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))"
-            : "Everything")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

@@ -4,9 +4,7 @@ import SwiftUI
 /// The album browser's arrange button: a 34pt circle pinned at the trailing
 /// edge of the listener chips, opening one menu with the sorts inline under
 /// a Sort header and the groupings in a submenu, since grouping is the
-/// rarer change. Picking an option applies it and dismisses. The main
-/// screen and the album mix builder bind the same stored values, so a
-/// choice made in one shows up in the other.
+/// rarer change. Picking an option applies it and dismisses.
 struct ArrangeChip: View {
     @Binding var grouping: AlbumGrouping
     @Binding var sort: AlbumSort
@@ -34,7 +32,8 @@ struct ArrangeChip: View {
     }
 }
 
-/// The chips plus the arrange button as one row. With nobody on the roster
+/// The chips plus the arrange button as one row. Each screen keeps its own
+/// stored sort and grouping; only the roster is shared. With nobody on the roster
 /// there's nothing to toggle, so only the button shows, still pinned right.
 struct AlbumBrowserControls: View {
     let model: AppModel
@@ -60,12 +59,9 @@ struct HiddenArtistsLine: View {
     let count: Int
 
     var body: some View {
-        Label(
-            "\(count) artist\(count == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))",
-            systemImage: "eye.slash"
-        )
-        .font(.footnote)
-        .foregroundStyle(.secondary)
+        Text("\(count) artist\(count == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
     }
 }
 
