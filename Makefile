@@ -24,16 +24,17 @@ test:
 	swift test
 
 ## Also run the live tests against the real server, using the token in
-## 1Password. Prompts for unlock the first time.
+## 1Password. Prompts for unlock once a day; the token is cached in the keychain.
 live-test:
 	@PLEX_LIVE=1 \
 	 PLEX_DEV_TOKEN="$$(scripts/plex-token.sh)" \
 	 PLEX_DEV_CLIENT_ID="$$(scripts/plex-token.sh clientIdentifier)" \
 	 swift test
 
-## Store a fresh dev token in 1Password
+## Store a fresh dev token in 1Password (and drop the day-long local cache)
 token:
 	python3 scripts/plex-dev-login.py
+	scripts/plex-token.sh --clear
 
 ## Build the package alone
 build:

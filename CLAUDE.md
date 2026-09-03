@@ -136,5 +136,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
-disk; `scripts/plex-token.sh` reads it. `.plex-dev.json` is a retired path kept
-in `.gitignore` as a backstop.
+disk; `scripts/plex-token.sh` reads it and caches each field in the login
+keychain for 24h so 1Password prompts once a day, not per make target.
+`scripts/plex-token.sh --clear` drops the cache (`make token` does this too).
+`.plex-dev.json` is a retired path kept in `.gitignore` as a backstop.
