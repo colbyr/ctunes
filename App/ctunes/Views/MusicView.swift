@@ -67,29 +67,31 @@ struct MusicView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                 }
-                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
-                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 12, trailing: Self.margin))
-                    .listRowSeparator(.hidden)
-                HStack(spacing: 12) {
-                    MixTile(kind: .artist) { path.append(MixKind.artist) }
-                    MixTile(kind: .album) { path.append(MixKind.album) }
+                // One row for all three cards: the row clips at its insets,
+                // so the shadow between the cards needs no inset at all and
+                // only the outer edges have to clear it.
+                VStack(spacing: 12) {
+                    ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                    HStack(spacing: 12) {
+                        MixTile(kind: .artist) { path.append(MixKind.artist) }
+                        MixTile(kind: .album) { path.append(MixKind.album) }
+                    }
                 }
-                .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 12, trailing: Self.margin))
+                .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 .listRowSeparator(.hidden)
                 ForEach(groups) { group in
                     Section {
                         grid(group.albums, minimum: 100, spacing: 12, showArtist: grouping != .artist)
-                            .listRowInsets(.init(top: 4, leading: Self.margin, bottom: 10, trailing: Self.margin))
+                            .listRowInsets(.init(top: 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     } header: {
                         if !group.name.isEmpty {
                             Text(group.name)
                                 .font(.title3.weight(.semibold))
                                 .foregroundStyle(Color.primary)
                                 .textCase(nil)
-                                // A touch past the grid: text flush with the
-                                // artwork edge reads as misaligned.
-                                .padding(.leading, Self.margin + 8)
-                                .padding(.vertical, 6)
+                                .padding(.leading, Self.margin)
+                                .padding(.top, 14)
+                                .padding(.bottom, 6)
                                 .listRowInsets(EdgeInsets())
                         }
                     }
@@ -97,6 +99,9 @@ struct MusicView: View {
             }
         }
         .listStyle(.plain)
+        // The row insets set the gaps; the default section gap on top of
+        // them left too much air above each group title.
+        .listSectionSpacing(0)
         // The collapsed title and subtitle sit over artwork once you scroll;
         // the soft edge effect leaves the subtitle hard to read.
         .scrollEdgeEffectStyle(.hard, for: .top)
@@ -211,66 +216,15 @@ struct MusicView: View {
     }
 }
 
-/// Who's in the car. The owner is always in; each listener toggles.
-private struct ListenerChips: View {
-    let model: AppModel
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    Chip(active: true) {
-                        OwnerAvatar()
-                        Text("You")
-                    }
-                    ForEach(model.roster.listeners) { listener in
-                        let active = model.roster.isActive(listener.id)
-                        Button {
-                            withAnimation(.snappy) { model.toggleListening(listener.id) }
-                        } label: {
-                            Chip(active: active) {
-                                ListenerAvatar(listener: listener).opacity(active ? 1 : 0.45)
-                                Text(listener.name)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
-                    }
-                }
-            }
-            .scrollIndicators(.hidden)
-            .scrollClipDisabled()
-            .contentMargins(.horizontal, 16, for: .scrollContent)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private struct Chip<Content: View>: View {
-        let active: Bool
-        @ViewBuilder let content: Content
-
-        var body: some View {
-            HStack(spacing: 7) { content }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(active ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.secondary))
-                .padding(.leading, 5)
-                .padding(.trailing, 14)
-                .frame(height: 34)
-                .background(active ? AnyShapeStyle(.primary) : AnyShapeStyle(.background), in: .capsule)
-                .contentShape(.capsule)
-        }
-    }
-}
-
 private struct AlbumTile: View {
     let model: AppModel
     let album: PlexAlbum
     let showArtist: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
-                .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
+                .artworkShadow()
             VStack(alignment: .leading, spacing: 1) {
                 Text(album.title)
                     .font(.footnote)
@@ -317,7 +271,7 @@ private struct ShuffleFavoritesCard: View {
             }
             .padding(14)
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .cardShadow()
             .contentShape(.rect(cornerRadius: 18))
         }
         .buttonStyle(.plain)
@@ -344,7 +298,7 @@ private struct MixTile: View {
             .padding(14)
             .frame(maxWidth: .infinity)
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .cardShadow()
             .contentShape(.rect(cornerRadius: 18))
         }
         .buttonStyle(.plain)

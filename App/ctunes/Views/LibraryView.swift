@@ -46,6 +46,14 @@ struct LibraryView: View {
         .onChange(of: path.isEmpty) { _, atRoot in
             if !atRoot { searching = false }
         }
+        // A builder's query filters its pool only; popping back to the root
+        // shouldn't leave the root showing results for it.
+        .onChange(of: buildingMix) { _, building in
+            if !building {
+                query = ""
+                searching = false
+            }
+        }
         .task {
             if let album = Self.developmentAlbum {
                 path.append(album)

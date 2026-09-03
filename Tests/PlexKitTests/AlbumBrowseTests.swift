@@ -58,6 +58,17 @@ struct AlbumBrowseTests {
         #expect(sort.sorted(Self.albums).map(\.title) == expected)
     }
 
+    @Test("artists sort by the same keys, with release date reading as name")
+    func artistSorting() {
+        let a = PlexArtist(ratingKey: "1", title: "Zed", addedAt: 10, lastViewedAt: nil, viewCount: 5)
+        let b = PlexArtist(ratingKey: "2", title: "Amy", addedAt: 20, lastViewedAt: 1, viewCount: nil)
+        #expect(AlbumSort.recentlyAdded.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
+        #expect(AlbumSort.lastPlayed.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
+        #expect(AlbumSort.playCount.sorted([a, b]).map(\.title) == ["Zed", "Amy"])
+        #expect(AlbumSort.releaseDate.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
+        #expect(AlbumSort.name.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
+    }
+
     @Test("release date falls back to the year when the server has no day")
     func releaseFallback() {
         let dated = Self.album("A", artist: "x", year: 2000, released: "2000-06-01")

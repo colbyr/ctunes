@@ -18,12 +18,22 @@ public enum AlbumSort: String, CaseIterable, Sendable, Codable {
     /// Stable ordering: albums missing the key sort to the bottom, ties fall
     /// back to title so the order doesn't shift between loads.
     func sorted(_ albums: [PlexAlbum]) -> [PlexAlbum] {
-        albums.sorted { lhs, rhs in
+        sorted(albums, key: key, title: \.title)
+    }
+
+    /// The same options for artists. An artist has no release date, so that
+    /// sort reads as Name here rather than vanishing from the menu.
+    public func sorted(_ artists: [PlexArtist]) -> [PlexArtist] {
+        sorted(artists, key: key, title: \.title)
+    }
+
+    private func sorted<T>(_ items: [T], key: (T) -> Double?, title: (T) -> String) -> [T] {
+        items.sorted { lhs, rhs in
             switch (key(lhs), key(rhs)) {
             case let (l?, r?) where l != r: return l > r
             case (.some, nil): return true
             case (nil, .some): return false
-            default: return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            default: return title(lhs).localizedCaseInsensitiveCompare(title(rhs)) == .orderedAscending
             }
         }
     }
@@ -37,6 +47,15 @@ public enum AlbumSort: String, CaseIterable, Sendable, Codable {
         case .releaseDate: album.releaseOrdinal
         case .playCount: album.viewCount.map(Double.init)
         case .name: nil
+        }
+    }
+
+    private func key(_ artist: PlexArtist) -> Double? {
+        switch self {
+        case .recentlyAdded: artist.addedAt.map(Double.init)
+        case .lastPlayed: artist.lastViewedAt.map(Double.init)
+        case .playCount: artist.viewCount.map(Double.init)
+        case .releaseDate, .name: nil
         }
     }
 }

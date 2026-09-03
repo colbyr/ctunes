@@ -39,3 +39,17 @@ struct Artwork: View {
         }
     }
 }
+
+extension View {
+    /// The lift under album art and artist portraits.
+    func artworkShadow() -> some View {
+        shadow(color: .black.opacity(0.22), radius: 5, y: 3)
+    }
+
+    /// The softer, wider lift under the hero cards. Reaches about 14pt
+    /// below and 10pt to the sides, so the row holding a card needs at
+    /// least that much inset or the list clips it.
+    func cardShadow() -> some View {
+        shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+    }
+}

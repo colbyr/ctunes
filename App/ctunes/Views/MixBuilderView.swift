@@ -53,7 +53,21 @@ struct MixBuilderView: View {
     @State private var loadingMix = false
     @State private var nothingToPlay = false
     @State private var showingNowPlaying = false
-    @AppStorage("albumSort") private var sort: AlbumSort = .recentlyAdded
+    /// Per builder rather than the root's key: sorting the artist pool by
+    /// play count shouldn't reorder the album grid behind it.
+    @AppStorage private var sort: AlbumSort
+    /// Comma-joined ratingKeys, so the last mix is waiting next time.
+    @AppStorage private var savedSelection: String
+
+    init(model: AppModel, section: PlexSection, kind: MixKind, query: Binding<String>, building: Binding<Bool>) {
+        self.model = model
+        self.section = section
+        self.kind = kind
+        _query = query
+        _building = building
+        _sort = AppStorage(wrappedValue: .recentlyAdded, "mixSort.\(kind.rawValue)")
+        _savedSelection = AppStorage(wrappedValue: "", "mixSelection.\(kind.rawValue)")
+    }
 
     /// Debug-only preselection from `CTUNES_DEV_MIX=<kind>:<key>,<key>`.
     static var developmentSelection: [String] {
@@ -72,32 +86,41 @@ struct MixBuilderView: View {
         let title: String
         let subtitle: String?
         let thumb: String?
-        let artistKey: String
+        /// A listening rider has vetoed the artist. Stays in the selected
+        /// grid, dimmed, so toggling the rider off brings it straight back.
+        let vetoed: Bool
     }
 
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
     private var needle: String { query.trimmingCharacters(in: .whitespaces) }
 
-    /// Everything in the section that survives the vetoes. Search narrows
-    /// `rest` only, so a pick never disappears from the selected grid.
-    private var pool: [Item] {
+    /// Everything in the section, in sort order, vetoes marked.
+    private var items: [Item] {
         switch kind {
         case .artist:
-            return artists
-                .filter { !hidden.contains($0.ratingKey) }
-                .map { Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb, artistKey: $0.ratingKey) }
+            return sort.sorted(artists).map {
+                Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb, vetoed: hidden.contains($0.ratingKey))
+            }
         case .album:
-            let list = AlbumBrowse.groups(albums, sort: sort, grouping: .none, hiding: hidden).first?.albums ?? []
-            return list.map { Item(id: $0.ratingKey, title: $0.title, subtitle: $0.parentTitle, thumb: $0.thumb, artistKey: $0.artistKey) }
+            let list = AlbumBrowse.groups(albums, sort: sort, grouping: .none).first?.albums ?? []
+            return list.map {
+                Item(id: $0.ratingKey, title: $0.title, subtitle: $0.parentTitle, thumb: $0.thumb, vetoed: hidden.contains($0.artistKey))
+            }
         }
     }
 
-    /// Selected items in tap order. Filtered through the pool, so an artist
-    /// vetoed after being picked drops out of the mix on its own.
+    /// What survives the vetoes. Search narrows `rest` only, so a pick
+    /// never disappears from the selected grid.
+    private var pool: [Item] { items.filter { !$0.vetoed } }
+
+    /// Selected items in tap order, vetoed ones included.
     private var picks: [Item] {
-        let visible = Dictionary(pool.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return selected.compactMap { visible[$0] }
+        let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return selected.compactMap { byID[$0] }
     }
+
+    /// The picks that will actually go into the mix.
+    private var playable: [Item] { picks.filter { !$0.vetoed } }
 
     private var rest: [Item] {
         let unpicked = pool.filter { !selected.contains($0.id) }
@@ -124,19 +147,40 @@ struct MixBuilderView: View {
 
     var body: some View {
         let picks = picks
+        let playable = playable
         List {
-            PlayMixCard(kind: kind, picks: picks.map(\.title), loading: loadingMix, action: play)
-                .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 12, trailing: Self.margin))
-                .listRowSeparator(.hidden)
+            PlayMixCard(
+                kind: kind,
+                picks: playable.map(\.title),
+                vetoedPicks: picks.count - playable.count,
+                listeners: ListenerRoster.joinNames(model.roster.active.map(\.name)),
+                loading: loadingMix,
+                action: play
+            )
+            // Bottom inset clears the card's shadow; see `cardShadow`.
+            .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+            .listRowSeparator(.hidden)
             if !picks.isEmpty {
                 grid(picks, selected: true)
-                    .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 Rectangle()
                     .fill(.separator)
                     .frame(height: 1)
                     .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
             }
+            Group {
+                if model.roster.listeners.isEmpty {
+                    SortChip(sort: $sort)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.trailing, Self.margin)
+                        .padding(.vertical, 4)
+                } else {
+                    ListenerChips(model: model) { SortChip(sort: $sort) }
+                }
+            }
+            .listRowInsets(.init(top: 8, leading: 0, bottom: 0, trailing: 0))
+            .listRowSeparator(.hidden)
             if hiddenCount > 0 {
                 Label(
                     "\(hiddenCount) artist\(hiddenCount == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))",
@@ -148,7 +192,7 @@ struct MixBuilderView: View {
                 .listRowSeparator(.hidden)
             }
             grid(rest, selected: false)
-                .listRowInsets(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
+                .listRowInsets(.init(top: hiddenCount > 0 ? 14 : 8, leading: Self.margin, bottom: 10, trailing: Self.margin))
         }
         .listStyle(.plain)
         // The separator is a 1pt row; the default minimum centres it in 44pt.
@@ -175,9 +219,13 @@ struct MixBuilderView: View {
         .onAppear {
             building = true
             query = ""
-            if selected.isEmpty { selected = Self.developmentSelection }
+            if selected.isEmpty {
+                let development = Self.developmentSelection
+                selected = development.isEmpty ? savedSelection.split(separator: ",").map(String.init) : development
+            }
         }
         .onDisappear { building = false }
+        .onChange(of: selected) { savedSelection = selected.joined(separator: ",") }
         .task {
             guard let library = model.library else { return }
             switch kind {
@@ -186,8 +234,8 @@ struct MixBuilderView: View {
             }
             loaded = true
             #if DEBUG
-            // `picks` here is the body's shadow, frozen at first render.
-            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil, !self.picks.isEmpty {
+            // `playable` here is the body's shadow, frozen at first render.
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil, !self.playable.isEmpty {
                 play()
             }
             #endif
@@ -210,6 +258,7 @@ struct MixBuilderView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isSelected ? "Remove \(item.title)" : "Add \(item.title)")
+                .accessibilityHint(item.vetoed ? "Hidden for a listener, so it won't be played" : "")
             }
         }
         .listRowSeparator(.hidden)
@@ -229,7 +278,7 @@ struct MixBuilderView: View {
     /// at enqueue time like Shuffle Favorites.
     private func play() {
         guard let library = model.library, !loadingMix else { return }
-        let keys = picks.map(\.id)
+        let keys = playable.map(\.id)
         guard !keys.isEmpty else { return }
         loadingMix = true
         Task {
@@ -292,25 +341,29 @@ struct MixBuilderView: View {
                 .frame(maxWidth: .infinity, alignment: kind == .artist ? .center : .leading)
             }
             .frame(maxWidth: .infinity)
+            .opacity(item.vetoed ? 0.4 : 1)
             .contentShape(.rect)
         }
+
+        private var ring: Color { item.vetoed ? .gray : kind.accent }
 
         @ViewBuilder private var art: some View {
             switch kind {
             case .artist:
                 Artwork(url: url, size: nil, corner: 8)
                     .clipShape(.circle)
+                    .artworkShadow()
                     .overlay {
                         if selected {
-                            Circle().stroke(kind.accent, lineWidth: 2)
+                            Circle().stroke(ring, lineWidth: 2)
                         }
                     }
             case .album:
                 Artwork(url: url, size: nil, corner: 8)
-                    .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
+                    .artworkShadow()
                     .overlay {
                         if selected {
-                            RoundedRectangle(cornerRadius: 8).stroke(kind.accent, lineWidth: 2)
+                            RoundedRectangle(cornerRadius: 8).stroke(ring, lineWidth: 2)
                         }
                     }
             }
@@ -323,10 +376,26 @@ struct MixBuilderView: View {
 private struct PlayMixCard: View {
     let kind: MixKind
     let picks: [String]
+    /// Picks a listening rider has vetoed; they sit out of the mix.
+    let vetoedPicks: Int
+    let listeners: String
     let loading: Bool
     let action: () -> Void
 
     private var empty: Bool { picks.isEmpty }
+
+    private var title: String {
+        if !empty { return "Play Mix" }
+        return vetoedPicks > 0 ? "Nothing to play" : "Build a mix"
+    }
+
+    private var subtitle: String {
+        if !empty { return picks.joined(separator: ", ") }
+        if vetoedPicks > 0 {
+            return "\(vetoedPicks) pick\(vetoedPicks == 1 ? "" : "s") hidden for \(listeners)"
+        }
+        return "Tap \(kind.noun) below to build a mix"
+    }
 
     var body: some View {
         Button(action: action) {
@@ -337,10 +406,10 @@ private struct PlayMixCard: View {
                     .frame(width: 44, height: 44)
                     .background(empty ? AnyShapeStyle(.fill.tertiary) : AnyShapeStyle(kind.accent.opacity(0.14)), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(empty ? "Build a mix" : "Play Mix")
+                    Text(title)
                         .font(.headline)
                         .foregroundStyle(empty ? .secondary : .primary)
-                    Text(empty ? "Tap \(kind.noun) below to build a mix" : picks.joined(separator: ", "))
+                    Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -356,7 +425,7 @@ private struct PlayMixCard: View {
             }
             .padding(14)
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .cardShadow()
             .contentShape(.rect(cornerRadius: 18))
         }
         .buttonStyle(.plain)

@@ -38,8 +38,24 @@ public struct PlexArtist: Decodable, Sendable, Identifiable, Hashable {
     public let ratingKey: String
     public let title: String
     public let thumb: String?
+    /// Unix seconds when the artist entered the library.
+    public let addedAt: Int?
+    /// Unix seconds of the last play of anything by them.
+    public let lastViewedAt: Int?
+    /// Total track plays across the artist.
+    public let viewCount: Int?
 
     public var id: String { ratingKey }
+
+    public init(ratingKey: String, title: String, thumb: String? = nil,
+                addedAt: Int? = nil, lastViewedAt: Int? = nil, viewCount: Int? = nil) {
+        self.ratingKey = ratingKey
+        self.title = title
+        self.thumb = thumb
+        self.addedAt = addedAt
+        self.lastViewedAt = lastViewedAt
+        self.viewCount = viewCount
+    }
 }
 
 public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {

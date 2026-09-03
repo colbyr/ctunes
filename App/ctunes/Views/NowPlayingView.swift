@@ -34,7 +34,7 @@ struct NowPlayingView: View {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.item.title).lineLimit(1)
-                                Text(entry.item.grandparentTitle ?? "")
+                                Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -79,6 +79,12 @@ struct NowPlayingView: View {
         .listRowSeparator(.hidden)
     }
 
+    private var albumLine: String {
+        guard let track = player.currentTrack else { return "" }
+        let artist = track.trackArtist == nil ? nil : track.grandparentTitle
+        return [track.parentTitle, artist].compactMap { $0 }.joined(separator: " · ")
+    }
+
     private var header: some View {
         VStack(spacing: 24) {
             // Edge to edge less a margin, so the art is as big as the sheet
@@ -97,9 +103,12 @@ struct NowPlayingView: View {
                     Text(player.currentTrack?.title ?? "Nothing playing")
                         .font(.title3.bold())
                         .multilineTextAlignment(.center)
-                    Text(player.currentTrack?.grandparentTitle ?? "")
+                    // The credited artist takes the artist line on a
+                    // compilation or a feature; the album artist moves down
+                    // beside the album so both still show.
+                    Text(player.currentTrack?.trackArtist ?? player.currentTrack?.grandparentTitle ?? "")
                         .foregroundStyle(.secondary)
-                    Text(player.currentTrack?.parentTitle ?? "")
+                    Text(albumLine)
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }
