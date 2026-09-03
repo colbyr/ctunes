@@ -431,13 +431,6 @@ private struct MixActions: View {
     let loading: MixMode?
     let action: (MixMode) -> Void
 
-    private var albumsSubtitle: String {
-        switch kind {
-        case .album: "\(picks.count) album\(picks.count == 1 ? "" : "s"), front to back"
-        case .artist: "Every album, front to back"
-        }
-    }
-
     private var promptTitle: String { vetoedPicks > 0 ? "Nothing to play" : "Build a mix" }
 
     private var promptSubtitle: String {
@@ -448,18 +441,20 @@ private struct MixActions: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        Group {
             if picks.isEmpty {
                 MixActionCard(kind: kind, systemImage: kind.systemImage, title: promptTitle, subtitle: promptSubtitle, enabled: false, loading: false) {}
             } else {
-                MixActionCard(
-                    kind: kind, systemImage: "square.on.square", title: "Play Albums", subtitle: albumsSubtitle,
-                    enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
-                ) { action(.playAlbums) }
-                MixActionCard(
-                    kind: kind, systemImage: "shuffle", title: "Shuffle Tracks", subtitle: picks.joined(separator: ", "),
-                    enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
-                ) { action(.shuffleTracks) }
+                HStack(spacing: 12) {
+                    MixActionCard(
+                        kind: kind, systemImage: "square.on.square", title: "Play Albums", subtitle: nil,
+                        enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
+                    ) { action(.playAlbums) }
+                    MixActionCard(
+                        kind: kind, systemImage: "shuffle", title: "Shuffle Tracks", subtitle: nil,
+                        enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
+                    ) { action(.shuffleTracks) }
+                }
             }
         }
         .animation(.snappy, value: picks.isEmpty)
@@ -470,34 +465,42 @@ private struct MixActionCard: View {
     let kind: MixKind
     let systemImage: String
     let title: String
-    let subtitle: String
+    /// Nil for the side-by-side pair, where the title has the width.
+    let subtitle: String?
     let enabled: Bool
     let loading: Bool
     let action: () -> Void
 
+    /// Title-only cards share a row, so they tighten up.
+    private var compact: Bool { subtitle == nil }
+
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
+            HStack(spacing: compact ? 10 : 14) {
                 Image(systemName: systemImage)
-                    .font(.title3.weight(.medium))
+                    .font(compact ? .body.weight(.medium) : .title3.weight(.medium))
                     .foregroundStyle(enabled ? AnyShapeStyle(kind.accent) : AnyShapeStyle(.tertiary))
-                    .frame(width: 44, height: 44)
+                    .frame(width: compact ? 36 : 44, height: compact ? 36 : 44)
                     .background(enabled ? AnyShapeStyle(kind.accent.opacity(0.14)) : AnyShapeStyle(.fill.tertiary), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.headline)
                         .foregroundStyle(enabled ? .primary : .secondary)
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 if loading {
                     ProgressView()
                 }
             }
-            .padding(14)
+            .padding(compact ? 12 : 14)
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
             .cardShadow()
             .contentShape(.rect(cornerRadius: 18))
