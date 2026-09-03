@@ -34,7 +34,7 @@ public actor PlexAuth {
 
     public func requestPin() async throws -> PlexPin {
         let url = URL(string: "https://plex.tv/api/v2/pins?strong=true")!
-        let request = await client.request("POST", url: url)
+        let request = client.request("POST", url: url)
         return try await client.decode(PlexPin.self, from: request)
     }
 

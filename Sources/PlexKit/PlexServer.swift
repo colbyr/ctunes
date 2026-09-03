@@ -87,7 +87,7 @@ public actor PlexServerDirectory {
     ) async -> PlexServer? {
         guard let url = URL(string: connection.uri + "/identity") else { return nil }
         do {
-            var request = await client.request(url: url, token: token)
+            var request = client.request(url: url, token: token)
             request.timeoutInterval = Double(timeout.components.seconds)
             let identity = try await client.decode(IdentityResponse.self, from: request)
             guard let base = URL(string: connection.uri) else { return nil }

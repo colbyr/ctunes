@@ -114,7 +114,8 @@ Follow `notes/carplay.md`:
 - Direct-play failure: an unsupported codec on someone else's library today
   fails silently. At minimum surface the error and skip to the next track;
   transcode fallback is a v1.1 item.
-- Sign out must clear keychain token, section choice, art caches.
+- Sign out must clear keychain token, section choice, art caches. (The
+  track cache is already cleared, from `ContentView.onChange(of: model.state)`.)
 - Add a **test target to the xcodeproj** so `make test` covers the app too;
   even a handful of `AppModel` state-machine tests is worth it.
 
@@ -171,7 +172,9 @@ TestFlight without it and add it in a later beta build. Don't hold the beta.
 
 ## Explicitly deferred (v1.1+)
 
-Offline downloads (would justify a Pro IAP), iPad, widgets/Live Activity,
+Explicit offline downloads that survive eviction (would justify a Pro IAP;
+the track cache in `notes/track-cache.md` already keeps played and upcoming
+tracks on disk), iPad, widgets/Live Activity,
 transcode fallback, queue reordering, spread shuffle (`notes/spread-shuffle.md`),
 artist pages, Siri/App Intents.
 

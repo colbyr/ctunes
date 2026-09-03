@@ -20,6 +20,8 @@ struct MusicView: View {
     @State private var noFavorites = false
     @State private var everyFavoriteHidden = false
     @State private var showingListeners = false
+    /// Bytes of cached audio, for the clear button; nil until read.
+    @State private var cacheUsage: Int?
     @AppStorage("albumSort") private var sort: AlbumSort = .recentlyAdded
     @AppStorage("albumGrouping") private var grouping: AlbumGrouping = .artist
 
@@ -138,6 +140,14 @@ struct MusicView: View {
                     if model.sections.count > 1 {
                         Button("Change library") { model.clearSectionChoice() }
                     }
+                    if let cacheUsage, cacheUsage > 0 {
+                        Button("Clear downloaded tracks (\(ByteCountFormatter.string(fromByteCount: Int64(cacheUsage), countStyle: .file)))", systemImage: "trash") {
+                            Task {
+                                await player.clearCache()
+                                self.cacheUsage = await player.cacheUsage()
+                            }
+                        }
+                    }
                     Button("Sign out", role: .destructive) {
                         Task { await model.signOut() }
                     }
@@ -145,6 +155,10 @@ struct MusicView: View {
                     Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        // Re-read as the queue moves, since every track played adds a file.
+        .task(id: player.currentTrack?.id) {
+            cacheUsage = await player.cacheUsage()
         }
         .task {
             guard let library = model.library else { return }

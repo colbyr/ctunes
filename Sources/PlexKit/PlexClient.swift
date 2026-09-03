@@ -15,7 +15,9 @@ public actor PlexClient {
     }
 
     /// Builds a request carrying the identity headers, and the token when given.
-    public func request(
+    /// Nonisolated because it only reads the immutable identity, so callers
+    /// that must stay synchronous (the player choosing an item URL) can use it.
+    public nonisolated func request(
         _ method: String = "GET",
         url: URL,
         token: String? = nil

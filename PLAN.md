@@ -32,6 +32,7 @@ launches on a device.
 | M5 queue + Now Playing | done | playback with artwork, clock advancing |
 | M6 favorites | done | hearts and spread shuffle rendered in simulator; rating round-trip verified with curl |
 | M7 mixes | done | artist and album mix builders (`notes/mixes.md`); a mix is the spread-shuffled union of the picks, one-shot, vetoes applied |
+| M8 track cache | done | `TrackCache` tests; simulator run showed the next three tracks downloading in order and a track transition playing from disk with no part request (`notes/track-cache.md`) |
 
 All six milestones are verified, background audio and lock screen controls
 included, the latter on a real device where the simulator cannot test them.
@@ -227,4 +228,4 @@ no shuffle mode of its own and doesn't need one for this. The lock-screen
 
 ## Explicitly out of scope
 
-Search, offline caching, gapless and crossfade, sonic-analysis radio (M7's mixes are plain unions of picked artists or albums, not similarity), loudness leveling, waveform scrubbing, CarPlay, playlists. Gapless in particular is not a weekend item — `AVQueuePlayer` handles it poorly and doing it properly means a custom `AVAudioEngine` pipeline, which is the single largest piece of work in a Plexamp-class client.
+Search, gapless and crossfade, sonic-analysis radio (M7's mixes are plain unions of picked artists or albums, not similarity), loudness leveling, waveform scrubbing, CarPlay, playlists. Gapless in particular is not a weekend item — `AVQueuePlayer` handles it poorly and doing it properly means a custom `AVAudioEngine` pipeline, which is the single largest piece of work in a Plexamp-class client.

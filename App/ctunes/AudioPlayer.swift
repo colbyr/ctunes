@@ -31,6 +31,15 @@ final class AudioPlayer {
 
     private nonisolated let player = AVPlayer()
     private var library: PlexLibrary?
+    /// Played and upcoming tracks on disk. Owned here because the player is
+    /// the only consumer and both live for the app, while `library` is
+    /// rebuilt on every connect.
+    private nonisolated let cache: TrackCache
+    /// How many upcoming entries `prefetch` keeps on disk.
+    private let prefetchDepth = 3
+    /// Whether the current item was built from a cached file, so a failure
+    /// can fall back to the stream instead of burning a retry.
+    private var currentItemIsLocal = false
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var itemStatusObserver: NSKeyValueObservation?
@@ -56,6 +65,17 @@ final class AudioPlayer {
     private let restartThreshold: Double = 3
 
     init() {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let config = URLSessionConfiguration.default
+        // One connection: the current track is streaming through AVPlayer's
+        // own pool at the same time and must not be starved. Fail fast
+        // rather than park the download queue waiting for a network.
+        config.httpMaximumConnectionsPerHost = 1
+        config.waitsForConnectivity = false
+        cache = TrackCache(
+            directory: caches.appending(path: "Tracks"),
+            session: URLSession(configuration: config)
+        )
         player.actionAtItemEnd = .pause
         observeTime()
         observeItemEnd()
@@ -157,11 +177,13 @@ final class AudioPlayer {
     func toggleShuffle() {
         if queue.isShuffled { queue.unshuffle() } else { queue.shuffle(groupedBy: PlexTrack.shuffleGrouping) }
         updateNowPlayingModes()
+        prefetch()
     }
 
     func cycleRepeat() {
         repeatMode = repeatMode.next
         updateNowPlayingModes()
+        prefetch()
     }
 
     func previous() {
@@ -211,7 +233,10 @@ final class AudioPlayer {
     func remove(_ entry: PlayQueue<PlexTrack>.Entry) {
         guard let index = queue.index(of: entry.id) else { return }
         if index == queue.currentIndex { reportTimeline(.stopped) }
-        guard queue.remove(at: index) else { return }
+        guard queue.remove(at: index) else {
+            prefetch()
+            return
+        }
         guard queue.current != nil else {
             player.replaceCurrentItem(with: nil)
             pause()
@@ -234,15 +259,67 @@ final class AudioPlayer {
             return
         }
         mutate(&queue)
+        prefetch()
+    }
+
+    // MARK: - Cache
+
+    /// Keeps the next few entries on disk, and the current one last: it's
+    /// already streaming, and a second copy of the same bytes competes with
+    /// the stream when it needs the headroom most. It only helps the first
+    /// track of a `play` call, since every later one was fetched before it
+    /// started. Called from `loadCurrentItem` (every cursor move funnels
+    /// there) and from the mutations that change the window without moving
+    /// the cursor: `enqueue`, `toggleShuffle`, `remove` of another entry,
+    /// `cycleRepeat`.
+    private func prefetch() {
+        guard let library else { return }
+        var tracks = Array(queue.upcoming.prefix(prefetchDepth).map(\.item))
+        if repeatMode == .all, tracks.count < prefetchDepth {
+            tracks += queue.entries.prefix(prefetchDepth - tracks.count).map(\.item)
+        }
+        if let currentTrack { tracks.append(currentTrack) }
+        let sources = tracks.compactMap(library.trackSource)
+        Task { await cache.retain(window: sources) }
+    }
+
+    /// Bytes of cached audio on disk.
+    func cacheUsage() async -> Int {
+        await cache.usage()
+    }
+
+    /// Drops every cached file except the one playing.
+    func clearCache() async {
+        let playing = currentTrack.flatMap { library?.trackSource(for: $0) }
+        await cache.clear(keeping: playing)
+    }
+
+    /// Stops playback and forgets everything, cache included, so nothing of
+    /// the account is left on the device.
+    func signOut() async {
+        reportTimeline(.stopped)
+        player.replaceCurrentItem(with: nil)
+        isPlaying = false
+        hasEnded = false
+        queue = PlayQueue()
+        library = nil
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        await cache.clear()
     }
 
     // MARK: - Item loading
 
     private func loadCurrentItem(autoPlay: Bool) {
-        guard let track = currentTrack,
-              let library,
-              let url = library.streamURL(for: track)
-        else { return }
+        guard let track = currentTrack, let library else { return }
+        // The cached file when there is one, else the stream. Both resolve
+        // synchronously: an await here would let the cursor move under us.
+        let source = library.trackSource(for: track)
+        let local = source.flatMap(cache.localURL(for:))
+        guard let url = local ?? library.streamURL(for: track) else { return }
+        currentItemIsLocal = local != nil
+        if currentItemIsLocal, let source {
+            Task { await cache.touch(source) }
+        }
 
         itemLoadRetries = 0
         currentTime = 0
@@ -252,6 +329,7 @@ final class AudioPlayer {
         loadItem(url: url, autoPlay: autoPlay)
         updateNowPlayingInfo(for: track)
         reportTimeline(isPlaying ? .playing : .paused)
+        prefetch()
     }
 
     /// Builds the player item for `url` and watches it fail. The first range
@@ -276,6 +354,17 @@ final class AudioPlayer {
     private func itemFailedToLoad(_ item: AVPlayerItem, url: URL) {
         // A stale observer from an item that was already replaced.
         guard player.currentItem === item else { return }
+        // A cached file that won't play is a bad file: drop it and stream,
+        // with the stream's own retries still to come.
+        if currentItemIsLocal, let track = currentTrack, let library,
+           let streamURL = library.streamURL(for: track) {
+            currentItemIsLocal = false
+            if let source = library.trackSource(for: track) {
+                Task { await cache.evict(source) }
+            }
+            loadItem(url: streamURL, autoPlay: isPlaying)
+            return
+        }
         if itemLoadRetries < maxItemLoadRetries {
             itemLoadRetries += 1
             loadItem(url: url, autoPlay: isPlaying)

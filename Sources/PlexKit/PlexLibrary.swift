@@ -13,6 +13,7 @@ public actor PlexLibrary {
     }
 
     public nonisolated var baseURL: URL { server.baseURL }
+    public nonisolated var serverIdentifier: String { server.machineIdentifier }
 
     private func fetch<Item: Decodable & Sendable>(
         _ type: Item.Type,
@@ -97,7 +98,7 @@ public actor PlexLibrary {
             + "/:/rate?identifier=com.plexapp.plugins.library"
             + "&key=\(ratingKey)&rating=\(rating)")
         else { throw PlexError.noServerReachable }
-        let request = await client.request("PUT", url: url, token: token)
+        let request = client.request("PUT", url: url, token: token)
         try await client.data(for: request)
     }
 
@@ -127,7 +128,7 @@ public actor PlexLibrary {
             .init(name: "hasMDE", value: "1"),
         ]
         guard let url = components?.url else { throw PlexError.noServerReachable }
-        var request = await client.request(url: url, token: token)
+        var request = client.request(url: url, token: token)
         request.setValue(sessionIdentifier, forHTTPHeaderField: "X-Plex-Session-Identifier")
         try await client.data(for: request)
     }
@@ -139,6 +140,19 @@ public actor PlexLibrary {
     public nonisolated func streamURL(for track: PlexTrack) -> URL? {
         guard let part = track.part else { return nil }
         return URL(string: server.baseURL.absoluteString + part.key + "?X-Plex-Token=\(token)")
+    }
+
+    /// The same file for the track cache to download. Unlike `streamURL`
+    /// this can carry the token and identity headers, so it does.
+    public nonisolated func trackSource(for track: PlexTrack) -> TrackSource? {
+        guard let part = track.part, part.cacheKey != nil,
+              let url = URL(string: server.baseURL.absoluteString + part.key)
+        else { return nil }
+        return TrackSource(
+            server: server.machineIdentifier,
+            part: part,
+            request: client.request(url: url, token: token)
+        )
     }
 
     /// Artwork resized by the server, so list cells don't pull full-size covers.

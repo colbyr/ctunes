@@ -54,9 +54,9 @@ public struct TrackSource: Sendable, Hashable {
     public let part: PlexPart
     public let request: URLRequest
     public var expectedSize: Int? { part.size }
-    /// "1017-1746246593.flac" for "/library/parts/1017/1746246593/file.flac";
-    /// nil for anything else, in which case the track just streams.
-    public var cacheKey: String? { part.cacheKey }
+    /// "M/1017-1746246593.flac": the server id plus `part.cacheKey`; nil when
+    /// the part isn't cacheable, in which case the track just streams.
+    public var cachePath: String? { ... }
 }
 
 extension PlexPart {
@@ -74,14 +74,15 @@ keys. `PlexPart` gains nothing else; `size` and `container` are already decoded.
 ### 2. `Sources/PlexKit/PlexLibrary.swift` — `trackSource(for:)`
 
 ```swift
-public func trackSource(for track: PlexTrack) -> TrackSource?
+public nonisolated func trackSource(for track: PlexTrack) -> TrackSource?
 ```
 
 Builds the URL from `part.key` like `streamURL(for:)` but without the query token, and gets the
 request from `client.request(url:token:)` so the token and the identity headers ride in
 headers. (`AVPlayer` can't do that; a `URLSession` download can, which is why the two paths
-differ.) It's an actor method, so it's `async`; `streamURL(for:)` stays `nonisolated` for the
-player's synchronous path. Needs `server.machineIdentifier`, which the library already holds.
+differ.) It has to be synchronous, since the player resolves it while choosing an item URL, so
+`PlexClient.request` became `nonisolated`: it only reads the immutable identity, and every
+existing call site just drops its `await`.
 
 ### 3. `Sources/PlexKit/TrackCache.swift` — new actor
 
@@ -123,9 +124,8 @@ between the return and `moveItem`. In order:
 2. Compare the temp file's byte count with `expectedSize`; fall back to
    `expectedContentLength` only when `part.size` is nil. Mismatch (truncated body, HTML error
    page) deletes the temp file and throws.
-3. Re-check that the key is still in the window: the actor was re-entered during the await and
-   `retain` or `clear` may have run. If not, delete the temp file and throw
-   `CancellationError`.
+3. `Task.checkCancellation()`: the actor was re-entered during the await, and `retain` or
+   `clear` may have cancelled this download. The temp file is deleted on every exit.
 4. Create the server directory, remove any stale destination, `moveItem` (same volume, so a
    rename, atomic), set `.completeUntilFirstUserAuthentication` protection explicitly so a
    future `.complete` entitlement can't make a lock-screen skip open an unreadable file.
@@ -142,16 +142,15 @@ dropped by the server.
 ```swift
 config.httpMaximumConnectionsPerHost = 1
 config.waitsForConnectivity = false
-config.allowsExpensiveNetworkAccess = false
-config.allowsConstrainedNetworkAccess = false
 ```
 
 One connection because the current track is streaming through AVPlayer's own pool at the same
 time and must not be starved; prefetching three tracks concurrently triples contention when
-only the next one matters soon. No cellular or Low Data Mode writes: hits are still served, but
-a not-yet-cached current track is already being streamed, and a second copy would double the
-data. `waitsForConnectivity` off so a cellular-only phone fails fast instead of parking the pump
-on the first download forever.
+only the next one matters soon. `waitsForConnectivity` off so a phone with no route fails fast
+instead of parking the pump on the first download forever. Cellular downloads are allowed:
+the whole point is the next track being ready, wherever you are. Turning them off is two
+lines (`allowsExpensiveNetworkAccess`, `allowsConstrainedNetworkAccess`) plus a setting, if
+data use ever becomes a complaint.
 
 **Pump.** `retain(window:)` replaces the window set, cancels in-flight tasks outside it,
 rebuilds `pending` from the window minus cached and recently failed keys, and starts a single
@@ -216,13 +215,20 @@ one call there covers those. Four more change the window without moving the curs
 `enqueue`'s mutate branch, `toggleShuffle`, `remove` of a non-current entry, and `cycleRepeat`
 (`.all` changes the wrap). Five sites in one file; the doc comment on `prefetch()` names them.
 
-### 5. `App/ctunes/Views/MusicView.swift` — one menu item
+### 5. `App/ctunes/ContentView.swift` — sign-out clears the cache
+
+`AppModel.signOut` doesn't know the player, so `ContentView` watches
+`model.state` and, on `.signedIn → .signedOut`, calls `player.signOut()`: stop playback,
+empty the queue, clear the lock screen, then `cache.clear()` with nothing kept. Nothing of the
+account stays on the device.
+
+### 6. `App/ctunes/Views/MusicView.swift` — one menu item
 
 The overflow menu already holds Listeners, Change library and Sign out. Add
 "Clear downloaded tracks (1.2 GB)" above Sign out, usage fetched in `.task` from
 `player.cacheUsage()` and refreshed after clearing. Hidden when usage is zero.
 
-### 6. Tests — `Tests/PlexKitTests/TrackCacheTests.swift` (new)
+### 7. Tests — `Tests/PlexKitTests/TrackCacheTests.swift` (new)
 
 Temp directory per test, sources built by hand, `MockURLProtocol.session(handler:)` as the
 cache session with the handler returning `Data(count: part.size)`. (It hardcodes
@@ -241,7 +247,7 @@ check is against `part.size`.)
 - `clear(keeping:)` removes everything except the kept file and cancels in-flight work.
 - Failure memo: a failed key isn't re-requested by a second `retain` inside the backoff.
 
-### 7. Docs
+### 8. Docs
 
 - `CLAUDE.md` Architecture: a paragraph after the `AudioPlayer` one. Local file first, stream
   fallback, prefetch window, no cellular writes; keep the stream fallback and the `-1005` retry.
@@ -255,6 +261,7 @@ check is against `part.size`.)
 - `Sources/PlexKit/PlexLibrary.swift` — `trackSource(for:)`
 - `App/ctunes/AudioPlayer.swift` — cache ownership, `loadCurrentItem`, `itemFailedToLoad`,
   `prefetch()` and its five call sites, `clearCache()` / `cacheUsage()`
+- `App/ctunes/ContentView.swift` — sign-out hook
 - `App/ctunes/Views/MusicView.swift` — menu item
 - `Tests/PlexKitTests/TrackCacheTests.swift` — new
 - `CLAUDE.md`, `PLAN.md`, `notes/launch.md`
@@ -268,23 +275,27 @@ check is against `part.size`.)
    confirms the transition lands on a local file (no range requests in the server log for
    that track).
 3. Restart the app, play the same album: no `/library/parts/` requests for cached tracks.
-4. Enable Low Data Mode in the simulator: existing files still play, no new ones appear.
-5. Set the limit to a few files in a debug build and play through a long album: the
+4. Set the limit to a few files in a debug build and play through a long album: the
    directory stays bounded and the current and next tracks are never the ones removed.
-6. Clear from the menu while playing: playback continues, the directory empties except for
+5. Clear from the menu while playing: playback continues, the directory empties except for
    the current file, usage reads zero after the track ends and is evicted later.
-7. Delete a cached file by hand while it's queued next: the player falls through to the
+6. Delete a cached file by hand while it's queued next: the player falls through to the
    stream URL without a stall.
 
-## Open questions
+## Decisions made at implementation
 
-- **Sign-out.** `AppModel.signOut` doesn't know the player and doesn't stop playback today.
-  The files carry no token and sit in per-server directories, so v1 leaves them.
-  `notes/launch.md` already tracks "sign out must clear caches" for artwork; do both then.
-- **Cellular.** Off by default for writes. A toggle is a one-line config change plus a
-  setting; wait for a real need.
-- **Limit.** 2 GB is roughly 70 FLAC tracks or 500 MP3s. A user-facing limit needs a
-  settings screen, which the app doesn't have.
+- **Sign-out clears the cache**, via the `ContentView` hook above.
+- **Cellular downloads are on.** Options can come later.
+- **The limit stays a constant.** 2 GB is roughly 70 FLAC tracks or 500 MP3s. A user-facing
+  limit needs a settings screen, which the app doesn't have.
+
+## Verified
+
+`make test` (92 tests) green. In the simulator with `CTUNES_DEV_AUTOPLAY=1` the next three
+tracks appeared in `Caches/Tracks/<server>/` one at a time in queue order, then the current
+one. A second launch with `CTUNES_DEV_AUTOPLAY=end` rolled onto the cached second track with
+the system log showing exactly one part request for the whole run: the new tail of the
+prefetch window.
 
 ## Follow-ups
 

@@ -210,4 +210,57 @@ public struct PlexPart: Decodable, Sendable, Hashable {
     public let key: String
     public let container: String?
     public let size: Int?
+
+    public init(key: String, container: String? = nil, size: Int? = nil) {
+        self.key = key
+        self.container = container
+        self.size = size
+    }
+
+    /// The file name the track cache stores this part under:
+    /// `/library/parts/1017/1746246593/file.flac` → `1017-1746246593.flac`.
+    /// The middle segment is the file's modification stamp, so the name
+    /// changes when the file is replaced and a cached copy never needs
+    /// revalidating. Only that exact shape is accepted; anything else is nil
+    /// and the track streams. The real extension is kept because
+    /// AVFoundation sniffs the container from it first.
+    public var cacheKey: String? {
+        let segments = key.split(separator: "/", omittingEmptySubsequences: false)
+        guard segments.count == 6, segments[0].isEmpty,
+              segments[1] == "library", segments[2] == "parts",
+              segments[3].allSatisfy(\.isNumber), !segments[3].isEmpty,
+              segments[4].allSatisfy(\.isNumber), !segments[4].isEmpty
+        else { return nil }
+        let name = segments[5]
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex,
+              name.index(after: dot) != name.endIndex
+        else { return nil }
+        let ext = name[name.index(after: dot)...]
+        guard ext.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
+        return "\(segments[3])-\(segments[4]).\(ext)"
+    }
+}
+
+/// One part file the track cache can fetch. `request` carries the token in a
+/// header, so nothing secret ends up in a path on disk; the cache stores the
+/// file under `server/cacheKey`.
+public struct TrackSource: Sendable, Hashable {
+    /// `PlexServer.machineIdentifier`, so part ids from different servers
+    /// can't collide.
+    public let server: String
+    public let part: PlexPart
+    public let request: URLRequest
+
+    public init(server: String, part: PlexPart, request: URLRequest) {
+        self.server = server
+        self.part = part
+        self.request = request
+    }
+
+    public var expectedSize: Int? { part.size }
+
+    /// `server/1017-1746246593.flac`; nil when the part key isn't cacheable.
+    public var cachePath: String? {
+        part.cacheKey.map { "\(server)/\($0)" }
+    }
 }

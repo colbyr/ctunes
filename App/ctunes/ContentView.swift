@@ -25,6 +25,12 @@ struct ContentView: View {
         }
         .environment(player)
         .task { await model.bootstrap() }
+        // Sign-out lives in the model, which doesn't know the player; stop
+        // playback and drop the cached audio here when it happens.
+        .onChange(of: model.state) { old, new in
+            guard old == .signedIn, new == .signedOut else { return }
+            Task { await player.signOut() }
+        }
     }
 }
 

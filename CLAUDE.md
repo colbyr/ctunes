@@ -64,6 +64,15 @@ shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
 
+`TrackCache` (PlexKit actor, `notes/track-cache.md`) keeps whole track files
+under `Caches/Tracks/<server>/<partId>-<stamp>.<ext>`. `AudioPlayer` plays the
+local file when one exists and streams otherwise, and after every queue or
+cursor change hands the cache a window of the next three entries plus the
+current one to download sequentially; LRU eviction at 2 GB never touches that
+window. A local item that fails to load is evicted and re-loaded from the
+stream URL. Keep the stream fallback and the `-1005` retry: the cache is an
+optimisation, never the only path.
+
 ## Plex API constraints
 
 These were measured against a real server; several contradict what the API
