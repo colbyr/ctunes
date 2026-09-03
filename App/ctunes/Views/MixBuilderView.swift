@@ -34,8 +34,16 @@ enum MixKind: String, Hashable {
     }
 }
 
-/// Picks a set of artists or albums and shuffles every track in the union
-/// into a one-shot queue. Nothing is saved: pop the screen and the selection
+/// How a mix is laid out in the queue.
+enum MixMode: Hashable {
+    /// Every track in the union, spread-shuffled by artist then album.
+    case shuffleTracks
+    /// Whole albums front to back, the albums spread-shuffled by artist.
+    case playAlbums
+}
+
+/// Picks a set of artists or albums and plays every track in the union as
+/// a one-shot queue, shuffled by track or album by album. Nothing is saved: pop the screen and the selection
 /// is gone. The pool never offers an artist a listening rider has vetoed.
 struct MixBuilderView: View {
     let model: AppModel
@@ -50,7 +58,7 @@ struct MixBuilderView: View {
     @State private var loaded = false
     /// Rating keys in the order they were tapped.
     @State private var selected: [String] = []
-    @State private var loadingMix = false
+    @State private var loadingMix: MixMode?
     @State private var nothingToPlay = false
     @State private var showingNowPlaying = false
     /// Per builder rather than the root's keys: arranging a pool by play
@@ -169,7 +177,7 @@ struct MixBuilderView: View {
         let picks = picks
         let playable = playable
         List {
-            PlayMixCard(
+            MixActions(
                 kind: kind,
                 picks: playable.map(\.title),
                 vetoedPicks: picks.count - playable.count,
@@ -272,7 +280,7 @@ struct MixBuilderView: View {
             #if DEBUG
             // `playable` here is the body's shadow, frozen at first render.
             if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil, !self.playable.isEmpty {
-                play()
+                play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .playAlbums : .shuffleTracks)
             }
             #endif
         }
@@ -310,15 +318,16 @@ struct MixBuilderView: View {
         }
     }
 
-    /// Every track across the selection, fetched concurrently, spread-shuffled
-    /// once at enqueue time like Shuffle Favorites.
-    private func play() {
-        guard let library = model.library, !loadingMix else { return }
+    /// Every track across the selection, fetched concurrently, then ordered
+    /// once at enqueue time: spread-shuffled like Shuffle Favorites, or kept
+    /// in whole albums with only the album order shuffled.
+    private func play(_ mode: MixMode) {
+        guard let library = model.library, loadingMix == nil else { return }
         let keys = playable.map(\.id)
         guard !keys.isEmpty else { return }
-        loadingMix = true
+        loadingMix = mode
         Task {
-            defer { loadingMix = false }
+            defer { loadingMix = nil }
             let kind = kind
             let section = section.key
             let tracks = await withTaskGroup(of: [PlexTrack].self) { group in
@@ -339,7 +348,11 @@ struct MixBuilderView: View {
                 nothingToPlay = true
                 return
             }
-            player.play(playable.spreadShuffled(), startingAt: 0, library: library)
+            let ordered = switch mode {
+            case .shuffleTracks: playable.spreadShuffled()
+            case .playAlbums: playable.albumShuffled()
+            }
+            player.play(ordered, startingAt: 0, library: library)
             showingNowPlaying = true
         }
     }
@@ -357,7 +370,7 @@ struct MixBuilderView: View {
                         if selected {
                             Image(systemName: "xmark")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color(.systemBackground))
                                 .frame(width: 24, height: 24)
                                 .background(Color(.label), in: .circle)
                                 .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
@@ -407,26 +420,20 @@ struct MixBuilderView: View {
     }
 }
 
-/// The one action on the page, styled like Shuffle Favorites on the root.
-/// Reads as a prompt until something is picked.
-private struct PlayMixCard: View {
+/// The actions at the top of the page, styled like Shuffle Favorites on the
+/// root. One prompt card until something is picked, then a card per mode.
+private struct MixActions: View {
     let kind: MixKind
     let picks: [String]
     /// Picks a listening rider has vetoed; they sit out of the mix.
     let vetoedPicks: Int
     let listeners: String
-    let loading: Bool
-    let action: () -> Void
+    let loading: MixMode?
+    let action: (MixMode) -> Void
 
-    private var empty: Bool { picks.isEmpty }
+    private var promptTitle: String { vetoedPicks > 0 ? "Nothing to play" : "Build a mix" }
 
-    private var title: String {
-        if !empty { return "Play Mix" }
-        return vetoedPicks > 0 ? "Nothing to play" : "Build a mix"
-    }
-
-    private var subtitle: String {
-        if !empty { return picks.joined(separator: ", ") }
+    private var promptSubtitle: String {
         if vetoedPicks > 0 {
             return "\(vetoedPicks) pick\(vetoedPicks == 1 ? "" : "s") hidden for \(listeners)"
         }
@@ -434,38 +441,70 @@ private struct PlayMixCard: View {
     }
 
     var body: some View {
+        Group {
+            if picks.isEmpty {
+                MixActionCard(kind: kind, systemImage: kind.systemImage, title: promptTitle, subtitle: promptSubtitle, enabled: false, loading: false) {}
+            } else {
+                HStack(spacing: 12) {
+                    MixActionCard(
+                        kind: kind, systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
+                        enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
+                    ) { action(.playAlbums) }
+                    MixActionCard(
+                        kind: kind, systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
+                        enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
+                    ) { action(.shuffleTracks) }
+                }
+            }
+        }
+        .animation(.snappy, value: picks.isEmpty)
+    }
+}
+
+private struct MixActionCard: View {
+    let kind: MixKind
+    let systemImage: String
+    let title: String
+    /// Nil for the side-by-side pair, where the title has the width.
+    let subtitle: String?
+    let enabled: Bool
+    let loading: Bool
+    let action: () -> Void
+
+    /// Title-only cards share a row, so they tighten up.
+    private var compact: Bool { subtitle == nil }
+
+    var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: kind.systemImage)
-                    .font(.title3)
-                    .foregroundStyle(empty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(kind.accent))
-                    .frame(width: 44, height: 44)
-                    .background(empty ? AnyShapeStyle(.fill.tertiary) : AnyShapeStyle(kind.accent.opacity(0.14)), in: .circle)
+            HStack(spacing: compact ? 10 : 14) {
+                Image(systemName: systemImage)
+                    .font(compact ? .body.weight(.medium) : .title3.weight(.medium))
+                    .foregroundStyle(enabled ? AnyShapeStyle(kind.accent) : AnyShapeStyle(.tertiary))
+                    .frame(width: compact ? 36 : 44, height: compact ? 36 : 44)
+                    .background(enabled ? AnyShapeStyle(kind.accent.opacity(0.14)) : AnyShapeStyle(.fill.tertiary), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.headline)
-                        .foregroundStyle(empty ? .secondary : .primary)
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(enabled ? .primary : .secondary)
                         .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 if loading {
                     ProgressView()
-                } else {
-                    Image(systemName: "shuffle")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(empty ? AnyShapeStyle(.quaternary) : AnyShapeStyle(kind.accent))
                 }
             }
-            .padding(14)
+            .padding(compact ? 12 : 14)
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
             .cardShadow()
             .contentShape(.rect(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .disabled(loading || empty)
-        .animation(.snappy, value: empty)
+        .disabled(!enabled)
     }
 }
