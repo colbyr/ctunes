@@ -53,9 +53,12 @@ struct MixBuilderView: View {
     @State private var loadingMix = false
     @State private var nothingToPlay = false
     @State private var showingNowPlaying = false
-    /// Per builder rather than the root's key: sorting the artist pool by
-    /// play count shouldn't reorder the album grid behind it.
+    /// The album pool is the same browser as the main screen, so it binds
+    /// the root's keys and a change here shows up there. The artist pool
+    /// has its own sort: ordering artists by play count shouldn't reorder
+    /// the album grid behind it.
     @AppStorage private var sort: AlbumSort
+    @AppStorage private var grouping: AlbumGrouping
     /// Comma-joined ratingKeys, so the last mix is waiting next time.
     @AppStorage private var savedSelection: String
 
@@ -65,7 +68,8 @@ struct MixBuilderView: View {
         self.kind = kind
         _query = query
         _building = building
-        _sort = AppStorage(wrappedValue: .recentlyAdded, "mixSort.\(kind.rawValue)")
+        _sort = AppStorage(wrappedValue: .recentlyAdded, kind == .album ? "albumSort" : "mixSort.artist")
+        _grouping = AppStorage(wrappedValue: .artist, kind == .album ? "albumGrouping" : "mixGrouping.artist")
         _savedSelection = AppStorage(wrappedValue: "", "mixSelection.\(kind.rawValue)")
     }
 
@@ -103,10 +107,28 @@ struct MixBuilderView: View {
             }
         case .album:
             let list = AlbumBrowse.groups(albums, sort: sort, grouping: .none).first?.albums ?? []
-            return list.map {
-                Item(id: $0.ratingKey, title: $0.title, subtitle: $0.parentTitle, thumb: $0.thumb, vetoed: hidden.contains($0.artistKey))
-            }
+            return list.map(item)
         }
+    }
+
+    /// Under the artist grouping the header names the artist, so the card
+    /// shows the year instead.
+    private func item(_ album: PlexAlbum) -> Item {
+        Item(
+            id: album.ratingKey,
+            title: album.title,
+            subtitle: grouping == .artist ? (album.year.map(String.init) ?? "—") : album.parentTitle,
+            thumb: album.thumb,
+            vetoed: hidden.contains(album.artistKey)
+        )
+    }
+
+    /// The album pool sectioned the way the main screen is, minus the
+    /// picks. Empty groups fall away with their albums. Search shows the
+    /// flat ranked `rest` instead.
+    private var poolGroups: [AlbumGroup] {
+        let unpicked = albums.filter { !selected.contains($0.ratingKey) }
+        return AlbumBrowse.groups(unpicked, sort: sort, grouping: grouping, hiding: hidden)
     }
 
     /// What survives the vetoes. Search narrows `rest` only, so a pick
@@ -170,33 +192,51 @@ struct MixBuilderView: View {
                     .listRowSeparator(.hidden)
             }
             Group {
-                if model.roster.listeners.isEmpty {
-                    SortChip(sort: $sort)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.trailing, Self.margin)
-                        .padding(.vertical, 4)
-                } else {
-                    ListenerChips(model: model) { SortChip(sort: $sort) }
+                switch kind {
+                case .album:
+                    AlbumBrowserControls(model: model, grouping: $grouping, sort: $sort)
+                case .artist:
+                    if model.roster.listeners.isEmpty {
+                        SortChip(sort: $sort)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.trailing, Self.margin)
+                            .padding(.vertical, 4)
+                    } else {
+                        ListenerChips(model: model) { SortChip(sort: $sort) }
+                    }
                 }
             }
-            .listRowInsets(.init(top: 8, leading: 0, bottom: 0, trailing: 0))
+            .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             if hiddenCount > 0 {
-                Label(
-                    "\(hiddenCount) artist\(hiddenCount == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))",
-                    systemImage: "eye.slash"
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .listRowInsets(.init(top: 14, leading: Self.margin + 8, bottom: 0, trailing: Self.margin))
-                .listRowSeparator(.hidden)
+                HiddenArtistsLine(model: model, count: hiddenCount)
+                    .listRowInsets(.init(top: 12, leading: Self.margin + 8, bottom: 0, trailing: Self.margin))
+                    .listRowSeparator(.hidden)
             }
-            grid(rest, selected: false)
-                .listRowInsets(.init(top: hiddenCount > 0 ? 14 : 8, leading: Self.margin, bottom: 10, trailing: Self.margin))
+            if kind == .album && needle.isEmpty {
+                ForEach(poolGroups) { group in
+                    Section {
+                        grid(group.albums.map(item), selected: false)
+                            .listRowInsets(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    } header: {
+                        if !group.name.isEmpty {
+                            AlbumGroupHeader(group: group)
+                                .padding(.leading, Self.margin)
+                                .padding(.top, 14)
+                                .padding(.bottom, 6)
+                                .listRowInsets(EdgeInsets())
+                        }
+                    }
+                }
+            } else {
+                grid(rest, selected: false)
+                    .listRowInsets(.init(top: hiddenCount > 0 ? 14 : 8, leading: Self.margin, bottom: 10, trailing: Self.margin))
+            }
         }
         .listStyle(.plain)
         // The separator is a 1pt row; the default minimum centres it in 44pt.
         .environment(\.defaultMinListRowHeight, 1)
+        .listSectionSpacing(0)
         .scrollDismissesKeyboard(.immediately)
         .contentMargins(.bottom, 72, for: .scrollContent)
         .overlay {
@@ -227,6 +267,7 @@ struct MixBuilderView: View {
         .onDisappear { building = false }
         .onChange(of: selected) { savedSelection = selected.joined(separator: ",") }
         .task {
+            if kind == .album { ArrangeChip.normalize(grouping: &grouping, sort: &sort) }
             guard let library = model.library else { return }
             switch kind {
             case .artist: artists = (try? await library.artists(inSection: section.key)) ?? []
