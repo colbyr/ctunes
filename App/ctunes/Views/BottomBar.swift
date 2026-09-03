@@ -2,8 +2,9 @@ import PlexKit
 import SwiftUI
 
 /// Floating pills along the bottom edge: the mini player on the left, search
-/// on the right. Activating search grows its pill into a text field and
-/// shrinks the mini player down to its artwork so the two share the width.
+/// on the right. Activating search grows its pill into a text field, adds a
+/// close pill beyond it and shrinks the mini player down to its artwork so
+/// the three share the width.
 struct BottomBar: View {
     let model: AppModel
     @Binding var query: String
@@ -11,6 +12,8 @@ struct BottomBar: View {
     @Environment(AudioPlayer.self) private var player
     @Namespace private var glass
     @State private var showingNowPlaying = false
+    /// The inset under the bar: the home indicator, or the keyboard.
+    @State private var bottomInset: CGFloat = 0
 
     var body: some View {
         GlassEffectContainer(spacing: 12) {
@@ -23,11 +26,37 @@ struct BottomBar: View {
                 }
                 SearchPill(query: $query, searching: $searching)
                     .glassEffectID("search", in: glass)
+                if searching {
+                    Button {
+                        query = ""
+                        searching = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 52, height: 52)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close search")
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffectID("close", in: glass)
+                    .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 4)
+        // Pulled into the home-indicator inset so the gap below the pills is
+        // the 16pt at their sides. Not when the keyboard is up: that inset
+        // is the keyboard, and the bar would sit on its top edge.
+        .padding(.bottom, bottomInset > 60 ? 0 : 16 - bottomInset)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.onChange(of: proxy.safeAreaInsets.bottom, initial: true) { _, inset in
+                    bottomInset = inset
+                }
+            }
+        }
         .animation(.bouncy(duration: 0.4), value: searching)
         .animation(.bouncy(duration: 0.4), value: player.currentTrack == nil)
         .sheet(isPresented: $showingNowPlaying) {
@@ -106,14 +135,15 @@ private struct SearchPill: View {
                         .autocorrectionDisabled()
                         .submitLabel(.search)
                         .onAppear { focused = true }
-                    Button {
-                        query = ""
-                        searching = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    if !query.isEmpty {
+                        Button {
+                            query = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear search")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Cancel search")
                 }
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)

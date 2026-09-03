@@ -52,14 +52,16 @@ struct AlbumBrowserControls: View {
     }
 }
 
-/// "2 artists hidden for Laura & Kids", under the chips. Callers show it
-/// only when the count is above zero.
+/// "2 artists hidden for Laura & Kids" under the chips, or "Everything"
+/// when nothing is, so the grid doesn't jump as listeners toggle.
 struct HiddenArtistsLine: View {
     let model: AppModel
     let count: Int
 
     var body: some View {
-        Text("\(count) artist\(count == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))")
+        Text(count > 0
+            ? "\(count) artist\(count == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))"
+            : "Everything")
             .font(.footnote)
             .foregroundStyle(.secondary)
     }

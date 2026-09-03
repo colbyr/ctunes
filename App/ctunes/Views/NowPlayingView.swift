@@ -141,10 +141,10 @@ struct NowPlayingView: View {
         let dimmed = ended ? 0.35 : 1.0
         return HStack {
             modeButton(
-                systemImage: "shuffle",
-                active: player.isShuffled,
-                label: player.isShuffled ? "Shuffle on" : "Shuffle off"
-            ) { player.toggleShuffle() }
+                systemImage: player.repeatMode == .one ? "repeat.1" : "repeat",
+                active: player.repeatMode != .off,
+                label: repeatLabel
+            ) { player.cycleRepeat() }
             .opacity(dimmed)
             Spacer()
             Button { player.previous() } label: {
@@ -173,10 +173,10 @@ struct NowPlayingView: View {
             .opacity(dimmed)
             Spacer()
             modeButton(
-                systemImage: player.repeatMode == .one ? "repeat.1" : "repeat",
-                active: player.repeatMode != .off,
-                label: repeatLabel
-            ) { player.cycleRepeat() }
+                systemImage: "shuffle",
+                active: player.isShuffled,
+                label: player.isShuffled ? "Shuffle on" : "Shuffle off"
+            ) { player.toggleShuffle() }
             .opacity(dimmed)
         }
         .animation(.default, value: ended)
@@ -194,7 +194,7 @@ struct NowPlayingView: View {
         }
     }
 
-    /// Shuffle and repeat: tinted while on, dimmed while off, with a
+    /// Repeat and shuffle: tinted while on, dimmed while off, with a
     /// generous hit area since the glyphs are small.
     private func modeButton(
         systemImage: String, active: Bool, label: String, action: @escaping () -> Void

@@ -86,11 +86,9 @@ struct MusicView: View {
                 AlbumBrowserControls(model: model, grouping: $grouping, sort: $sort)
                     .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
-                if hiddenCount > 0 {
-                    HiddenArtistsLine(model: model, count: hiddenCount)
-                        .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                        .listRowSeparator(.hidden)
-                }
+                HiddenArtistsLine(model: model, count: hiddenCount)
+                    .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    .listRowSeparator(.hidden)
                 ForEach(groups) { group in
                     Section {
                         grid(group.albums, minimum: 100, spacing: 12, showArtist: grouping != .artist)
