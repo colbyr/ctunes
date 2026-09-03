@@ -4,51 +4,19 @@ import Testing
 
 @Suite("Track cache")
 struct TrackCacheTests {
-    private static let base = URL(string: "https://example.plex.direct:32400")!
-
-    /// A fresh directory per test; swift-testing runs suites in parallel.
-    private func makeDirectory() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "TrackCacheTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
-
     private func source(id: Int, stamp: Int = 1746246593, size: Int = 1024, server: String = "M") -> TrackSource {
-        let key = "/library/parts/\(id)/\(stamp)/file.flac"
-        return TrackSource(
-            server: server,
-            part: PlexPart(key: key, container: "flac", size: size),
-            request: URLRequest(url: Self.base.appending(path: key))
-        )
+        CacheTestSupport.source(id: id, stamp: stamp, size: size, server: server)
     }
 
-    /// A cache whose server answers every part with 1024 zero bytes, the
-    /// size `source(id:)` declares, and counts the requests.
+    /// The cache and its cache root (not the pinned root).
     private func makeCache(
         limit: Int = 2 << 30,
         body: @escaping @Sendable (URLRequest) -> MockURLProtocol.Response = { _ in
             .init(body: Data(count: 1024))
         }
-    ) throws -> (TrackCache, URL, Counter) {
-        let counter = Counter()
-        let directory = try makeDirectory()
-        let cache = TrackCache(
-            directory: directory,
-            limit: limit,
-            session: MockURLProtocol.session { request in
-                counter.increment()
-                return body(request)
-            }
-        )
-        return (cache, directory, counter)
-    }
-
-    final class Counter: @unchecked Sendable {
-        private var value = 0
-        private let lock = NSLock()
-        func increment() { lock.withLock { value += 1 } }
-        var count: Int { lock.withLock { value } }
+    ) throws -> (TrackCache, URL, CacheTestSupport.Counter) {
+        let (cache, _, counter) = try CacheTestSupport.makeCache(limit: limit, body: body)
+        return (cache, cache.directory, counter)
     }
 
     // MARK: - Keys
@@ -229,14 +197,5 @@ struct TrackCacheTests {
         #expect(await cache.usage() == 1024)
         await cache.clear()
         #expect(await cache.usage() == 0)
-    }
-}
-
-extension TrackCache {
-    /// Waits for the pump to finish, for tests.
-    func drain() async throws {
-        while await isPumping {
-            try await Task.sleep(for: .milliseconds(10))
-        }
     }
 }

@@ -22,15 +22,22 @@ struct MusicView: View {
     @State private var showingListeners = false
     /// Bytes of cached audio, for the clear button; nil until read.
     @State private var cacheUsage: Int?
+    @State private var confirmingRemoveAll = false
     @AppStorage("albumSort") private var sort: AlbumSort = .recentlyAdded
     @AppStorage("albumGrouping") private var grouping: AlbumGrouping = .artist
+    @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
 
+    private var offline: Bool { model.state == .offline }
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
+    /// Filtered before the pure grouping and search, so those stay pure.
+    private var browsable: [PlexAlbum] {
+        downloadedOnly ? albums.filter { model.downloads.isDownloaded($0) } : albums
+    }
     private var groups: [AlbumGroup] {
-        AlbumBrowse.groups(albums, sort: sort, grouping: grouping, hiding: hidden)
+        AlbumBrowse.groups(browsable, sort: sort, grouping: grouping, hiding: hidden)
     }
     private var results: [PlexAlbum] {
-        AlbumBrowse.search(albums, query: query, sort: sort, hiding: hidden)
+        AlbumBrowse.search(browsable, query: query, sort: sort, hiding: hidden)
     }
     /// Every artist in the library, for the listeners sheet and the count
     /// under the title. Unfiltered, so a veto from another section doesn't
@@ -64,6 +71,13 @@ struct MusicView: View {
                 grid(results, minimum: 100, spacing: 12, showArtist: true)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
             } else {
+                if offline {
+                    OfflineBanner(reconnecting: model.reconnecting) {
+                        Task { await model.reconnect(force: true) }
+                    }
+                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
+                    .listRowSeparator(.hidden)
+                }
                 // One row for all three cards: the row clips at its insets,
                 // so the shadow between the cards needs no inset at all and
                 // only the outer edges have to clear it.
@@ -83,7 +97,7 @@ struct MusicView: View {
                     .frame(height: 1)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
-                AlbumBrowserControls(model: model, grouping: $grouping, sort: $sort)
+                AlbumBrowserControls(model: model, grouping: $grouping, sort: $sort, downloadedOnly: $downloadedOnly)
                     .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
                 HiddenArtistsLine(model: model, count: hiddenCount)
@@ -122,6 +136,9 @@ struct MusicView: View {
                 ProgressView()
             } else if albums.isEmpty {
                 ContentUnavailableView("No albums", systemImage: "square.stack")
+            } else if browsable.isEmpty {
+                ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
+                                       description: Text("Turn off Downloaded only to see the whole library."))
             } else if !query.isEmpty && results.isEmpty {
                 ContentUnavailableView.search(text: query)
             }
@@ -131,14 +148,27 @@ struct MusicView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Listeners…", systemImage: "person.2") { showingListeners = true }
-                    if model.sections.count > 1 {
+                    if model.sections.count > 1, !offline {
                         Button("Change library") { model.clearSectionChoice() }
                     }
-                    if let cacheUsage, cacheUsage > 0 {
-                        Button("Clear downloaded tracks (\(ByteCountFormatter.string(fromByteCount: Int64(cacheUsage), countStyle: .file)))", systemImage: "trash") {
-                            Task {
-                                await player.clearCache()
-                                self.cacheUsage = await player.cacheUsage()
+                    Section("Downloads") {
+                        Toggle("Keep favorites offline", systemImage: "heart", isOn: Binding(
+                            get: { model.isFavoritesPinned },
+                            set: { on in Task { await model.setFavoritesPinned(on) } }
+                        ))
+                        .disabled(offline)
+                        if model.downloads.usage > 0 {
+                            Text("Downloads: \(Self.bytes(model.downloads.usage))")
+                            Button("Remove all downloads", systemImage: "trash", role: .destructive) {
+                                confirmingRemoveAll = true
+                            }
+                        }
+                        if let cacheUsage, cacheUsage > 0 {
+                            Button("Clear cached tracks (\(Self.bytes(cacheUsage)))", systemImage: "trash") {
+                                Task {
+                                    await player.clearCache()
+                                    self.cacheUsage = await player.cacheUsage()
+                                }
                             }
                         }
                     }
@@ -154,17 +184,33 @@ struct MusicView: View {
         .task(id: player.currentTrack?.id) {
             cacheUsage = await player.cacheUsage()
         }
-        .task {
+        // Keyed on the generation so going offline, or coming back, reloads
+        // from whichever library is current.
+        .task(id: model.libraryGeneration) {
             guard let library = model.library else { return }
-            async let favoriteTracks = library.favoriteTracks(inSection: section.key)
-            albums = (try? await library.albums(inSection: section.key)) ?? []
-            loaded = true
-            favorites = try? await favoriteTracks
+            do {
+                async let favoriteTracks = library.favoriteTracks(inSection: section.key)
+                albums = try await library.albums(inSection: section.key)
+                loaded = true
+                favorites = try? await favoriteTracks
+            } catch {
+                await model.connectionLost(error)
+                loaded = true
+                return
+            }
             #if DEBUG
             if ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS_SHEET"] != nil {
                 showingListeners = true
             }
             #endif
+            if !library.isOffline {
+                await model.snapshot(albums: albums, favorites: favorites ?? [])
+            }
+        }
+        .confirmationDialog("Remove all downloads?", isPresented: $confirmingRemoveAll, titleVisibility: .visible) {
+            Button("Remove All Downloads", role: .destructive) { model.downloads.removeAll() }
+        } message: {
+            Text("Pinned albums and favorites will stream again. Nothing is removed from your library.")
         }
         .alert("No favorites yet", isPresented: $noFavorites) {
             Button("OK") {}
@@ -194,8 +240,16 @@ struct MusicView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
+    /// Offline, also only tracks with a file: an unplayable track must
+    /// never enter the queue.
     private func allowed(_ tracks: [PlexTrack]) -> [PlexTrack] {
-        tracks.filter { !hidden.contains($0.grandparentRatingKey ?? "") }
+        tracks.filter {
+            !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isDownloaded($0))
+        }
+    }
+
+    private static func bytes(_ count: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
     }
 
     /// Every favorite track in the library, in a fresh random order each tap.
@@ -230,9 +284,19 @@ private struct AlbumTile: View {
     let showArtist: Bool
 
     var body: some View {
+        let downloaded = model.downloads.isDownloaded(album)
+        let offline = model.state == .offline
         VStack(alignment: .leading, spacing: 6) {
             Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
                 .artworkShadow()
+                .overlay(alignment: .bottomTrailing) {
+                    if downloaded {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.white, .black.opacity(0.55))
+                            .padding(5)
+                    }
+                }
             VStack(alignment: .leading, spacing: 1) {
                 Text(album.title)
                     .font(.footnote)
@@ -243,7 +307,41 @@ private struct AlbumTile: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Browsable but not playable: still in the grid, clearly dimmed.
+        .opacity(offline && !downloaded ? 0.35 : 1)
         .contentShape(.rect)
+    }
+}
+
+/// First row of the browse root while the server is away. Same chrome as
+/// the shuffle card, so it reads as part of the page rather than an alert.
+private struct OfflineBanner: View {
+    let reconnecting: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "network.slash")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .background(.fill.tertiary, in: .circle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Offline").font(.headline)
+                Text("Playing downloaded music").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if reconnecting {
+                ProgressView()
+            } else {
+                Button("Try again", action: retry)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+            }
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+        .cardShadow()
     }
 }
 

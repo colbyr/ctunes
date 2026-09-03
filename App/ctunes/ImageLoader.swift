@@ -47,8 +47,12 @@ final class ImageLoader {
             // Decoded off the main actor so a burst of list art doesn't stall
             // scrolling.
             await Task.detached(priority: .userInitiated) {
-                guard let (data, _) = try? await session.data(from: url),
-                      let image = UIImage(data: data) else { return nil }
+                // Offline art is a file the offline store saved: read it
+                // directly rather than through the URL cache.
+                let data = url.isFileURL
+                    ? try? Data(contentsOf: url)
+                    : try? await session.data(from: url).0
+                guard let data, let image = UIImage(data: data) else { return nil }
                 return image.preparingForDisplay() ?? image
             }.value
         }

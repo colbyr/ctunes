@@ -25,7 +25,7 @@ struct MediaContainerResponse<Item: Decodable & Sendable>: Decodable, Sendable {
 
 /// A music library. Audiobooks also report type "artist", so a server can
 /// have more than one and the user has to pick.
-public struct PlexSection: Decodable, Sendable, Identifiable, Hashable {
+public struct PlexSection: Codable, Sendable, Identifiable, Hashable {
     public let key: String
     public let type: String
     public let title: String
@@ -34,7 +34,7 @@ public struct PlexSection: Decodable, Sendable, Identifiable, Hashable {
     public var isMusic: Bool { type == "artist" }
 }
 
-public struct PlexArtist: Decodable, Sendable, Identifiable, Hashable {
+public struct PlexArtist: Codable, Sendable, Identifiable, Hashable {
     public let ratingKey: String
     public let title: String
     public let thumb: String?
@@ -58,7 +58,7 @@ public struct PlexArtist: Decodable, Sendable, Identifiable, Hashable {
     }
 }
 
-public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {
+public struct PlexAlbum: Codable, Sendable, Identifiable, Hashable {
     public let ratingKey: String
     public let title: String
     public let parentRatingKey: String?
@@ -118,6 +118,23 @@ public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {
         genres = try c.decodeIfPresent([PlexTag].self, forKey: .genres)?.map(\.tag) ?? []
     }
 
+    /// The mirror of `init(from:)`, so a snapshot round-trips through the
+    /// same shape the server sends: genres go back to `Genre: [{tag}]`.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(ratingKey, forKey: .ratingKey)
+        try c.encode(title, forKey: .title)
+        try c.encodeIfPresent(parentRatingKey, forKey: .parentRatingKey)
+        try c.encodeIfPresent(parentTitle, forKey: .parentTitle)
+        try c.encodeIfPresent(year, forKey: .year)
+        try c.encodeIfPresent(thumb, forKey: .thumb)
+        try c.encodeIfPresent(addedAt, forKey: .addedAt)
+        try c.encodeIfPresent(lastViewedAt, forKey: .lastViewedAt)
+        try c.encodeIfPresent(viewCount, forKey: .viewCount)
+        try c.encodeIfPresent(originallyAvailableAt, forKey: .originallyAvailableAt)
+        try c.encode(genres.map(PlexTag.init), forKey: .genres)
+    }
+
     enum CodingKeys: String, CodingKey {
         case ratingKey, title, parentRatingKey, parentTitle, year, thumb
         case addedAt, lastViewedAt, viewCount, originallyAvailableAt
@@ -126,11 +143,11 @@ public struct PlexAlbum: Decodable, Sendable, Identifiable, Hashable {
 }
 
 /// `{"tag": "Pop/Rock"}` — how Plex lists genres, styles and moods.
-struct PlexTag: Decodable, Sendable, Hashable {
+struct PlexTag: Codable, Sendable, Hashable {
     let tag: String
 }
 
-public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
+public struct PlexTrack: Codable, Sendable, Identifiable, Hashable {
     public let ratingKey: String
     public let title: String
     public let index: Int?
@@ -201,7 +218,7 @@ extension Array where Element == PlexTrack {
     }
 }
 
-public struct PlexMedia: Decodable, Sendable, Hashable {
+public struct PlexMedia: Codable, Sendable, Hashable {
     public let audioCodec: String?
     public let container: String?
     public let bitrate: Int?
@@ -213,7 +230,7 @@ public struct PlexMedia: Decodable, Sendable, Hashable {
     }
 }
 
-public struct PlexPart: Decodable, Sendable, Hashable {
+public struct PlexPart: Codable, Sendable, Hashable {
     public let key: String
     public let container: String?
     public let size: Int?
@@ -246,6 +263,12 @@ public struct PlexPart: Decodable, Sendable, Hashable {
         guard ext.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
         return "\(segments[3])-\(segments[4]).\(ext)"
     }
+
+    /// `server/1017-1746246593.flac`, the path the track cache files this
+    /// part under; nil when the part key isn't cacheable.
+    public func cachePath(server: String) -> String? {
+        cacheKey.map { "\(server)/\($0)" }
+    }
 }
 
 /// One part file the track cache can fetch. `request` carries the token in a
@@ -268,6 +291,41 @@ public struct TrackSource: Sendable, Hashable {
 
     /// `server/1017-1746246593.flac`; nil when the part key isn't cacheable.
     public var cachePath: String? {
-        part.cacheKey.map { "\(server)/\($0)" }
+        part.cachePath(server: server)
+    }
+}
+
+/// Everything the browse root needs with no server. Written after every
+/// successful online load, read when discovery fails. Nothing secret in it:
+/// `thumb` and `part.key` are server-relative paths.
+public struct LibrarySnapshot: Codable, Sendable, Equatable {
+    /// `PlexServer.machineIdentifier`.
+    public let server: String
+    public let serverName: String
+    public let sections: [PlexSection]
+    public let section: PlexSection
+    public let albums: [PlexAlbum]
+    public let artists: [PlexArtist]
+    public let favorites: [PlexTrack]
+    public let savedAt: Date
+
+    public init(
+        server: String,
+        serverName: String,
+        sections: [PlexSection],
+        section: PlexSection,
+        albums: [PlexAlbum],
+        artists: [PlexArtist],
+        favorites: [PlexTrack],
+        savedAt: Date = Date()
+    ) {
+        self.server = server
+        self.serverName = serverName
+        self.sections = sections
+        self.section = section
+        self.albums = albums
+        self.artists = artists
+        self.favorites = favorites
+        self.savedAt = savedAt
     }
 }

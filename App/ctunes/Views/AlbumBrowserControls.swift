@@ -8,6 +8,8 @@ import SwiftUI
 struct ArrangeChip: View {
     @Binding var grouping: AlbumGrouping
     @Binding var sort: AlbumSort
+    /// Only the main browser offers the filter; a mix pool passes nil.
+    var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         Menu {
@@ -19,6 +21,9 @@ struct ArrangeChip: View {
                 ForEach(AlbumGrouping.allCases, id: \.self) { Text($0.title) }
             }
             .pickerStyle(.menu)
+            if let downloadedOnly {
+                Toggle("Downloaded only", systemImage: "arrow.down.circle", isOn: downloadedOnly)
+            }
         } label: {
             Image(systemName: "arrow.up.arrow.down")
                 .font(.subheadline.weight(.bold))
@@ -39,15 +44,16 @@ struct AlbumBrowserControls: View {
     let model: AppModel
     @Binding var grouping: AlbumGrouping
     @Binding var sort: AlbumSort
+    var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         if model.roster.listeners.isEmpty {
-            ArrangeChip(grouping: $grouping, sort: $sort)
+            ArrangeChip(grouping: $grouping, sort: $sort, downloadedOnly: downloadedOnly)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 16)
                 .padding(.vertical, 4)
         } else {
-            ListenerChips(model: model) { ArrangeChip(grouping: $grouping, sort: $sort) }
+            ListenerChips(model: model) { ArrangeChip(grouping: $grouping, sort: $sort, downloadedOnly: downloadedOnly) }
         }
     }
 }

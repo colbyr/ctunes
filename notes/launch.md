@@ -172,9 +172,9 @@ TestFlight without it and add it in a later beta build. Don't hold the beta.
 
 ## Explicitly deferred (v1.1+)
 
-Explicit offline downloads that survive eviction (would justify a Pro IAP;
-the track cache in `notes/track-cache.md` already keeps played and upcoming
-tracks on disk), iPad, widgets/Live Activity,
+Background downloads for pinned albums (pins themselves shipped in
+`notes/offline.md`; gating them behind a Pro IAP is still open), iPad,
+widgets/Live Activity,
 transcode fallback, queue reordering, spread shuffle (`notes/spread-shuffle.md`),
 artist pages, Siri/App Intents.
 
