@@ -15,21 +15,6 @@ public enum AlbumSort: String, CaseIterable, Sendable, Codable {
         }
     }
 
-    /// What the album browser's arrange menu offers, in menu order. The
-    /// other cases stay for the artist mix pool and for stored values.
-    public static let browserOptions: [AlbumSort] = [.name, .releaseDate, .recentlyAdded]
-
-    /// The arrange menu's wording, shorter than `title` where the menu's
-    /// "Sort by" header already supplies the context.
-    public var browserTitle: String {
-        switch self {
-        case .name: "Title"
-        case .releaseDate: "Newest"
-        case .recentlyAdded: "Recently Added"
-        default: title
-        }
-    }
-
     /// Stable ordering: albums missing the key sort to the bottom, ties fall
     /// back to title so the order doesn't shift between loads.
     func sorted(_ albums: [PlexAlbum]) -> [PlexAlbum] {
@@ -89,9 +74,6 @@ public enum AlbumGrouping: String, CaseIterable, Sendable, Codable {
         case .decade: "Decade"
         }
     }
-
-    /// What the album browser's arrange menu offers, in menu order.
-    public static let browserOptions: [AlbumGrouping] = [.none, .artist, .decade]
 }
 
 /// One section of the browse root.

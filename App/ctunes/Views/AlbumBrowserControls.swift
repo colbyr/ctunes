@@ -2,24 +2,25 @@ import PlexKit
 import SwiftUI
 
 /// The album browser's arrange button: a 34pt circle pinned at the trailing
-/// edge of the listener chips, opening one menu with Group by and Sort by.
-/// Picking an option applies it and dismisses. The main screen and the album
-/// mix builder bind the same stored values, so a choice made in one shows
-/// up in the other.
+/// edge of the listener chips, opening one menu with the sorts inline under
+/// a Sort header and the groupings in a submenu, since grouping is the
+/// rarer change. Picking an option applies it and dismisses. The main
+/// screen and the album mix builder bind the same stored values, so a
+/// choice made in one shows up in the other.
 struct ArrangeChip: View {
     @Binding var grouping: AlbumGrouping
     @Binding var sort: AlbumSort
 
     var body: some View {
         Menu {
-            Picker("Group by", selection: $grouping) {
-                ForEach(AlbumGrouping.browserOptions, id: \.self) { Text($0.title) }
+            Picker("Sort", selection: $sort) {
+                ForEach(AlbumSort.allCases, id: \.self) { Text($0.title) }
             }
             .pickerStyle(.inline)
-            Picker("Sort by", selection: $sort) {
-                ForEach(AlbumSort.browserOptions, id: \.self) { Text($0.browserTitle) }
+            Picker("Group", systemImage: "square.grid.2x2", selection: $grouping) {
+                ForEach(AlbumGrouping.allCases, id: \.self) { Text($0.title) }
             }
-            .pickerStyle(.inline)
+            .pickerStyle(.menu)
         } label: {
             Image(systemName: "arrow.up.arrow.down")
                 .font(.subheadline.weight(.bold))
@@ -29,15 +30,7 @@ struct ArrangeChip: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Arrange: grouped by \(grouping.title), sorted by \(sort.browserTitle)")
-    }
-
-    /// Stored values from before the menu was trimmed to `browserOptions`
-    /// would otherwise group the grid by something the menu can't show a
-    /// check for.
-    static func normalize(grouping: inout AlbumGrouping, sort: inout AlbumSort) {
-        if !AlbumGrouping.browserOptions.contains(grouping) { grouping = .artist }
-        if !AlbumSort.browserOptions.contains(sort) { sort = .recentlyAdded }
+        .accessibilityLabel("Sorted by \(sort.title), grouped by \(grouping.title)")
     }
 }
 

@@ -267,7 +267,6 @@ struct MixBuilderView: View {
         .onDisappear { building = false }
         .onChange(of: selected) { savedSelection = selected.joined(separator: ",") }
         .task {
-            if kind == .album { ArrangeChip.normalize(grouping: &grouping, sort: &sort) }
             guard let library = model.library else { return }
             switch kind {
             case .artist: artists = (try? await library.artists(inSection: section.key)) ?? []

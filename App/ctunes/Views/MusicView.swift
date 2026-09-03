@@ -147,7 +147,6 @@ struct MusicView: View {
             }
         }
         .task {
-            ArrangeChip.normalize(grouping: &grouping, sort: &sort)
             guard let library = model.library else { return }
             async let favoriteTracks = library.favoriteTracks(inSection: section.key)
             albums = (try? await library.albums(inSection: section.key)) ?? []
