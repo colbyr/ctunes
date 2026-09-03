@@ -112,6 +112,15 @@ struct AlbumBrowseTests {
         #expect(groups.map(\.name) == ["2014", "1966", "1965", "Unknown Year"])
     }
 
+    @Test("decade groups run oldest first, newest first under the release sort, unknown last")
+    func decadeGroups() {
+        let byTitle = AlbumBrowse.groups(Self.albums, sort: .name, grouping: .decade)
+        #expect(byTitle.map(\.name) == ["1960s", "2010s", "Unknown Decade"])
+        #expect(byTitle[0].albums.map(\.title) == ["Revolver", "Rubber Soul"])
+        let newest = AlbumBrowse.groups(Self.albums, sort: .releaseDate, grouping: .decade)
+        #expect(newest.map(\.name) == ["2010s", "1960s", "Unknown Decade"])
+    }
+
     @Test("an album lands in every one of its genres")
     func genreGroups() {
         let groups = AlbumBrowse.groups(Self.albums, sort: .name, grouping: .genre)

@@ -2,7 +2,7 @@ import PlexKit
 import SwiftUI
 
 /// Browse root: every album in the library, sorted and grouped however the
-/// ⋯ menu last left it. The query from the floating search pill switches to
+/// arrange button last left it. The query from the floating search pill switches to
 /// a flat grid ranked by match quality.
 struct MusicView: View {
     let model: AppModel
@@ -64,11 +64,6 @@ struct MusicView: View {
                 grid(results, minimum: 100, spacing: 12, showArtist: true)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
             } else {
-                if !model.roster.listeners.isEmpty {
-                    ListenerChips(model: model)
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                }
                 // One row for all three cards: the row clips at its insets,
                 // so the shadow between the cards needs no inset at all and
                 // only the outer edges have to clear it.
@@ -81,16 +76,28 @@ struct MusicView: View {
                 }
                 .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 .listRowSeparator(.hidden)
+                // The browser starts here: a rule, then the chips with the
+                // arrange button, then the hidden-artist line when any are.
+                Rectangle()
+                    .fill(.separator)
+                    .frame(height: 1)
+                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    .listRowSeparator(.hidden)
+                AlbumBrowserControls(model: model, grouping: $grouping, sort: $sort)
+                    .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                if hiddenCount > 0 {
+                    HiddenArtistsLine(model: model, count: hiddenCount)
+                        .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                        .listRowSeparator(.hidden)
+                }
                 ForEach(groups) { group in
                     Section {
                         grid(group.albums, minimum: 100, spacing: 12, showArtist: grouping != .artist)
-                            .listRowInsets(.init(top: 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                            .listRowInsets(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     } header: {
                         if !group.name.isEmpty {
-                            Text(group.name)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(Color.primary)
-                                .textCase(nil)
+                            AlbumGroupHeader(group: group)
                                 .padding(.leading, Self.margin)
                                 .padding(.top, 14)
                                 .padding(.bottom, 6)
@@ -101,6 +108,8 @@ struct MusicView: View {
             }
         }
         .listStyle(.plain)
+        // The rule is a 1pt row; the default minimum centres it in 44pt.
+        .environment(\.defaultMinListRowHeight, 1)
         // The row insets set the gaps; the default section gap on top of
         // them left too much air above each group title.
         .listSectionSpacing(0)
@@ -120,22 +129,9 @@ struct MusicView: View {
             }
         }
         .navigationTitle("Tunes")
-        // Always present so the title doesn't jump when listeners toggle.
-        .navigationSubtitle(hiddenCount > 0
-            ? "\(hiddenCount) artist\(hiddenCount == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))"
-            : "Everything")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Picker("Sort By", systemImage: "arrow.up.arrow.down", selection: $sort) {
-                        ForEach(AlbumSort.allCases, id: \.self) { Text($0.title) }
-                    }
-                    .pickerStyle(.menu)
-                    Picker("Group By", systemImage: "square.grid.2x2", selection: $grouping) {
-                        ForEach(AlbumGrouping.allCases, id: \.self) { Text($0.title) }
-                    }
-                    .pickerStyle(.menu)
-                    Divider()
                     Button("Listeners…", systemImage: "person.2") { showingListeners = true }
                     if model.sections.count > 1 {
                         Button("Change library") { model.clearSectionChoice() }

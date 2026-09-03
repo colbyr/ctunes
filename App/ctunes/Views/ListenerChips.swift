@@ -57,18 +57,19 @@ struct FilterChip<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        HStack(spacing: 7) { content }
+        HStack(spacing: 8) { content }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(active ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.secondary))
             .padding(.leading, 5)
-            .padding(.trailing, 14)
+            .padding(.trailing, 15)
             .frame(height: 34)
-            .background(active ? AnyShapeStyle(.primary) : AnyShapeStyle(.background), in: .capsule)
+            .background(active ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear), in: .capsule)
             .contentShape(.capsule)
     }
 }
 
-/// The browse sort as an icon-only pill, for rows that host the chips.
+/// The sort alone as an icon-only pill, for the artist mix pool, which has
+/// no grouping. The album browser uses `ArrangeChip` instead.
 struct SortChip: View {
     @Binding var sort: AlbumSort
 

@@ -62,7 +62,7 @@ public enum AlbumSort: String, CaseIterable, Sendable, Codable {
 
 /// How the browse root sections the sorted albums.
 public enum AlbumGrouping: String, CaseIterable, Sendable, Codable {
-    case none, artist, releaseYear, genre, lastPlayed
+    case none, artist, releaseYear, genre, lastPlayed, decade
 
     public var title: String {
         switch self {
@@ -71,6 +71,7 @@ public enum AlbumGrouping: String, CaseIterable, Sendable, Codable {
         case .releaseYear: "Release Year"
         case .genre: "Genre"
         case .lastPlayed: "Last Played"
+        case .decade: "Decade"
         }
     }
 }
@@ -91,7 +92,8 @@ public enum AlbumBrowse {
     /// shape to render. Artist and genre groups follow the sort too (by their top
     /// album, or by name under the Name sort); year and recency groups are
     /// always in their natural order, since "2019 before 1997 because I
-    /// played it more" reads as broken.
+    /// played it more" reads as broken. Decades run newest first only under
+    /// the release-date sort, so they read the way the cards inside them do.
     public static func groups(
         _ albums: [PlexAlbum],
         sort: AlbumSort,
@@ -123,6 +125,14 @@ public enum AlbumBrowse {
             return groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         case .releaseYear, .lastPlayed:
             return groups.sorted { (ranks[$0.id] ?? 0) < (ranks[$1.id] ?? 0) }
+        case .decade:
+            let newestFirst = sort == .releaseDate
+            return groups.sorted { lhs, rhs in
+                let l = ranks[lhs.id] ?? 0, r = ranks[rhs.id] ?? 0
+                // Unknown stays last either way.
+                if l == Int.max || r == Int.max { return l < r }
+                return newestFirst ? l > r : l < r
+            }
         }
     }
 
@@ -147,6 +157,10 @@ public enum AlbumBrowse {
         case .lastPlayed:
             let bucket = RecencyBucket(seconds: album.lastViewedAt, now: now)
             return [("played:\(bucket.rawValue)", bucket.title, bucket.rawValue)]
+        case .decade:
+            guard let year = album.year else { return [("decade:none", "Unknown Decade", Int.max)] }
+            let decade = year / 10 * 10
+            return [("decade:\(decade)", "\(decade)s", decade)]
         }
     }
 
