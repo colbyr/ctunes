@@ -274,8 +274,8 @@ struct MixBuilderView: View {
         }
     }
 
-    /// Every track across the selection, fetched concurrently, shuffled once
-    /// at enqueue time like Shuffle Favorites.
+    /// Every track across the selection, fetched concurrently, spread-shuffled
+    /// once at enqueue time like Shuffle Favorites.
     private func play() {
         guard let library = model.library, !loadingMix else { return }
         let keys = playable.map(\.id)
@@ -303,7 +303,7 @@ struct MixBuilderView: View {
                 nothingToPlay = true
                 return
             }
-            player.play(playable.shuffled(), startingAt: 0, library: library)
+            player.play(playable.spreadShuffled(), startingAt: 0, library: library)
             showingNowPlaying = true
         }
     }

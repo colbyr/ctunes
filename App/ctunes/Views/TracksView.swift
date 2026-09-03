@@ -257,10 +257,10 @@ struct TracksView: View {
         showingNowPlaying = true
     }
 
-    /// Shuffled once at enqueue time, the same way Shuffle Favorites does it.
+    /// Spread-shuffled once at enqueue time, the same way Shuffle Favorites does it.
     private func shuffle() {
         guard let library = model.library, !tracks.isEmpty else { return }
-        player.play(tracks.shuffled(), startingAt: 0, library: library)
+        player.play(tracks.spreadShuffled(), startingAt: 0, library: library)
         showingNowPlaying = true
     }
 

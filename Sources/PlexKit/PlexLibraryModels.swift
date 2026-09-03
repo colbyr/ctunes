@@ -139,6 +139,8 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     /// The artist's ratingKey; matches `PlexAlbum.parentRatingKey`.
     public let grandparentRatingKey: String?
     public let grandparentTitle: String?
+    /// The album's ratingKey; matches `PlexAlbum.ratingKey`.
+    public let parentRatingKey: String?
     public let parentTitle: String?
     /// The disc number. Plex numbers discs from 1 and sends it for every
     /// track, single-disc albums included.
@@ -173,9 +175,22 @@ public struct PlexTrack: Decodable, Sendable, Identifiable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case ratingKey, title, index, duration, grandparentRatingKey, grandparentTitle, parentTitle
-        case parentIndex, originalTitle, thumb, userRating
+        case ratingKey, title, index, duration, grandparentRatingKey, grandparentTitle
+        case parentRatingKey, parentTitle, parentIndex, originalTitle, thumb, userRating
         case media = "Media"
+    }
+}
+
+extension PlexTrack {
+    /// Artist, then album: the grouping every shuffle in the app spreads by.
+    public static let shuffleGrouping: [@Sendable (PlexTrack) -> String] =
+        [{ $0.grandparentRatingKey ?? "" }, { $0.parentRatingKey ?? "" }]
+}
+
+extension Array where Element == PlexTrack {
+    /// Spread-shuffled by artist, then album. See `SpreadShuffle.swift`.
+    public func spreadShuffled() -> [PlexTrack] {
+        spreadShuffled(by: PlexTrack.shuffleGrouping)
     }
 }
 

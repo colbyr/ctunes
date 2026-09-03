@@ -30,8 +30,8 @@ launches on a device.
 | M3 browse | done | live walk of the real library; screenshots |
 | M4 playback + lock screen | done | confirmed on device |
 | M5 queue + Now Playing | done | playback with artwork, clock advancing |
-| M6 favorites | done | hearts and shuffle rendered in simulator; rating round-trip verified with curl |
-| M7 mixes | done | artist and album mix builders (`notes/mixes.md`); a mix is the shuffled union of the picks, one-shot, vetoes applied |
+| M6 favorites | done | hearts and spread shuffle rendered in simulator; rating round-trip verified with curl |
+| M7 mixes | done | artist and album mix builders (`notes/mixes.md`); a mix is the spread-shuffled union of the picks, one-shot, vetoes applied |
 
 All six milestones are verified, background audio and lock screen controls
 included, the latter on a real device where the simulator cannot test them.
@@ -200,7 +200,7 @@ track rows; a favorite row also shows a small filled heart. Toggles are layered
 over the immutable `PlexTrack` values in `AppModel` (optimistic, reverted on
 error) rather than pushed into every fetched copy and the player's queue.
 "Shuffle Favorites" on the browse root fetches every favorite track and hands a
-shuffled array to the existing `play(_:startingAt:library:)`; the player has
+spread-shuffled array (by artist, then album) to the existing `play(_:startingAt:library:)`; the player has
 no shuffle mode of its own and doesn't need one for this. The lock-screen
 `likeCommand` is skipped because iOS no longer displays it.
 

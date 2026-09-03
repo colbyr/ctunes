@@ -191,8 +191,8 @@ struct MusicView: View {
     }
 
     /// Every favorite track in the library, in a fresh random order each tap.
-    /// Shuffling once at enqueue time is all this needs; the player has no
-    /// shuffle mode of its own.
+    /// Spread-shuffling once at enqueue time is all this needs; the player has
+    /// no shuffle mode of its own.
     private func shuffleFavorites() {
         guard let library = model.library, !loadingFavorites else { return }
         loadingFavorites = true
@@ -211,7 +211,7 @@ struct MusicView: View {
                 everyFavoriteHidden = true
                 return
             }
-            player.play(playable.shuffled(), startingAt: 0, library: library)
+            player.play(playable.spreadShuffled(), startingAt: 0, library: library)
         }
     }
 }

@@ -107,6 +107,7 @@ struct PlexLibraryTests {
         #expect(first.index == 1)
         #expect(first.grandparentTitle == "Antarctigo Vespucci")
         #expect(first.grandparentRatingKey == "1028")
+        #expect(first.parentRatingKey == "1029")
         #expect(first.parentTitle == "Soulmate Stuff")
 
         let part = try #require(first.part)

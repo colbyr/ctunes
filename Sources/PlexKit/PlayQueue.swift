@@ -109,20 +109,34 @@ public struct PlayQueue<Item: Sendable>: Sendable {
     /// Keeps the current item where the listener is, moves it to the front
     /// and shuffles everything else behind it, Apple Music style. Shuffling an
     /// already shuffled queue reshuffles against the original order.
-    public mutating func shuffle(using generator: inout some RandomNumberGenerator) {
+    ///
+    /// `keys` spread the rest so items sharing a key are evenly interleaved
+    /// (see `spreadShuffled(by:using:)`); empty keys shuffle uniformly.
+    public mutating func shuffle(
+        groupedBy keys: [@Sendable (Item) -> String],
+        using generator: inout some RandomNumberGenerator
+    ) {
         guard !entries.isEmpty else { return }
         let original = unshuffled ?? entries
         unshuffled = original
         guard let current = currentEntry else { return }
-        var rest = original.filter { $0.id != current.id }
-        rest.shuffle(using: &generator)
-        entries = [current] + rest
+        let rest = original.filter { $0.id != current.id }
+        let entryKeys: [@Sendable (Entry) -> String] = keys.map { key in { @Sendable entry in key(entry.item) } }
+        entries = [current] + rest.spreadShuffled(by: entryKeys, using: &generator)
         currentIndex = 0
     }
 
-    public mutating func shuffle() {
+    public mutating func shuffle(groupedBy keys: [@Sendable (Item) -> String]) {
         var generator = SystemRandomNumberGenerator()
-        shuffle(using: &generator)
+        shuffle(groupedBy: keys, using: &generator)
+    }
+
+    public mutating func shuffle(using generator: inout some RandomNumberGenerator) {
+        shuffle(groupedBy: [], using: &generator)
+    }
+
+    public mutating func shuffle() {
+        shuffle(groupedBy: [])
     }
 
     /// Restores the order from before `shuffle`. Items removed meanwhile stay

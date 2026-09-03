@@ -3,8 +3,8 @@
 ## Context
 
 Plexamp-style mixes, per the "Mix Builders" mockup (`Mix Builders.dc.html`, options 1b/1c/1d).
-A mix is a set of artists (or a set of albums); Play shuffles every track in the union into a
-one-shot queue. Nothing is saved. Listener vetoes apply: builders only offer artists that survive
+A mix is a set of artists (or a set of albums); Play spread-shuffles every track in the union
+(by artist, then album) into a one-shot queue. Nothing is saved. Listener vetoes apply: builders only offer artists that survive
 the active listeners' vetoes. No sonic analysis, no Plex playQueues; this is the same
 "fetch, filter, shuffle once, `player.play`" pattern `shuffleFavorites` already uses
 (`App/ctunes/Views/MusicView.swift:185-205`).

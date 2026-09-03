@@ -155,7 +155,7 @@ final class AudioPlayer {
     // MARK: - Modes
 
     func toggleShuffle() {
-        if queue.isShuffled { queue.unshuffle() } else { queue.shuffle() }
+        if queue.isShuffled { queue.unshuffle() } else { queue.shuffle(groupedBy: PlexTrack.shuffleGrouping) }
         updateNowPlayingModes()
     }
 

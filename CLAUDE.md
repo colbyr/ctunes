@@ -59,7 +59,10 @@ UI drift apart. Gapless playback is out of scope and would need a different
 design. **`AVPlayerItemDidPlayToEndTime` is not reliable after a seek near the
 end of a track**: the clock runs past the item's duration at rate 1 and the
 notification never posts, so the periodic time observer also treats
-`currentTime >= duration` as the end, guarded by a per-item flag.
+`currentTime >= duration` as the end, guarded by a per-item flag. Every
+shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
+is a spread shuffle by artist then album (`SpreadShuffle.swift`,
+`PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
 
 ## Plex API constraints
 
