@@ -370,7 +370,7 @@ struct MixBuilderView: View {
                         if selected {
                             Image(systemName: "xmark")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color(.systemBackground))
                                 .frame(width: 24, height: 24)
                                 .background(Color(.label), in: .circle)
                                 .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
@@ -447,11 +447,11 @@ private struct MixActions: View {
             } else {
                 HStack(spacing: 12) {
                     MixActionCard(
-                        kind: kind, systemImage: "square.on.square", title: "Play Albums", subtitle: nil,
+                        kind: kind, systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
                         enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
                     ) { action(.playAlbums) }
                     MixActionCard(
-                        kind: kind, systemImage: "shuffle", title: "Shuffle Tracks", subtitle: nil,
+                        kind: kind, systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
                         enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
                     ) { action(.shuffleTracks) }
                 }
@@ -487,7 +487,6 @@ private struct MixActionCard: View {
                         .font(.headline)
                         .foregroundStyle(enabled ? .primary : .secondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
                     if let subtitle {
                         Text(subtitle)
                             .font(.subheadline)
