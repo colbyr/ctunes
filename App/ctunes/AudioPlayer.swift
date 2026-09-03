@@ -33,6 +33,11 @@ final class AudioPlayer {
     private var library: PlexLibrary?
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var itemStatusObserver: NSKeyValueObservation?
+    /// How many times the current entry's item has been rebuilt after failing
+    /// to load. Reset whenever the cursor moves.
+    private var itemLoadRetries = 0
+    private let maxItemLoadRetries = 2
     private var commandsConfigured = false
 
     /// One id per `play` call, so the server groups a listening session's
@@ -239,18 +244,46 @@ final class AudioPlayer {
               let url = library.streamURL(for: track)
         else { return }
 
-        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        itemLoadRetries = 0
         currentTime = 0
         duration = track.durationSeconds ?? 0
         hasEnded = false
         itemEndHandled = false
+        loadItem(url: url, autoPlay: autoPlay)
+        updateNowPlayingInfo(for: track)
+        reportTimeline(isPlaying ? .playing : .paused)
+    }
 
+    /// Builds the player item for `url` and watches it fail. The first range
+    /// request for a new track has been seen to die with `NSURLError -1005`
+    /// when CFNetwork reuses a keep-alive connection the server has already
+    /// dropped; AVPlayer then sits on the failed item forever, which looks
+    /// like playback stopping after one track. A fresh item opens a fresh
+    /// connection, so retry before giving up on the track.
+    private func loadItem(url: URL, autoPlay: Bool) {
+        let item = AVPlayerItem(url: url)
+        itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            Task { @MainActor in self?.itemFailedToLoad(item, url: url) }
+        }
+        player.replaceCurrentItem(with: item)
         if autoPlay {
             player.play()
             isPlaying = true
         }
-        updateNowPlayingInfo(for: track)
-        reportTimeline(isPlaying ? .playing : .paused)
+    }
+
+    private func itemFailedToLoad(_ item: AVPlayerItem, url: URL) {
+        // A stale observer from an item that was already replaced.
+        guard player.currentItem === item else { return }
+        if itemLoadRetries < maxItemLoadRetries {
+            itemLoadRetries += 1
+            loadItem(url: url, autoPlay: isPlaying)
+            return
+        }
+        // The track is unplayable: move on rather than stall the queue. No
+        // wrapping, so a server that is down doesn't cycle the queue forever.
+        advance(wrapping: false)
     }
 
     // MARK: - Timeline

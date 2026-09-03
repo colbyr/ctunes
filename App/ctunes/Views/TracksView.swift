@@ -28,6 +28,15 @@ struct TracksView: View {
         false
         #endif
     }
+    /// `end` starts on the first track a few seconds from its end, so the
+    /// transition to the next track happens almost immediately.
+    private static var autoPlayNearEnd: Bool {
+        #if DEBUG
+        autoPlayLast || ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] == "end"
+        #else
+        false
+        #endif
+    }
     private static var autoShowNowPlaying: Bool {
         #if DEBUG
         ProcessInfo.processInfo.environment["CTUNES_DEV_NOWPLAYING"] == "1"
@@ -101,7 +110,7 @@ struct TracksView: View {
             if Self.autoPlay, !tracks.isEmpty {
                 let start = Self.autoPlayLast ? tracks.count - 1 : 0
                 player.play(tracks, startingAt: start, library: library)
-                if Self.autoPlayLast, let seconds = tracks[start].durationSeconds {
+                if Self.autoPlayNearEnd, let seconds = tracks[start].durationSeconds {
                     // Let the item become ready before seeking near its end.
                     try? await Task.sleep(for: .seconds(2))
                     player.seek(to: max(0, seconds - 4))

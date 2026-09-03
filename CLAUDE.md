@@ -80,6 +80,11 @@ appears to offer.
   registers a new device on the account.
 - **`AVPlayer` won't attach custom headers to media requests**, so stream URLs
   carry `?X-Plex-Token=`; everything else uses the header.
+- **A new track's first range request intermittently fails with
+  `NSURLError -1005`** when CFNetwork reuses a keep-alive connection the server
+  has dropped. `AVPlayer` then sits on the failed item with no error surfaced,
+  which looks like playback stopping after one track. `AudioPlayer` watches
+  each item's `status` and rebuilds the item on failure; don't remove that.
 - **`forwardUrl` is ignored for a custom scheme.** Nothing redirects back to the
   app, so auth polls while the browser sheet is open and cancels it on success.
 - Response typing is loose: `ratingKey` is a string, `hasThumbnail` is `"1"`.
@@ -127,7 +132,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 |---|---|
 | `CTUNES_DEV_TOKEN` | skips sign-in with a token from the environment |
 | `CTUNES_DEV_ALBUM` | `ratingKey\|title\|artist\|artistKey`, pushes that album onto the stack |
-| `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load; `last` starts on the final track 3s from its end, so the queue finishes at once |
+| `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load; `last` starts on the final track 3s from its end, so the queue finishes at once; `end` starts on the first track 3s from its end, so the next-track transition happens at once |
 | `CTUNES_DEV_NOWPLAYING` | `1` opens the Now Playing sheet |
 | `CTUNES_DEV_ENQUEUE` | `1` appends the album to the queue again, so Up Next has duplicates |
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
