@@ -43,3 +43,34 @@ extension Array {
         return spreadShuffled(by: keys, using: &generator)
     }
 }
+
+extension Array {
+    /// Whole-album shuffle. Groups by `album` in first-seen order, keeps each
+    /// group's internal order, spread-shuffles the albums by `artist` so one
+    /// artist's records don't run back to back, and flattens.
+    public func albumShuffled(
+        album: @escaping @Sendable (Element) -> String,
+        artist: @escaping @Sendable (Element) -> String,
+        using generator: inout some RandomNumberGenerator
+    ) -> [Element] {
+        var order: [String] = []
+        var groups: [String: [Element]] = [:]
+        for item in self {
+            let k = album(item)
+            if groups[k] == nil { order.append(k) }
+            groups[k, default: []].append(item)
+        }
+        let albums = order.map { groups[$0]! }
+        return albums
+            .spreadShuffled(by: [{ artist($0[0]) }], using: &generator)
+            .flatMap { $0 }
+    }
+
+    public func albumShuffled(
+        album: @escaping @Sendable (Element) -> String,
+        artist: @escaping @Sendable (Element) -> String
+    ) -> [Element] {
+        var generator = SystemRandomNumberGenerator()
+        return albumShuffled(album: album, artist: artist, using: &generator)
+    }
+}

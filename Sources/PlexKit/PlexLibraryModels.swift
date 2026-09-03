@@ -192,6 +192,13 @@ extension Array where Element == PlexTrack {
     public func spreadShuffled() -> [PlexTrack] {
         spreadShuffled(by: PlexTrack.shuffleGrouping)
     }
+
+    /// Albums in a spread-shuffled order by artist, each played front to
+    /// back in disc and track order. See `albumShuffled(album:artist:)`.
+    public func albumShuffled() -> [PlexTrack] {
+        sorted { ($0.parentIndex ?? 0, $0.index ?? 0) < ($1.parentIndex ?? 0, $1.index ?? 0) }
+            .albumShuffled(album: { $0.parentRatingKey ?? "" }, artist: { $0.grandparentRatingKey ?? "" })
+    }
 }
 
 public struct PlexMedia: Decodable, Sendable, Hashable {

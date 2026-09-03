@@ -72,6 +72,28 @@ struct SpreadShuffleTests {
         #expect(longestRun(albums) <= 2)
     }
 
+    @Test("album shuffle keeps every album whole and in order", arguments: 0..<20)
+    func albumShuffle(seed: UInt64) {
+        let input = ["A", "B"].flatMap { artist in
+            (1...3).flatMap { album in (0..<4).map { Track(artist: artist, album: "\(artist)-\(album)", n: $0) } }
+        }
+        var rng = SeededGenerator(seed: seed)
+        let out = input.albumShuffled(album: \.album, artist: \.artist, using: &rng)
+        #expect(out.count == input.count)
+        #expect(Set(out) == Set(input))
+        // Every album is one contiguous run, tracks still counting up.
+        var seen: Set<String> = []
+        var i = 0
+        while i < out.count {
+            let album = out[i].album
+            #expect(!seen.contains(album))
+            seen.insert(album)
+            #expect(out[i..<i+4].map(\.n) == [0, 1, 2, 3])
+            i += 4
+        }
+        #expect(longestRun(out.map(\.artist)) <= 8, "two albums by one artist at most")
+    }
+
     @Test("no keys is a uniform shuffle")
     func noKeys() {
         let input = tracks(artists: ["a": 6, "b": 6])
