@@ -20,6 +20,7 @@ struct MusicView: View {
     @State private var noFavorites = false
     @State private var everyFavoriteHidden = false
     @State private var showingListeners = false
+    @State private var showingNowPlaying = false
     /// Bytes of cached audio, for the clear button; nil until read.
     @State private var cacheUsage: Int?
     @State private var confirmingRemoveAll = false
@@ -101,7 +102,7 @@ struct MusicView: View {
                     .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
                 HiddenArtistsLine(model: model, count: hiddenCount)
-                    .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     .listRowSeparator(.hidden)
                 // In the list rather than an overlay, so it sits under the
                 // cards and the controls instead of over them.
@@ -230,6 +231,9 @@ struct MusicView: View {
         .sheet(isPresented: $showingListeners) {
             ListenersSheet(model: model, artists: artists)
         }
+        .sheet(isPresented: $showingNowPlaying) {
+            NowPlayingView(model: model)
+        }
     }
 
     /// "32 tracks for you & Laura"; just the count with no listeners set up,
@@ -279,6 +283,7 @@ struct MusicView: View {
                 return
             }
             player.play(playable.spreadShuffled(), startingAt: 0, library: library)
+            showingNowPlaying = true
         }
     }
 }

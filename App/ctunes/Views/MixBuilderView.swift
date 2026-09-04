@@ -213,7 +213,7 @@ struct MixBuilderView: View {
                 .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
             HiddenArtistsLine(model: model, count: hiddenCount)
-                .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 .listRowSeparator(.hidden)
             if kind == .album && needle.isEmpty {
                 ForEach(poolGroups) { group in
