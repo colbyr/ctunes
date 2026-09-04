@@ -13,6 +13,8 @@ public protocol LibrarySource: Sendable {
     func albums(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexAlbum]
     func tracks(inAlbum albumRatingKey: String) async throws -> [PlexTrack]
     func tracks(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexTrack]
+    /// Every track in the section, for a mix with nothing picked.
+    func tracks(inSection section: String) async throws -> [PlexTrack]
     func favoriteTracks(inSection section: String) async throws -> [PlexTrack]
     func setFavorite(_ ratingKey: String, _ favorite: Bool) async throws
     func reportTimeline(_ track: PlexTrack, state: PlaybackState, time: Double, sessionIdentifier: String) async throws

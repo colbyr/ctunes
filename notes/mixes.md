@@ -81,10 +81,12 @@ Derived:
   on from the root drops out of the mix automatically).
 
 Rows, top to bottom:
-1. `PlayMixCard` (private): same chrome as `ShuffleFavoritesCard`; `ProgressView` in the trailing
-   slot while `loadingMix`; disabled when no selection.
-2. If selection non-empty: `LazyVGrid(.adaptive(minimum: 100), spacing: 12)` of selected tiles,
-   then a `Divider`.
+1. `MixActions` (private): a Mix Albums and a Mix Tracks card, same chrome as
+   `ShuffleFavoritesCard`; `ProgressView` in the trailing slot while `loadingMix`. Always
+   enabled: with nothing selected the mix is the whole (unvetoed) pool.
+2. `LazyVGrid(.adaptive(minimum: 100), spacing: 12)` of selected tiles, or when nothing is
+   selected an empty-state line ("Mix all albums, or pick specific ones below.") sized by a
+   hidden tile in the same grid so the row height doesn't change; then a `Divider`.
 3. If `hiddenCount > 0`: `Label(..., systemImage: "eye.slash")` footnote secondary.
 4. Pool grid, same `LazyVGrid`. Overlay `ContentUnavailableView.search(text:)` when a query
    yields nothing, `ProgressView` until loaded.
@@ -98,10 +100,12 @@ white `xmark` at the top-trailing corner. Every tile is a `Button` toggling memb
 
 Play:
 ```swift
-guard let library = model.library, !selectedItems.isEmpty, !loadingMix else { return }
+guard let library = model.library, !loadingMix else { return }
 loadingMix = true
 Task {
     defer { loadingMix = false }
+    // Nothing picked: the whole section in one request (`tracks(inSection:)`),
+    // narrowed to the shown albums under Downloaded only. Otherwise one fetch per pick.
     let tracks = await withTaskGroup(of: [PlexTrack].self) { group in
         for key in selected { group.addTask { (try? await fetch(key)) ?? [] } }   // tracks(forArtist:) or tracks(inAlbum:)
         return await group.reduce(into: []) { $0 += $1 }

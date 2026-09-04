@@ -181,7 +181,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the first listener's page |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load |
-| `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle Tracks unless `CTUNES_DEV_MIX_MODE=albums` |
+| `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle Tracks unless `CTUNES_DEV_MIX_MODE=albums` |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
 disk; `scripts/plex-token.sh` reads it and caches each field in the login

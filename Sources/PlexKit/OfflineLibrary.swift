@@ -41,6 +41,12 @@ public struct OfflineLibrary: LibrarySource {
         }
     }
 
+    /// Everything on disk under a pin, each track once.
+    public func tracks(inSection section: String) async throws -> [PlexTrack] {
+        var seen: Set<String> = []
+        return await store.pinnedTracks(server: snapshot.server).filter { seen.insert($0.ratingKey).inserted }
+    }
+
     public func favoriteTracks(inSection section: String) async throws -> [PlexTrack] { snapshot.favorites }
 
     public func setFavorite(_ ratingKey: String, _ favorite: Bool) async throws {

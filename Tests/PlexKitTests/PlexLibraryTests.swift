@@ -158,6 +158,22 @@ struct PlexLibraryTests {
         #expect(tracks.first { $0.ratingKey == "1031" }?.userRating == nil)
     }
 
+    @Test("every track in a section is one type=10 query")
+    func sectionTracksQuery() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("tracks")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        let tracks = try await library.tracks(inSection: "3")
+        let url = try #require(seen.get())
+        #expect(url.contains("/library/sections/3/all?type=10"))
+        #expect(!url.contains("artist.id"))
+        #expect(!tracks.isEmpty)
+    }
+
     @Test("favorite tracks query matches rating 10 exactly")
     func favoriteTracksQuery() async throws {
         let seen = Locked<String?>(nil)

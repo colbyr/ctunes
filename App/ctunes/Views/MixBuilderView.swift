@@ -43,8 +43,9 @@ enum MixMode: Hashable {
 }
 
 /// Picks a set of artists or albums and plays every track in the union as
-/// a one-shot queue, shuffled by track or album by album. Nothing is saved: pop the screen and the selection
-/// is gone. The pool never offers an artist a listening rider has vetoed.
+/// a one-shot queue, shuffled by track or album by album. With nothing
+/// picked the mix is the whole pool. The pool never offers an artist a
+/// listening rider has vetoed.
 struct MixBuilderView: View {
     let model: AppModel
     let section: PlexSection
@@ -81,13 +82,15 @@ struct MixBuilderView: View {
     }
 
     /// Debug-only preselection from `CTUNES_DEV_MIX=<kind>:<key>,<key>`.
-    static var developmentSelection: [String] {
+    /// Nil without a colon, so the saved selection applies; a bare
+    /// `<kind>:` is an explicitly empty one.
+    static var developmentSelection: [String]? {
         #if DEBUG
         guard let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
-              let colon = raw.firstIndex(of: ":") else { return [] }
+              let colon = raw.firstIndex(of: ":") else { return nil }
         return raw[raw.index(after: colon)...].split(separator: ",").map(String.init)
         #else
-        return []
+        return nil
         #endif
     }
 
@@ -189,26 +192,23 @@ struct MixBuilderView: View {
         let picks = picks
         let playable = playable
         List {
-            MixActions(
-                kind: kind,
-                picks: playable.map(\.title),
-                vetoedPicks: picks.count - playable.count,
-                listeners: ListenerRoster.joinNames(model.roster.active.map(\.name)),
-                loading: loadingMix,
-                action: play
-            )
-            // Bottom inset clears the card's shadow; see `cardShadow`.
-            .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-            .listRowSeparator(.hidden)
-            if !picks.isEmpty {
-                grid(picks, selected: true)
-                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                Rectangle()
-                    .fill(.separator)
-                    .frame(height: 1)
-                    .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    .listRowSeparator(.hidden)
+            MixActions(kind: kind, loading: loadingMix, action: play)
+                // Bottom inset clears the card's shadow; see `cardShadow`.
+                .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                .listRowSeparator(.hidden)
+            Group {
+                if picks.isEmpty {
+                    emptySelection
+                } else {
+                    grid(picks, selected: true)
+                }
             }
+            .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+            Rectangle()
+                .fill(.separator)
+                .frame(height: 1)
+                .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                .listRowSeparator(.hidden)
             AlbumBrowserControls(model: model, view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
                 .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
@@ -262,8 +262,7 @@ struct MixBuilderView: View {
             building = true
             query = ""
             if selected.isEmpty {
-                let development = Self.developmentSelection
-                selected = development.isEmpty ? savedSelection.split(separator: ",").map(String.init) : development
+                selected = Self.developmentSelection ?? savedSelection.split(separator: ",").map(String.init)
             }
         }
         .onDisappear { building = false }
@@ -276,8 +275,7 @@ struct MixBuilderView: View {
             }
             loaded = true
             #if DEBUG
-            // `playable` here is the body's shadow, frozen at first render.
-            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil, !self.playable.isEmpty {
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {
                 play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .playAlbums : .shuffleTracks)
             }
             #endif
@@ -290,6 +288,23 @@ struct MixBuilderView: View {
         .sheet(isPresented: $showingNowPlaying) {
             NowPlayingView(model: model)
         }
+    }
+
+    /// Stands in for the selected grid, sized by an invisible tile in the
+    /// same columns so the pool doesn't jump when the first pick lands.
+    private var emptySelection: some View {
+        LazyVGrid(columns: Self.columns, alignment: .leading, spacing: 18) {
+            MixTile(kind: kind, item: Item(id: "", title: " ", subtitle: " ", thumb: nil, vetoed: false), selected: false, url: nil)
+                .hidden()
+        }
+        .overlay {
+            Text("Mix all \(kind.noun), or pick specific ones below.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+        }
+        .listRowSeparator(.hidden)
     }
 
     private func grid(_ items: [Item], selected isSelected: Bool) -> some View {
@@ -316,30 +331,47 @@ struct MixBuilderView: View {
         }
     }
 
-    /// Every track across the selection, fetched concurrently, then ordered
-    /// once at enqueue time: spread-shuffled like Shuffle Favorites, or kept
-    /// in whole albums with only the album order shuffled.
+    /// Every track across the selection, or the whole pool when nothing is
+    /// picked, fetched concurrently, then ordered once at enqueue time:
+    /// spread-shuffled like Shuffle Favorites, or kept in whole albums with
+    /// only the album order shuffled.
     private func play(_ mode: MixMode) {
         guard let library = model.library, loadingMix == nil else { return }
         let keys = playable.map(\.id)
-        guard !keys.isEmpty else { return }
+        guard selected.isEmpty || !keys.isEmpty else {
+            nothingToPlay = true
+            return
+        }
         loadingMix = mode
         Task {
             defer { loadingMix = nil }
             let kind = kind
             let section = section.key
-            let tracks = await withTaskGroup(of: [PlexTrack].self) { group in
-                for key in keys {
-                    group.addTask {
-                        switch kind {
-                        case .artist: (try? await library.tracks(forArtist: key, inSection: section)) ?? []
-                        case .album: (try? await library.tracks(inAlbum: key)) ?? []
+            let tracks: [PlexTrack]
+            if keys.isEmpty {
+                // Nothing picked: the whole section in one request. Under
+                // Downloaded only, the pool is what the filter shows.
+                let all = (try? await library.tracks(inSection: section)) ?? []
+                if downloadedOnly, kind == .album {
+                    let shown = Set(browsable.map(\.ratingKey))
+                    tracks = all.filter { shown.contains($0.parentRatingKey ?? "") }
+                } else {
+                    tracks = all
+                }
+            } else {
+                tracks = await withTaskGroup(of: [PlexTrack].self) { group in
+                    for key in keys {
+                        group.addTask {
+                            switch kind {
+                            case .artist: (try? await library.tracks(forArtist: key, inSection: section)) ?? []
+                            case .album: (try? await library.tracks(inAlbum: key)) ?? []
+                            }
                         }
                     }
+                    var all: [PlexTrack] = []
+                    for await batch in group { all += batch }
+                    return all
                 }
-                var all: [PlexTrack] = []
-                for await batch in group { all += batch }
-                return all
             }
             // Offline, only what's on disk can go in the queue.
             let offline = model.state == .offline
@@ -426,43 +458,24 @@ struct MixBuilderView: View {
 }
 
 /// The actions at the top of the page, styled like Shuffle Favorites on the
-/// root. One prompt card until something is picked, then a card per mode.
+/// root: a card per mode, always live, since an empty selection mixes
+/// everything.
 private struct MixActions: View {
     let kind: MixKind
-    let picks: [String]
-    /// Picks a listening rider has vetoed; they sit out of the mix.
-    let vetoedPicks: Int
-    let listeners: String
     let loading: MixMode?
     let action: (MixMode) -> Void
 
-    private var promptTitle: String { vetoedPicks > 0 ? "Nothing to play" : "Build a mix" }
-
-    private var promptSubtitle: String {
-        if vetoedPicks > 0 {
-            return "\(vetoedPicks) pick\(vetoedPicks == 1 ? "" : "s") hidden for \(listeners)"
-        }
-        return "Tap \(kind.noun) below to build a mix"
-    }
-
     var body: some View {
-        Group {
-            if picks.isEmpty {
-                MixActionCard(kind: kind, systemImage: kind.systemImage, title: promptTitle, subtitle: promptSubtitle, enabled: false, loading: false) {}
-            } else {
-                HStack(spacing: 12) {
-                    MixActionCard(
-                        kind: kind, systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
-                        enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
-                    ) { action(.playAlbums) }
-                    MixActionCard(
-                        kind: kind, systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
-                        enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
-                    ) { action(.shuffleTracks) }
-                }
-            }
+        HStack(spacing: 12) {
+            MixActionCard(
+                kind: kind, systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
+                enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
+            ) { action(.playAlbums) }
+            MixActionCard(
+                kind: kind, systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
+                enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
+            ) { action(.shuffleTracks) }
         }
-        .animation(.snappy, value: picks.isEmpty)
     }
 }
 

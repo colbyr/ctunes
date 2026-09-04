@@ -77,6 +77,12 @@ public actor PlexLibrary {
         )
     }
 
+    /// The whole section in one request: a mix of everything would
+    /// otherwise be a request per artist.
+    public func tracks(inSection section: String) async throws -> [PlexTrack] {
+        try await fetch(PlexTrack.self, path: "/library/sections/\(section)/all?type=10")
+    }
+
     // MARK: - Ratings
 
     /// Every track rated a full 10 in the section.
