@@ -32,6 +32,7 @@ struct NowPlayingView: View {
                 ForEach(upcoming) { entry in
                     Button { player.jump(to: entry) } label: {
                         HStack(spacing: 12) {
+                            Artwork(url: model.library?.artworkURL(entry.item.thumb), size: 44)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.item.title).lineLimit(1)
                                 Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))

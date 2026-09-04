@@ -67,26 +67,3 @@ struct FilterChip<Content: View>: View {
             .contentShape(.capsule)
     }
 }
-
-/// The sort alone as an icon-only pill, for the artist mix pool, which has
-/// no grouping. The album browser uses `ArrangeChip` instead.
-struct SortChip: View {
-    @Binding var sort: AlbumSort
-
-    var body: some View {
-        Menu {
-            Picker("Sort By", selection: $sort) {
-                ForEach(AlbumSort.allCases, id: \.self) { Text($0.title) }
-            }
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.secondary)
-                .frame(width: 34, height: 34)
-                .background(.fill.tertiary, in: .circle)
-                .contentShape(.circle)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Sort by \(sort.title)")
-    }
-}

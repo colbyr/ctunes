@@ -47,26 +47,29 @@ struct AlbumBrowseTests {
         #expect(soulmate.genres.isEmpty)
     }
 
-    @Test("sorts with missing keys last and titles breaking ties", arguments: [
-        (AlbumSort.recentlyAdded, ["Soulmate Stuff", "Demos", "Rubber Soul", "Revolver"]),
-        (.lastPlayed, ["Soulmate Stuff", "Revolver", "Rubber Soul", "Demos"]),
-        (.releaseDate, ["Soulmate Stuff", "Revolver", "Rubber Soul", "Demos"]),
-        (.playCount, ["Revolver", "Rubber Soul", "Soulmate Stuff", "Demos"]),
-        (.name, ["Demos", "Revolver", "Rubber Soul", "Soulmate Stuff"]),
+    @Test("each view sorts its way, missing keys last, titles breaking ties", arguments: [
+        (AlbumView.recentlyAdded, ["Soulmate Stuff", "Demos", "Rubber Soul", "Revolver"]),
+        (.mostPlayed, ["Revolver", "Rubber Soul", "Soulmate Stuff", "Demos"]),
+        (.artist, ["Soulmate Stuff", "Revolver", "Rubber Soul", "Demos"]),
     ])
-    func sorting(sort: AlbumSort, expected: [String]) {
-        #expect(sort.sorted(Self.albums).map(\.title) == expected)
+    func sorting(view: AlbumView, expected: [String]) {
+        #expect(view.sort.sorted(Self.albums).map(\.title) == expected)
     }
 
-    @Test("artists sort by the same keys, with release date reading as name")
+    @Test("back catalog runs least recently played first, never played at the top")
+    func backCatalogSort() {
+        #expect(AlbumView.backCatalog.sort.sorted(Self.albums).map(\.title)
+            == ["Demos", "Rubber Soul", "Revolver", "Soulmate Stuff"])
+    }
+
+    @Test("artists sort by the same keys, with the artist view reading as name")
     func artistSorting() {
         let a = PlexArtist(ratingKey: "1", title: "Zed", addedAt: 10, lastViewedAt: nil, viewCount: 5)
         let b = PlexArtist(ratingKey: "2", title: "Amy", addedAt: 20, lastViewedAt: 1, viewCount: nil)
-        #expect(AlbumSort.recentlyAdded.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
-        #expect(AlbumSort.lastPlayed.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
-        #expect(AlbumSort.playCount.sorted([a, b]).map(\.title) == ["Zed", "Amy"])
-        #expect(AlbumSort.releaseDate.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
-        #expect(AlbumSort.name.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
+        #expect(AlbumView.recentlyAdded.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
+        #expect(AlbumView.mostPlayed.sorted([a, b]).map(\.title) == ["Zed", "Amy"])
+        #expect(AlbumView.artist.sorted([a, b]).map(\.title) == ["Amy", "Zed"])
+        #expect(AlbumView.backCatalog.sorted([a, b]).map(\.title) == ["Zed", "Amy"])
     }
 
     @Test("release date falls back to the year when the server has no day")
@@ -77,65 +80,39 @@ struct AlbumBrowseTests {
         #expect(AlbumSort.releaseDate.sorted([yearOnly, dated, later]).map(\.title) == ["C", "A", "B"])
     }
 
-    @Test("artist groups follow the sort by their top album")
-    func artistGroupsFollowSort() {
-        let groups = AlbumBrowse.groups(Self.albums, sort: .playCount, grouping: .artist)
-        #expect(groups.map(\.name) == ["The Beatles", "Antarctigo Vespucci", "Nobody"])
-        #expect(groups[0].albums.map(\.title) == ["Revolver", "Rubber Soul"])
-    }
-
-    @Test("artist groups go alphabetical under the name sort")
-    func artistGroupsByName() {
-        let groups = AlbumBrowse.groups(Self.albums, sort: .name, grouping: .artist)
+    @Test("artist view groups A–Z with each artist's albums newest release first")
+    func artistGroups() {
+        let groups = AlbumBrowse.groups(Self.albums, view: .artist)
         #expect(groups.map(\.name) == ["Antarctigo Vespucci", "Nobody", "The Beatles"])
+        #expect(groups[2].albums.map(\.title) == ["Revolver", "Rubber Soul"])
     }
 
     @Test("hidden artists drop out of groups and search")
     func hiding() {
-        let groups = AlbumBrowse.groups(Self.albums, sort: .name, grouping: .artist, hiding: ["The Beatles"])
+        let groups = AlbumBrowse.groups(Self.albums, view: .artist, hiding: ["The Beatles"])
         #expect(groups.map(\.name) == ["Antarctigo Vespucci", "Nobody"])
-        let hits = AlbumBrowse.search(Self.albums, query: "soul", sort: .name, hiding: ["The Beatles"])
+        let hits = AlbumBrowse.search(Self.albums, query: "soul", view: .artist, hiding: ["The Beatles"])
         #expect(hits.map(\.title) == ["Soulmate Stuff"])
     }
 
-    @Test("no grouping is one flat nameless group in sort order")
+    @Test("flat views are one nameless group in sort order")
     func ungrouped() {
-        let groups = AlbumBrowse.groups(Self.albums, sort: .playCount, grouping: .none)
+        let groups = AlbumBrowse.groups(Self.albums, view: .mostPlayed)
         #expect(groups.count == 1)
         #expect(groups[0].name.isEmpty)
         #expect(groups[0].albums.map(\.title) == ["Revolver", "Rubber Soul", "Soulmate Stuff", "Demos"])
     }
 
-    @Test("year groups stay newest first whatever the sort")
-    func yearGroups() {
-        let groups = AlbumBrowse.groups(Self.albums, sort: .playCount, grouping: .releaseYear)
-        #expect(groups.map(\.name) == ["2014", "1966", "1965", "Unknown Year"])
-    }
-
-    @Test("decade groups run oldest first, newest first under the release sort, unknown last")
-    func decadeGroups() {
-        let byTitle = AlbumBrowse.groups(Self.albums, sort: .name, grouping: .decade)
-        #expect(byTitle.map(\.name) == ["1960s", "2010s", "Unknown Decade"])
-        #expect(byTitle[0].albums.map(\.title) == ["Revolver", "Rubber Soul"])
-        let newest = AlbumBrowse.groups(Self.albums, sort: .releaseDate, grouping: .decade)
-        #expect(newest.map(\.name) == ["2010s", "1960s", "Unknown Decade"])
-    }
-
-    @Test("an album lands in every one of its genres")
-    func genreGroups() {
-        let groups = AlbumBrowse.groups(Self.albums, sort: .name, grouping: .genre)
-        #expect(groups.map(\.name) == ["No Genre", "Pop/Rock", "Punk"])
-        #expect(groups[1].albums.count == 3)
-    }
-
-    @Test("last played buckets run from today to never")
+    @Test("back catalog buckets run from never to today, oldest play first inside each")
     func recencyGroups() {
         let albums = Self.albums + [
             Self.album("Old", artist: "x", played: Self.ago(400)),
             Self.album("Older", artist: "x", played: Self.ago(200)),
+            Self.album("Oldest", artist: "x", played: Self.ago(300)),
         ]
-        let groups = AlbumBrowse.groups(albums, sort: .lastPlayed, grouping: .lastPlayed, now: Self.now)
-        #expect(groups.map(\.name) == ["Today", "Past Week", "Past 6 Months", "Past Year", "Earlier", "Never Played"])
+        let groups = AlbumBrowse.groups(albums, view: .backCatalog, now: Self.now)
+        #expect(groups.map(\.name) == ["Never Played", "It's Been a While", "Played in the Last Year", "Played in the Last 6 Months", "Played in the Last Week", "Played Today"])
+        #expect(groups[2].albums.map(\.title) == ["Oldest", "Older"])
     }
 
     @Test("search ranks prefix over word over internal, album over artist")
@@ -148,7 +125,7 @@ struct AlbumBrowseTests {
             Self.album("Hits", artist: "Dire Straits"),               // artist internal
             Self.album("Best Of", artist: "Lou Reed"),                // artist word-prefix
         ]
-        let hits = AlbumBrowse.search(albums, query: "re", sort: .name)
+        let hits = AlbumBrowse.search(albums, query: "re", view: .artist)
         #expect(hits.map(\.title) == [
             "Revolver", "Something Else", "The Real Thing", "Best Of", "Careless", "Hits",
         ])
@@ -156,8 +133,8 @@ struct AlbumBrowseTests {
 
     @Test("search is flat, trims, and is empty for a blank query")
     func searchBasics() {
-        #expect(AlbumBrowse.search(Self.albums, query: "  ", sort: .name).isEmpty)
-        let hits = AlbumBrowse.search(Self.albums, query: " beatles ", sort: .name)
+        #expect(AlbumBrowse.search(Self.albums, query: "  ", view: .artist).isEmpty)
+        let hits = AlbumBrowse.search(Self.albums, query: " beatles ", view: .artist)
         #expect(hits.map(\.title) == ["Revolver", "Rubber Soul"])
     }
 }

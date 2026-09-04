@@ -40,6 +40,17 @@ struct Artwork: View {
     }
 }
 
+/// The small download mark in the corner of album art, shared by every
+/// album tile so it reads the same on the browse root and in the mix pool.
+struct DownloadedBadge: View {
+    var body: some View {
+        Image(systemName: "arrow.down.circle.fill")
+            .font(.caption)
+            .foregroundStyle(.white, .black.opacity(0.55))
+            .padding(5)
+    }
+}
+
 extension View {
     /// The lift under album art and artist portraits.
     func artworkShadow() -> some View {

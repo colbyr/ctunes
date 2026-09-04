@@ -2,25 +2,19 @@ import PlexKit
 import SwiftUI
 
 /// The album browser's arrange button: a 34pt circle pinned at the trailing
-/// edge of the listener chips, opening one menu with the sorts inline under
-/// a Sort header and the groupings in a submenu, since grouping is the
-/// rarer change. Picking an option applies it and dismisses.
+/// edge of the listener chips, opening one menu with the views inline.
+/// Picking one applies it and dismisses.
 struct ArrangeChip: View {
-    @Binding var grouping: AlbumGrouping
-    @Binding var sort: AlbumSort
+    @Binding var view: AlbumView
     /// Only the main browser offers the filter; a mix pool passes nil.
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         Menu {
-            Picker("Sort", selection: $sort) {
-                ForEach(AlbumSort.allCases, id: \.self) { Text($0.title) }
+            Picker("View", selection: $view) {
+                ForEach(AlbumView.allCases, id: \.self) { Text($0.title) }
             }
             .pickerStyle(.inline)
-            Picker("Group", systemImage: "square.grid.2x2", selection: $grouping) {
-                ForEach(AlbumGrouping.allCases, id: \.self) { Text($0.title) }
-            }
-            .pickerStyle(.menu)
             if let downloadedOnly {
                 Toggle("Downloaded only", systemImage: "arrow.down.circle", isOn: downloadedOnly)
             }
@@ -33,27 +27,26 @@ struct ArrangeChip: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Sorted by \(sort.title), grouped by \(grouping.title)")
+        .accessibilityLabel("Viewing \(view.title)")
     }
 }
 
 /// The chips plus the arrange button as one row. Each screen keeps its own
-/// stored sort and grouping; only the roster is shared. With nobody on the roster
+/// stored view; only the roster is shared. With nobody on the roster
 /// there's nothing to toggle, so only the button shows, still pinned right.
 struct AlbumBrowserControls: View {
     let model: AppModel
-    @Binding var grouping: AlbumGrouping
-    @Binding var sort: AlbumSort
+    @Binding var view: AlbumView
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         if model.roster.listeners.isEmpty {
-            ArrangeChip(grouping: $grouping, sort: $sort, downloadedOnly: downloadedOnly)
+            ArrangeChip(view: $view, downloadedOnly: downloadedOnly)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 16)
                 .padding(.vertical, 4)
         } else {
-            ListenerChips(model: model) { ArrangeChip(grouping: $grouping, sort: $sort, downloadedOnly: downloadedOnly) }
+            ListenerChips(model: model) { ArrangeChip(view: $view, downloadedOnly: downloadedOnly) }
         }
     }
 }
@@ -73,21 +66,15 @@ struct HiddenArtistsLine: View {
     }
 }
 
-/// One group's heading over its grid: the name, with the album count beside
-/// it. Shared by the main screen and the album mix pool so a group reads
-/// the same on both.
+/// One group's heading over its grid. Shared by the main screen and the
+/// album mix pool so a group reads the same on both.
 struct AlbumGroupHeader: View {
     let group: AlbumGroup
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(group.name)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Color.primary)
-            Text("\(group.albums.count)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .textCase(nil)
+        Text(group.name)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(Color.primary)
+            .textCase(nil)
     }
 }

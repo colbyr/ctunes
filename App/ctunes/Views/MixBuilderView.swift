@@ -61,10 +61,11 @@ struct MixBuilderView: View {
     @State private var loadingMix: MixMode?
     @State private var nothingToPlay = false
     @State private var showingNowPlaying = false
-    /// Per builder rather than the root's keys: arranging a pool by play
+    /// Per builder rather than the root's key: arranging a pool by play
     /// count shouldn't reorder the album grid behind it.
-    @AppStorage private var sort: AlbumSort
-    @AppStorage private var grouping: AlbumGrouping
+    @AppStorage private var view: AlbumView
+    /// Album pool only; there is no per-artist download state.
+    @AppStorage private var downloadedOnly: Bool
     /// Comma-joined ratingKeys, so the last mix is waiting next time.
     @AppStorage private var savedSelection: String
 
@@ -74,8 +75,8 @@ struct MixBuilderView: View {
         self.kind = kind
         _query = query
         _building = building
-        _sort = AppStorage(wrappedValue: .recentlyAdded, "mixSort.\(kind.rawValue)")
-        _grouping = AppStorage(wrappedValue: .artist, "mixGrouping.\(kind.rawValue)")
+        _view = AppStorage(wrappedValue: .recentlyAdded, "mixView.\(kind.rawValue)")
+        _downloadedOnly = AppStorage(wrappedValue: false, "mixDownloadedOnly.\(kind.rawValue)")
         _savedSelection = AppStorage(wrappedValue: "", "mixSelection.\(kind.rawValue)")
     }
 
@@ -101,34 +102,42 @@ struct MixBuilderView: View {
         let vetoed: Bool
         /// Offline with nothing downloaded: still in the pool, dimmed.
         var unavailable = false
+        /// Every track on disk: the same badge as the browse root.
+        var downloaded = false
     }
 
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
     private var needle: String { query.trimmingCharacters(in: .whitespaces) }
+    /// The album pool after the Downloaded only filter. Picks come from the
+    /// unfiltered list, so turning the filter on never drops a selection.
+    private var browsable: [PlexAlbum] {
+        downloadedOnly ? albums.filter { model.downloads.hasDownloads($0) } : albums
+    }
 
     /// Everything in the section, in sort order, vetoes marked.
     private var items: [Item] {
         switch kind {
         case .artist:
-            return sort.sorted(artists).map {
+            return view.sorted(artists).map {
                 Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb, vetoed: hidden.contains($0.ratingKey))
             }
         case .album:
-            let list = AlbumBrowse.groups(albums, sort: sort, grouping: .none).first?.albums ?? []
+            let list = view.sorted(albums)
             return list.map(item)
         }
     }
 
-    /// Under the artist grouping the header names the artist, so the card
+    /// Under the artist view the header names the artist, so the card
     /// shows the year instead.
     private func item(_ album: PlexAlbum) -> Item {
         Item(
             id: album.ratingKey,
             title: album.title,
-            subtitle: grouping == .artist ? (album.year.map(String.init) ?? "—") : album.parentTitle,
+            subtitle: view == .artist ? (album.year.map(String.init) ?? "—") : album.parentTitle,
             thumb: album.thumb,
             vetoed: hidden.contains(album.artistKey),
-            unavailable: model.state == .offline && !model.downloads.hasDownloads(album)
+            unavailable: model.state == .offline && !model.downloads.hasDownloads(album),
+            downloaded: model.downloads.isDownloaded(album)
         )
     }
 
@@ -136,8 +145,8 @@ struct MixBuilderView: View {
     /// picks. Empty groups fall away with their albums. Search shows the
     /// flat ranked `rest` instead.
     private var poolGroups: [AlbumGroup] {
-        let unpicked = albums.filter { !selected.contains($0.ratingKey) }
-        return AlbumBrowse.groups(unpicked, sort: sort, grouping: grouping, hiding: hidden)
+        let unpicked = browsable.filter { !selected.contains($0.ratingKey) }
+        return AlbumBrowse.groups(unpicked, view: view, hiding: hidden)
     }
 
     /// What survives the vetoes. Search narrows `rest` only, so a pick
@@ -160,7 +169,7 @@ struct MixBuilderView: View {
         case .artist:
             return unpicked.filter { $0.title.localizedCaseInsensitiveContains(needle) }
         case .album:
-            let ranked = AlbumBrowse.search(albums, query: needle, sort: sort, hiding: hidden).map(\.ratingKey)
+            let ranked = AlbumBrowse.search(browsable, query: needle, view: view, hiding: hidden).map(\.ratingKey)
             let byID = Dictionary(unpicked.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             return ranked.compactMap { byID[$0] }
         }
@@ -200,23 +209,9 @@ struct MixBuilderView: View {
                     .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
             }
-            Group {
-                switch kind {
-                case .album:
-                    AlbumBrowserControls(model: model, grouping: $grouping, sort: $sort)
-                case .artist:
-                    if model.roster.listeners.isEmpty {
-                        SortChip(sort: $sort)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .padding(.trailing, Self.margin)
-                            .padding(.vertical, 4)
-                    } else {
-                        ListenerChips(model: model) { SortChip(sort: $sort) }
-                    }
-                }
-            }
-            .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
-            .listRowSeparator(.hidden)
+            AlbumBrowserControls(model: model, view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
+                .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
+                .listRowSeparator(.hidden)
             HiddenArtistsLine(model: model, count: hiddenCount)
                 .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
                 .listRowSeparator(.hidden)
@@ -417,6 +412,9 @@ struct MixBuilderView: View {
             case .album:
                 Artwork(url: url, size: nil, corner: 8)
                     .artworkShadow()
+                    .overlay(alignment: .bottomTrailing) {
+                        if item.downloaded { DownloadedBadge() }
+                    }
                     .overlay {
                         if selected {
                             RoundedRectangle(cornerRadius: 8).stroke(ring, lineWidth: 2)

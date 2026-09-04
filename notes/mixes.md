@@ -67,14 +67,14 @@ toolbar trailing `Button("Clear") { selected = [] }.disabled(selected.isEmpty)`.
 
 State: `pool` loaded in `.task` (`library.artists(inSection:)` for `.artist`,
 `library.albums(inSection:)` for `.album`), `selected: [String]` (ratingKeys, insertion order),
-`loadingMix`, `showingNowPlaying`, `@AppStorage("albumSort")` reused so the album pool matches
-the main screen order.
+`loadingMix`, `showingNowPlaying`, `@AppStorage("mixView.<kind>")`, a per-builder `AlbumView`, so the pool offers the same views as
+the main screen.
 
 Derived:
 - `hidden = model.roster.hiddenArtistKeys`. Artist pool = artists not in `hidden`, filtered by
   `query` with `localizedCaseInsensitiveContains` on title. Album pool =
-  `AlbumBrowse.search(albums, query:, sort:, hiding: hidden)` when the query is non-empty, else
-  `AlbumBrowse.groups(albums, sort:, grouping: .none, hiding: hidden).first?.albums ?? []`.
+  `AlbumBrowse.search(albums, query:, view:, hiding: hidden)` when the query is non-empty, else
+  `view.sorted(albums)`.
 - `hiddenCount` = pool items whose artist key is in `hidden`; hidden line text copies the
   subtitle wording in `MusicView.swift:111-113`.
 - Selected items = `selected` mapped through the pool by ratingKey (so a vetoed artist toggled

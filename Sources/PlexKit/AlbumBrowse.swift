@@ -1,79 +1,110 @@
 import Foundation
 
-/// How the browse root orders albums. Raw values are persisted, so keep them
-/// stable.
-public enum AlbumSort: String, CaseIterable, Sendable, Codable {
-    case recentlyAdded, lastPlayed, releaseDate, name, playCount
+/// The browse root's arrangements. Each is a fixed sort plus grouping, so
+/// the two never have to be reconciled in the menu. Raw values are
+/// persisted, so keep them stable.
+public enum AlbumView: String, CaseIterable, Sendable, Codable {
+    /// Newest additions first, flat. The default.
+    case recentlyAdded
+    /// Highest play count first, flat.
+    case mostPlayed
+    /// Sectioned by artist A–Z, each artist's albums newest release first.
+    case artist
+    /// Sectioned by how long ago an album was last played, never-played
+    /// first, the least recently played at the top of each section.
+    case backCatalog
 
     public var title: String {
         switch self {
         case .recentlyAdded: "Recently Added"
-        case .lastPlayed: "Last Played"
-        case .releaseDate: "Release Date"
-        case .name: "Name"
-        case .playCount: "Play Count"
+        case .mostPlayed: "Most Played"
+        case .artist: "Artists"
+        case .backCatalog: "Back Catalog"
         }
     }
 
-    /// Stable ordering: albums missing the key sort to the bottom, ties fall
-    /// back to title so the order doesn't shift between loads.
+    var sort: AlbumSort {
+        switch self {
+        case .recentlyAdded: .addedAt
+        case .mostPlayed: .playCount
+        case .artist: .releaseDate
+        case .backCatalog: .lastPlayedAscending
+        }
+    }
+
+    var grouping: AlbumGrouping {
+        switch self {
+        case .recentlyAdded, .mostPlayed: .none
+        case .artist: .artist
+        case .backCatalog: .lastPlayed
+        }
+    }
+
+    /// The view's order alone, for the mix pools' flat search results.
+    public func sorted(_ albums: [PlexAlbum]) -> [PlexAlbum] {
+        sort.sorted(albums)
+    }
+
+    /// The same view applied to a flat artist list, for the artist mix
+    /// pool. An artist has no release date, so the Artist view reads as
+    /// name order, which is what its sections do for albums anyway.
+    public func sorted(_ artists: [PlexArtist]) -> [PlexArtist] {
+        sort.sorted(artists)
+    }
+}
+
+/// The orderings behind `AlbumView`. Every key sorts descending except
+/// `lastPlayedAscending`, whose missing values go first: an album never
+/// played is the oldest thing in the back catalog.
+enum AlbumSort: Sendable {
+    case addedAt, playCount, releaseDate, lastPlayedAscending
+
+    /// Stable ordering: albums missing the key sort to the bottom (top for
+    /// the ascending sort), ties fall back to title so the order doesn't
+    /// shift between loads.
     func sorted(_ albums: [PlexAlbum]) -> [PlexAlbum] {
         sorted(albums, key: key, title: \.title)
     }
 
-    /// The same options for artists. An artist has no release date, so that
-    /// sort reads as Name here rather than vanishing from the menu.
-    public func sorted(_ artists: [PlexArtist]) -> [PlexArtist] {
+    func sorted(_ artists: [PlexArtist]) -> [PlexArtist] {
         sorted(artists, key: key, title: \.title)
     }
+
+    private var ascending: Bool { self == .lastPlayedAscending }
 
     private func sorted<T>(_ items: [T], key: (T) -> Double?, title: (T) -> String) -> [T] {
         items.sorted { lhs, rhs in
             switch (key(lhs), key(rhs)) {
-            case let (l?, r?) where l != r: return l > r
-            case (.some, nil): return true
-            case (nil, .some): return false
+            case let (l?, r?) where l != r: return ascending ? l < r : l > r
+            case (.some, nil): return !ascending
+            case (nil, .some): return ascending
             default: return title(lhs).localizedCaseInsensitiveCompare(title(rhs)) == .orderedAscending
             }
         }
     }
 
-    /// Higher sorts first; nil sorts last. Name has no key, so `sorted`
-    /// falls through to the title comparison for every pair.
     private func key(_ album: PlexAlbum) -> Double? {
         switch self {
-        case .recentlyAdded: album.addedAt.map(Double.init)
-        case .lastPlayed: album.lastViewedAt.map(Double.init)
+        case .addedAt: album.addedAt.map(Double.init)
+        case .lastPlayedAscending: album.lastViewedAt.map(Double.init)
         case .releaseDate: album.releaseOrdinal
         case .playCount: album.viewCount.map(Double.init)
-        case .name: nil
         }
     }
 
     private func key(_ artist: PlexArtist) -> Double? {
         switch self {
-        case .recentlyAdded: artist.addedAt.map(Double.init)
-        case .lastPlayed: artist.lastViewedAt.map(Double.init)
+        case .addedAt: artist.addedAt.map(Double.init)
+        case .lastPlayedAscending: artist.lastViewedAt.map(Double.init)
         case .playCount: artist.viewCount.map(Double.init)
-        case .releaseDate, .name: nil
+        case .releaseDate: nil
         }
     }
 }
 
-/// How the browse root sections the sorted albums.
-public enum AlbumGrouping: String, CaseIterable, Sendable, Codable {
-    case none, artist, releaseYear, genre, lastPlayed, decade
-
-    public var title: String {
-        switch self {
-        case .none: "None"
-        case .artist: "Artist"
-        case .releaseYear: "Release Year"
-        case .genre: "Genre"
-        case .lastPlayed: "Last Played"
-        case .decade: "Decade"
-        }
-    }
+/// How `AlbumView` sections the sorted albums.
+enum AlbumGrouping: Sendable {
+    case none, artist, lastPlayed
 }
 
 /// One section of the browse root.
@@ -83,100 +114,78 @@ public struct AlbumGroup: Identifiable, Hashable, Sendable {
     public let albums: [PlexAlbum]
 }
 
-/// Sorting, grouping and search for the browse root. All of it runs on the
-/// client: the whole section is one request, and re-deriving the list from
-/// that array is far cheaper than a round trip per option change.
+/// Grouping and search for the browse root. All of it runs on the client:
+/// the whole section is one request, and re-deriving the list from that
+/// array is far cheaper than a round trip per option change.
 public enum AlbumBrowse {
-    /// Groups the albums that survive `hidden`, each group's albums in sort
-    /// order. No grouping yields one nameless group so the view has a single
-    /// shape to render. Artist and genre groups follow the sort too (by their top
-    /// album, or by name under the Name sort); year and recency groups are
-    /// always in their natural order, since "2019 before 1997 because I
-    /// played it more" reads as broken. Decades run newest first only under
-    /// the release-date sort, so they read the way the cards inside them do.
+    /// Groups the albums that survive `hidden` under `view`, each group's
+    /// albums in the view's sort order. A flat view yields one nameless
+    /// group so the caller has a single shape to render. Artist groups run
+    /// A–Z; recency groups run from Never Played to Today, so the least
+    /// touched part of the library is at the top.
     public static func groups(
         _ albums: [PlexAlbum],
-        sort: AlbumSort,
-        grouping: AlbumGrouping,
+        view: AlbumView,
         hiding hidden: Set<String> = [],
         now: Date = .now
     ) -> [AlbumGroup] {
-        let sorted = sort.sorted(albums.filter { !hidden.contains($0.artistKey) })
+        let sorted = view.sort.sorted(albums.filter { !hidden.contains($0.artistKey) })
         var order: [String] = []
         var members: [String: [PlexAlbum]] = [:]
         var names: [String: String] = [:]
         var ranks: [String: Int] = [:]
         for album in sorted {
-            for (key, name, rank) in keys(for: album, grouping: grouping, now: now) {
-                if members[key] == nil {
-                    order.append(key)
-                    names[key] = name
-                    ranks[key] = rank
-                }
-                members[key, default: []].append(album)
+            let (key, name, rank) = key(for: album, grouping: view.grouping, now: now)
+            if members[key] == nil {
+                order.append(key)
+                names[key] = name
+                ranks[key] = rank
             }
+            members[key, default: []].append(album)
         }
         let groups = order.map { AlbumGroup(id: $0, name: names[$0] ?? "", albums: members[$0] ?? []) }
-        switch grouping {
+        switch view.grouping {
         case .none:
             return groups
-        case .artist, .genre:
-            guard sort == .name else { return groups }
+        case .artist:
             return groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case .releaseYear, .lastPlayed:
-            return groups.sorted { (ranks[$0.id] ?? 0) < (ranks[$1.id] ?? 0) }
-        case .decade:
-            let newestFirst = sort == .releaseDate
-            return groups.sorted { lhs, rhs in
-                let l = ranks[lhs.id] ?? 0, r = ranks[rhs.id] ?? 0
-                // Unknown stays last either way.
-                if l == Int.max || r == Int.max { return l < r }
-                return newestFirst ? l > r : l < r
-            }
+        case .lastPlayed:
+            return groups.sorted { (ranks[$0.id] ?? 0) > (ranks[$1.id] ?? 0) }
         }
     }
 
-    /// Every group an album belongs to: one for most groupings, one per
-    /// genre for genre. `rank` orders the natural-order groupings.
-    private static func keys(
+    /// The group an album belongs to. `rank` orders the recency groups.
+    private static func key(
         for album: PlexAlbum,
         grouping: AlbumGrouping,
         now: Date
-    ) -> [(key: String, name: String, rank: Int)] {
+    ) -> (key: String, name: String, rank: Int) {
         switch grouping {
         case .none:
-            return [("all", "", 0)]
+            ("all", "", 0)
         case .artist:
-            return [(album.artistKey, album.parentTitle ?? "Unknown Artist", 0)]
-        case .genre:
-            let genres = album.genres.isEmpty ? ["No Genre"] : album.genres
-            return genres.map { ($0, $0, 0) }
-        case .releaseYear:
-            guard let year = album.year else { return [("year:none", "Unknown Year", Int.max)] }
-            return [("year:\(year)", String(year), -year)]
+            (album.artistKey, album.parentTitle ?? "Unknown Artist", 0)
         case .lastPlayed:
-            let bucket = RecencyBucket(seconds: album.lastViewedAt, now: now)
-            return [("played:\(bucket.rawValue)", bucket.title, bucket.rawValue)]
-        case .decade:
-            guard let year = album.year else { return [("decade:none", "Unknown Decade", Int.max)] }
-            let decade = year / 10 * 10
-            return [("decade:\(decade)", "\(decade)s", decade)]
+            {
+                let bucket = RecencyBucket(seconds: album.lastViewedAt, now: now)
+                return ("played:\(bucket.rawValue)", bucket.title, bucket.rawValue)
+            }()
         }
     }
 
     /// Flat search results, best match first. Prefix beats word-prefix
     /// beats internal, and at each level an album title beats an artist
     /// name, so typing "re" surfaces "Revolver" above every Red Hot Chili
-    /// Peppers record. Ties keep the current sort order.
+    /// Peppers record. Ties keep the view's sort order.
     public static func search(
         _ albums: [PlexAlbum],
         query: String,
-        sort: AlbumSort,
+        view: AlbumView,
         hiding hidden: Set<String> = []
     ) -> [PlexAlbum] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty else { return [] }
-        let ranked: [(rank: Int, album: PlexAlbum)] = sort.sorted(albums).compactMap { album in
+        let ranked: [(rank: Int, album: PlexAlbum)] = view.sort.sorted(albums).compactMap { album in
             guard !hidden.contains(album.artistKey) else { return nil }
             let title = MatchQuality(album.title, needle)
             let artist = MatchQuality(album.parentTitle ?? "", needle)
@@ -210,18 +219,18 @@ public enum AlbumBrowse {
     }
 }
 
-/// "Past week", "Past month"… for the Last Played grouping.
+/// "Played in the Last Week", "It's Been a While"… for the Back Catalog view.
 public enum RecencyBucket: Int, CaseIterable, Sendable {
     case today, pastWeek, pastMonth, pastSixMonths, pastYear, earlier, never
 
     public var title: String {
         switch self {
-        case .today: "Today"
-        case .pastWeek: "Past Week"
-        case .pastMonth: "Past Month"
-        case .pastSixMonths: "Past 6 Months"
-        case .pastYear: "Past Year"
-        case .earlier: "Earlier"
+        case .today: "Played Today"
+        case .pastWeek: "Played in the Last Week"
+        case .pastMonth: "Played in the Last Month"
+        case .pastSixMonths: "Played in the Last 6 Months"
+        case .pastYear: "Played in the Last Year"
+        case .earlier: "It's Been a While"
         case .never: "Never Played"
         }
     }

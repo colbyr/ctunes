@@ -23,8 +23,7 @@ struct MusicView: View {
     /// Bytes of cached audio, for the clear button; nil until read.
     @State private var cacheUsage: Int?
     @State private var confirmingRemoveAll = false
-    @AppStorage("albumSort") private var sort: AlbumSort = .recentlyAdded
-    @AppStorage("albumGrouping") private var grouping: AlbumGrouping = .artist
+    @AppStorage("albumView") private var view: AlbumView = .recentlyAdded
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
 
     private var offline: Bool { model.state == .offline }
@@ -35,16 +34,16 @@ struct MusicView: View {
         downloadedOnly ? albums.filter { model.downloads.hasDownloads($0) } : albums
     }
     private var groups: [AlbumGroup] {
-        AlbumBrowse.groups(browsable, sort: sort, grouping: grouping, hiding: hidden)
+        AlbumBrowse.groups(browsable, view: view, hiding: hidden)
     }
     private var results: [PlexAlbum] {
-        AlbumBrowse.search(browsable, query: query, sort: sort, hiding: hidden)
+        AlbumBrowse.search(browsable, query: query, view: view, hiding: hidden)
     }
     /// Every artist in the library, for the listeners sheet and the count
     /// under the title. Unfiltered, so a veto from another section doesn't
     /// count here.
     private var artists: [AlbumGroup] {
-        AlbumBrowse.groups(albums, sort: .name, grouping: .artist)
+        AlbumBrowse.groups(albums, view: .artist)
     }
     private var hiddenCount: Int { artists.filter { hidden.contains($0.id) }.count }
 
@@ -98,7 +97,7 @@ struct MusicView: View {
                     .frame(height: 1)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
-                AlbumBrowserControls(model: model, grouping: $grouping, sort: $sort, downloadedOnly: $downloadedOnly)
+                AlbumBrowserControls(model: model, view: $view, downloadedOnly: $downloadedOnly)
                     .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
                 HiddenArtistsLine(model: model, count: hiddenCount)
@@ -114,7 +113,7 @@ struct MusicView: View {
                 }
                 ForEach(groups) { group in
                     Section {
-                        grid(group.albums, minimum: 100, spacing: 12, showArtist: grouping != .artist)
+                        grid(group.albums, minimum: 100, spacing: 12, showArtist: view != .artist)
                             .listRowInsets(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     } header: {
                         if !group.name.isEmpty {
@@ -297,12 +296,7 @@ private struct AlbumTile: View {
             Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
                 .artworkShadow()
                 .overlay(alignment: .bottomTrailing) {
-                    if downloaded {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.white, .black.opacity(0.55))
-                            .padding(5)
-                    }
+                    if downloaded { DownloadedBadge() }
                 }
             VStack(alignment: .leading, spacing: 1) {
                 Text(album.title)
