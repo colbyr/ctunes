@@ -33,6 +33,7 @@ launches on a device.
 | M6 favorites | done | hearts and spread shuffle rendered in simulator; rating round-trip verified with curl |
 | M7 mixes | done | artist and album mix builders (`notes/mixes.md`); a mix is the spread-shuffled union of the picks, one-shot, vetoes applied |
 | M8 track cache | done | `TrackCache` tests; simulator run showed the next three tracks downloading in order and a track transition playing from disk with no part request (`notes/track-cache.md`) |
+| M9 offline | done | `OfflineStoreTests`; simulator run pinned an album into Application Support with nothing in Caches, relaunched with `CTUNES_DEV_OFFLINE=1` to the banner, dimmed grid and the pinned album playing from disk (`notes/offline.md`) |
 
 All six milestones are verified, background audio and lock screen controls
 included, the latter on a real device where the simulator cannot test them.

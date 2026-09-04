@@ -30,10 +30,11 @@ final class AudioPlayer {
     var upcoming: ArraySlice<PlayQueue<PlexTrack>.Entry> { queue.upcoming }
 
     private nonisolated let player = AVPlayer()
-    private var library: PlexLibrary?
-    /// Played and upcoming tracks on disk. Owned here because the player is
-    /// the only consumer and both live for the app, while `library` is
-    /// rebuilt on every connect.
+    /// The library the queue was started from, swapped by `adopt` when the
+    /// app goes offline or comes back, so timeline reports resume in place.
+    private var library: (any LibrarySource)?
+    /// Played and upcoming tracks on disk, and the pinned root. Shared with
+    /// the offline store, so built by the app and handed in.
     private nonisolated let cache: TrackCache
     /// How many upcoming entries `prefetch` keeps on disk.
     private let prefetchDepth = 3
@@ -64,21 +65,30 @@ final class AudioPlayer {
     /// playback is a few seconds in.
     private let restartThreshold: Double = 3
 
-    init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let config = URLSessionConfiguration.default
-        // One connection: the current track is streaming through AVPlayer's
-        // own pool at the same time and must not be starved. Fail fast
-        // rather than park the download queue waiting for a network.
-        config.httpMaximumConnectionsPerHost = 1
-        config.waitsForConnectivity = false
-        cache = TrackCache(
-            directory: caches.appending(path: "Tracks"),
-            session: URLSession(configuration: config)
-        )
+    init(cache: TrackCache) {
+        self.cache = cache
         player.actionAtItemEnd = .pause
         observeTime()
         observeItemEnd()
+    }
+
+    /// The session the track cache downloads through. One connection: the
+    /// current track is streaming through AVPlayer's own pool at the same
+    /// time and must not be starved. Fail fast rather than park the
+    /// download queue waiting for a network.
+    static func downloadSession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 1
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }
+
+    /// Swaps the library under a running queue. Offline the queue keeps
+    /// playing from pinned files; back online it reports timelines again
+    /// and the prefetch window refills.
+    func adopt(_ library: (any LibrarySource)?) {
+        self.library = library
+        prefetch()
     }
 
     deinit {
@@ -88,7 +98,7 @@ final class AudioPlayer {
 
     // MARK: - Playback
 
-    func play(_ tracks: [PlexTrack], startingAt index: Int, library: PlexLibrary) {
+    func play(_ tracks: [PlexTrack], startingAt index: Int, library: any LibrarySource) {
         reportTimeline(.stopped)
         self.library = library
         queue = PlayQueue(tracks, startingAt: index)
@@ -215,11 +225,11 @@ final class AudioPlayer {
 
     // MARK: - Queue
 
-    func playNext(_ tracks: [PlexTrack], library: PlexLibrary) {
+    func playNext(_ tracks: [PlexTrack], library: any LibrarySource) {
         enqueue(tracks, library: library) { $0.playNext(tracks) }
     }
 
-    func addToQueue(_ tracks: [PlexTrack], library: PlexLibrary) {
+    func addToQueue(_ tracks: [PlexTrack], library: any LibrarySource) {
         enqueue(tracks, library: library) { $0.append(tracks) }
     }
 
@@ -251,7 +261,7 @@ final class AudioPlayer {
     /// is only needed on that path, since `play` is what stores it.
     private func enqueue(
         _ tracks: [PlexTrack],
-        library: PlexLibrary,
+        library: any LibrarySource,
         _ mutate: (inout PlayQueue<PlexTrack>) -> Void
     ) {
         guard !queue.isEmpty else {
@@ -279,7 +289,9 @@ final class AudioPlayer {
             tracks += queue.entries.prefix(prefetchDepth - tracks.count).map(\.item)
         }
         if let currentTrack { tracks.append(currentTrack) }
-        let sources = tracks.compactMap(library.trackSource)
+        // Offline there are no sources; an empty window is fine, since
+        // `retain` leaves pins alone.
+        let sources = tracks.compactMap { library.trackSource(for: $0) }
         Task { await cache.retain(window: sources) }
     }
 
@@ -288,10 +300,12 @@ final class AudioPlayer {
         await cache.usage()
     }
 
-    /// Drops every cached file except the one playing.
+    /// Drops every cached file except the one playing. Never the pinned root.
     func clearCache() async {
-        let playing = currentTrack.flatMap { library?.trackSource(for: $0) }
-        await cache.clear(keeping: playing)
+        let playing = currentTrack?.part.flatMap { part in
+            library.map { part.cachePath(server: $0.serverIdentifier) } ?? nil
+        }
+        await cache.clear(keepingPath: playing)
     }
 
     /// Stops playback and forgets everything, cache included, so nothing of
@@ -310,15 +324,17 @@ final class AudioPlayer {
     // MARK: - Item loading
 
     private func loadCurrentItem(autoPlay: Bool) {
-        guard let track = currentTrack, let library else { return }
-        // The cached file when there is one, else the stream. Both resolve
-        // synchronously: an await here would let the cursor move under us.
-        let source = library.trackSource(for: track)
-        let local = source.flatMap(cache.localURL(for:))
+        guard let track = currentTrack, let library, let part = track.part else { return }
+        // The cached or pinned file when there is one, else the stream. Both
+        // resolve synchronously: an await here would let the cursor move
+        // under us. Looked up by server and part, not by source, since an
+        // offline library has no source to give.
+        let server = library.serverIdentifier
+        let local = cache.localURL(server: server, part: part)
         guard let url = local ?? library.streamURL(for: track) else { return }
         currentItemIsLocal = local != nil
-        if currentItemIsLocal, let source {
-            Task { await cache.touch(source) }
+        if currentItemIsLocal {
+            Task { await cache.touch(server: server, part: part) }
         }
 
         itemLoadRetries = 0
@@ -355,12 +371,15 @@ final class AudioPlayer {
         // A stale observer from an item that was already replaced.
         guard player.currentItem === item else { return }
         // A cached file that won't play is a bad file: drop it and stream,
-        // with the stream's own retries still to come.
-        if currentItemIsLocal, let track = currentTrack, let library,
-           let streamURL = library.streamURL(for: track) {
+        // with the stream's own retries still to come. Offline there is no
+        // stream, so a bad pinned file evicts and the queue moves on.
+        if currentItemIsLocal, let track = currentTrack, let library, let part = track.part {
             currentItemIsLocal = false
-            if let source = library.trackSource(for: track) {
-                Task { await cache.evict(source) }
+            let server = library.serverIdentifier
+            Task { await cache.evict(server: server, part: part) }
+            guard let streamURL = library.streamURL(for: track) else {
+                advance(wrapping: false)
+                return
             }
             loadItem(url: streamURL, autoPlay: isPlaying)
             return

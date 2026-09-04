@@ -44,9 +44,19 @@ target iOS 26.
 ### Flow
 
 `AppModel` (`@MainActor @Observable`) owns the state machine:
-`loading → signedOut → linking → connecting → signedIn`, plus `connectFailed`.
-On launch it restores a keychain token, discovers a server, and opens a
-`PlexLibrary`. Views read `model.library` and fetch in `.task`.
+`loading → signedOut → linking → connecting → signedIn`, plus `connectFailed`
+and `offline`. On launch it restores a keychain token, discovers a server, and
+opens a `PlexLibrary`. When discovery fails and a `LibrarySnapshot` exists for
+the last server, it opens an `OfflineLibrary` over it instead and enters
+`.offline`, a peer of `.signedIn` rendered by the same `LibraryView` under one
+`case` label so the stack and the queue survive the switch. Views read
+`model.library`, typed `any LibrarySource`, and fetch in
+`.task(id: model.libraryGeneration)`, which re-runs when the library is
+swapped. A fetch that throws a `URLError` while signed in reports to
+`model.connectionLost`, which flips to the snapshot in place; the banner's
+"Try again" and scene activation call `reconnect()`. Hearts are read-only
+offline. Reachability is decided by the server answering, never by
+`NWPathMonitor`.
 
 `PlexClient` is an actor that injects the Plex identity headers in one place;
 no call site should build them by hand. `PlexAuth`, `PlexServerDirectory` and
@@ -65,13 +75,27 @@ is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
 
 `TrackCache` (PlexKit actor, `notes/track-cache.md`) keeps whole track files
-under `Caches/Tracks/<server>/<partId>-<stamp>.<ext>`. `AudioPlayer` plays the
-local file when one exists and streams otherwise, and after every queue or
+under two roots with one sequential pump: `Caches/Tracks/<server>/<partId>-<stamp>.<ext>`
+for played and upcoming tracks, LRU-evicted at 2 GB, and
+`Application Support/ctunes/Offline/Tracks/…` for pinned tracks, uncapped,
+never evicted, excluded from backup. `AudioPlayer` plays the local file when
+one exists (pinned root first) and streams otherwise, and after every queue or
 cursor change hands the cache a window of the next three entries plus the
-current one to download sequentially; LRU eviction at 2 GB never touches that
-window. A local item that fails to load is evicted and re-loaded from the
-stream URL. Keep the stream fallback and the `-1005` retry: the cache is an
-optimisation, never the only path.
+current one; the pump serves the window before the pin queue, and `retain`
+never cancels a pinned fetch. A file pinned while in the cache root is
+renamed, never fetched twice. A local item that fails to load is evicted and
+re-loaded from the stream URL, or skipped offline. Keep the stream fallback
+and the `-1005` retry: the cache is an optimisation, never the only path.
+
+`OfflineStore` (PlexKit actor, `notes/offline.md`) owns the manifest of pinned
+albums and the favorites pin, the track list of every album browsed, the
+library snapshot and album covers under
+`Application Support/ctunes/Offline/<server>/`. It hands `TrackSource`s to
+the cache and reads the file system for status; per-track download state is
+never persisted. Offline, a file in either root is playable, so an album
+half-played before the server went away still lists and plays those tracks;
+artwork falls back to the online URL so `ImageLoader`'s disk cache can answer. `Downloads` (app target) mirrors it onto
+the main actor from `cache.events`.
 
 ## Plex API constraints
 
@@ -150,6 +174,8 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
 | `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the first listener's page |
+| `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
+| `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load |
 | `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle Tracks unless `CTUNES_DEV_MIX_MODE=albums` |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on

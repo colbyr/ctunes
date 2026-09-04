@@ -9,6 +9,9 @@ struct TracksView: View {
     @State private var tracks: [PlexTrack] = []
     @State private var loaded = false
     @State private var showingNowPlaying = false
+    @State private var confirmingRemoval = false
+
+    private var offline: Bool { model.library?.isOffline ?? false }
 
     /// Debug hooks so playback can be started and inspected in a simulator,
     /// where there is no way to tap a row.
@@ -49,6 +52,15 @@ struct TracksView: View {
     private static var autoEnqueue: Bool {
         #if DEBUG
         ProcessInfo.processInfo.environment["CTUNES_DEV_ENQUEUE"] == "1"
+        #else
+        false
+        #endif
+    }
+    /// Pins the album once its tracks load, so the download ring and the
+    /// files under Application Support can be checked in a simulator.
+    private static var autoPin: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["CTUNES_DEV_PIN"] == "1"
         #else
         false
         #endif
@@ -97,10 +109,22 @@ struct TracksView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 72, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        // Keyed on the generation so going offline, or coming back, reloads
+        // from whichever library is current.
+        .task(id: model.libraryGeneration) {
             guard let library = model.library else { return }
-            tracks = (try? await library.tracks(inAlbum: album.ratingKey)) ?? []
+            do {
+                tracks = try await library.tracks(inAlbum: album.ratingKey)
+            } catch {
+                await model.connectionLost(error)
+                if model.library?.isOffline != true { tracks = [] }
+                return
+            }
             loaded = true
+            await model.rememberTracks(tracks, inAlbum: album)
+            if Self.autoPin, !library.isOffline, !tracks.isEmpty, !model.downloads.isPinned(album) {
+                model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+            }
             // The header already fetches the album cover at 600; warm the
             // same size for any track that carries its own art so Now
             // Playing and the lock screen open without a network round trip.
@@ -123,6 +147,11 @@ struct TracksView: View {
         }
         .sheet(isPresented: $showingNowPlaying) {
             NowPlayingView(model: model)
+        }
+        .confirmationDialog("Remove download?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
+            Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
+        } message: {
+            Text("The album stays in your library and can be downloaded again.")
         }
     }
 
@@ -161,6 +190,11 @@ struct TracksView: View {
             }
             actions
                 .padding(.top, 16)
+            if case .partial(let count)? = model.downloads.status(album) {
+                Text("\(count) track\(count == 1 ? "" : "s") can't be downloaded")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -169,6 +203,8 @@ struct TracksView: View {
     /// buttons, so nothing hides behind a menu.
     private var actions: some View {
         HStack(spacing: 12) {
+            DownloadButton(status: model.downloads.status(album)) { toggleDownload() }
+                .disabled(offline)
             Button { enqueue(tracks, next: true) } label: {
                 Image(systemName: "text.line.first.and.arrowtriangle.forward")
             }
@@ -195,8 +231,12 @@ struct TracksView: View {
 
     private func row(_ track: PlexTrack, at index: Int) -> some View {
         let favorite = model.isFavorite(track)
+        let downloaded = model.downloads.isPinned(track)
+        // Offline, a row with no file has nothing to play; a file left in
+        // the cache root from an earlier play counts.
+        let playable = !offline || model.downloads.isAvailable(track)
         return Button {
-            guard let library = model.library else { return }
+            guard let library = model.library, playable else { return }
             player.play(tracks, startingAt: index, library: library)
             showingNowPlaying = true
         } label: {
@@ -220,6 +260,11 @@ struct TracksView: View {
                         .font(.caption)
                         .foregroundStyle(.pink)
                 }
+                if downloaded {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if let seconds = track.durationSeconds {
                     Text(Self.duration(seconds))
                         .font(.caption.monospacedDigit())
@@ -229,6 +274,7 @@ struct TracksView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .opacity(playable ? 1 : 0.35)
         .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button { enqueue([track], next: true) } label: {
@@ -241,31 +287,50 @@ struct TracksView: View {
             .tint(.blue)
         }
         .swipeActions(edge: .trailing) {
-            Button {
-                Task { await model.toggleFavorite(track) }
-            } label: {
-                Label(favorite ? "Unfavorite" : "Favorite",
-                      systemImage: favorite ? "heart.slash" : "heart.fill")
+            // Hearts are read-only offline.
+            if !offline {
+                Button {
+                    Task { await model.toggleFavorite(track) }
+                } label: {
+                    Label(favorite ? "Unfavorite" : "Favorite",
+                          systemImage: favorite ? "heart.slash" : "heart.fill")
+                }
+                .tint(.pink)
             }
-            .tint(.pink)
         }
     }
 
+    private func toggleDownload() {
+        guard let library = model.library, !library.isOffline else { return }
+        if model.downloads.isPinned(album) {
+            confirmingRemoval = true
+        } else {
+            model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+        }
+    }
+
+    /// Offline, only tracks with a file are worth queueing.
+    private var playableTracks: [PlexTrack] {
+        offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
+    }
+
     private func play() {
-        guard let library = model.library, !tracks.isEmpty else { return }
-        player.play(tracks, startingAt: 0, library: library)
+        guard let library = model.library, !playableTracks.isEmpty else { return }
+        player.play(playableTracks, startingAt: 0, library: library)
         showingNowPlaying = true
     }
 
     /// Spread-shuffled once at enqueue time, the same way Shuffle Favorites does it.
     private func shuffle() {
-        guard let library = model.library, !tracks.isEmpty else { return }
-        player.play(tracks.spreadShuffled(), startingAt: 0, library: library)
+        guard let library = model.library, !playableTracks.isEmpty else { return }
+        player.play(playableTracks.spreadShuffled(), startingAt: 0, library: library)
         showingNowPlaying = true
     }
 
     private func enqueue(_ tracks: [PlexTrack], next: Bool) {
         guard let library = model.library else { return }
+        let tracks = offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
+        guard !tracks.isEmpty else { return }
         next ? player.playNext(tracks, library: library)
              : player.addToQueue(tracks, library: library)
     }
@@ -295,6 +360,48 @@ private struct ListenerVetoes: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(vetoed ? "Not for \(listener.name), tap to allow" : "\(listener.name) listens, tap to hide")
             }
+        }
+    }
+}
+
+/// The album's download state as one circular button: an arrow to pin, a
+/// ring filling as tracks land, a check when every file is down. Tapping a
+/// pinned album asks before removing it.
+struct DownloadButton: View {
+    let status: OfflineStore.AlbumStatus?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            switch status {
+            case nil:
+                Image(systemName: "arrow.down.circle")
+            case .complete?:
+                Image(systemName: "checkmark.circle.fill")
+            case .partial?:
+                Image(systemName: "checkmark.circle.badge.questionmark")
+            case .pending(let done, let total)?:
+                let fraction = total > 0 ? Double(done) / Double(total) : 0
+                ZStack {
+                    Circle().stroke(.tertiary, lineWidth: 2.5)
+                    Circle()
+                        .trim(from: 0, to: fraction)
+                        .stroke(.tint, style: .init(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Image(systemName: "stop.fill").font(.caption2)
+                }
+                .frame(width: 20, height: 20)
+                .animation(.snappy, value: fraction)
+            }
+        }
+        .accessibilityLabel(label)
+    }
+
+    private var label: String {
+        switch status {
+        case nil: "Download"
+        case .complete?, .partial?: "Downloaded, tap to remove"
+        case .pending(let done, let total)?: "Downloading, \(done) of \(total)"
         }
     }
 }

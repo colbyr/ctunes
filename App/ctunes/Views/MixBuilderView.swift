@@ -99,6 +99,8 @@ struct MixBuilderView: View {
         /// A listening rider has vetoed the artist. Stays in the selected
         /// grid, dimmed, so toggling the rider off brings it straight back.
         let vetoed: Bool
+        /// Offline with nothing downloaded: still in the pool, dimmed.
+        var unavailable = false
     }
 
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
@@ -125,7 +127,8 @@ struct MixBuilderView: View {
             title: album.title,
             subtitle: grouping == .artist ? (album.year.map(String.init) ?? "—") : album.parentTitle,
             thumb: album.thumb,
-            vetoed: hidden.contains(album.artistKey)
+            vetoed: hidden.contains(album.artistKey),
+            unavailable: model.state == .offline && !model.downloads.hasDownloads(album)
         )
     }
 
@@ -270,7 +273,7 @@ struct MixBuilderView: View {
         }
         .onDisappear { building = false }
         .onChange(of: selected) { savedSelection = selected.joined(separator: ",") }
-        .task {
+        .task(id: model.libraryGeneration) {
             guard let library = model.library else { return }
             switch kind {
             case .artist: artists = (try? await library.artists(inSection: section.key)) ?? []
@@ -343,7 +346,11 @@ struct MixBuilderView: View {
                 for await batch in group { all += batch }
                 return all
             }
-            let playable = tracks.filter { !hidden.contains($0.grandparentRatingKey ?? "") }
+            // Offline, only what's on disk can go in the queue.
+            let offline = model.state == .offline
+            let playable = tracks.filter {
+                !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isAvailable($0))
+            }
             guard !playable.isEmpty else {
                 nothingToPlay = true
                 return
@@ -390,7 +397,7 @@ struct MixBuilderView: View {
                 .frame(maxWidth: .infinity, alignment: kind == .artist ? .center : .leading)
             }
             .frame(maxWidth: .infinity)
-            .opacity(item.vetoed ? 0.4 : 1)
+            .opacity(item.vetoed || item.unavailable ? 0.4 : 1)
             .contentShape(.rect)
         }
 

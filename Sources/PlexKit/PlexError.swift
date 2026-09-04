@@ -7,6 +7,8 @@ public enum PlexError: Error, Sendable {
     case noServerReachable
     case authorizationTimedOut
     case notAuthenticated
+    /// The library is a snapshot; the server has to answer for this.
+    case offline
 }
 
 extension PlexError: LocalizedError {
@@ -24,6 +26,8 @@ extension PlexError: LocalizedError {
             return "Timed out waiting for sign-in to be approved."
         case .notAuthenticated:
             return "Not signed in to Plex."
+        case .offline:
+            return "Not available offline."
         }
     }
 }

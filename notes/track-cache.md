@@ -299,8 +299,6 @@ prefetch window.
 
 ## Follow-ups
 
-- Per-album "download" pins that eviction skips: the same cache with a pinned set, plus a
-  button on the album page.
+- ~~Per-album "download" pins~~ — done as a second root and a pin queue, `notes/offline.md`.
 - Background `URLSession` so pins finish with the app suspended.
-- A checkmark on cached rows in `TracksView`.
 - Transcoded, smaller cache variants for cellular.

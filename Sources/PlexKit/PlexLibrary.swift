@@ -157,12 +157,18 @@ public actor PlexLibrary {
 
     /// Artwork resized by the server, so list cells don't pull full-size covers.
     public nonisolated func artworkURL(_ thumb: String?, size: Int = 200) -> URL? {
+        Self.artworkURL(thumb, size: size, base: server.baseURL, token: token)
+    }
+
+    /// The same URL for an offline library, so the image cache is asked
+    /// for exactly what it saw online.
+    public static func artworkURL(_ thumb: String?, size: Int, base: URL, token: String) -> URL? {
         guard let thumb, !thumb.isEmpty else { return nil }
         let encoded = thumb.addingPercentEncoding(
             withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~"))
         ) ?? thumb
         return URL(string:
-            server.baseURL.absoluteString
+            base.absoluteString
             + "/photo/:/transcode?width=\(size)&height=\(size)&minSize=1"
             + "&url=\(encoded)&X-Plex-Token=\(token)")
     }
