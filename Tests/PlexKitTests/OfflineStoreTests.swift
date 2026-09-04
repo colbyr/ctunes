@@ -65,7 +65,7 @@ struct OfflineStoreTests {
         #expect(await store.snapshot(server: "N", section: nil) == nil)
     }
 
-    @Test("nothing on disk carries a token or an absolute URL")
+    @Test("nothing on disk carries a token")
     func nothingSecretOnDisk() async throws {
         let (store, _, _) = try makeStore()
         try await store.save(try Self.fixtureSnapshot())
@@ -76,7 +76,7 @@ struct OfflineStoreTests {
         for file in files {
             let text = try String(contentsOf: store.directory.appending(path: file), encoding: .utf8)
             #expect(!text.contains("X-Plex-Token"), "\(file)")
-            #expect(!text.contains("https://"), "\(file)")
+            #expect(!text.contains("tok"), "\(file)")
         }
     }
 
@@ -89,7 +89,7 @@ struct OfflineStoreTests {
         return LibrarySnapshot(
             server: server, serverName: "Test", sections: sections, section: section,
             albums: albums, artists: artists, favorites: Array(tracks.prefix(2)),
-            savedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            savedAt: Date(timeIntervalSince1970: 1_700_000_000), baseURL: Support.base
         )
     }
 
@@ -188,7 +188,31 @@ struct OfflineStoreTests {
         #expect(!cache.isPinned(server: Self.server, part: only.part!))
         #expect(cache.localURL(server: Self.server, part: only.part!) != nil, "back in the cache root")
         #expect(await store.pinnedAlbumKeys(server: Self.server).isEmpty)
-        #expect(await store.tracks(inAlbum: "9", server: Self.server) == nil)
+        #expect(await store.tracks(inAlbum: "9", server: Self.server) == [shared, only], "the list outlives the pin")
+    }
+
+    @Test("a browsed album's tracks are remembered and count as available once a file is cached")
+    func browsedAlbum() async throws {
+        let (store, cache, _) = try makeStore()
+        let tracks = tracks([1, 2], album: "9")
+        await store.saveTracks(tracks, inAlbum: "9", server: Self.server)
+        #expect(await store.tracks(inAlbum: "9", server: Self.server) == tracks)
+        #expect(await store.tracks(inAlbum: "8", server: Self.server) == nil)
+        #expect(await store.availableAlbums(server: Self.server).isEmpty)
+
+        try await cache.download(sources(tracks[1])!)
+        #expect(await store.availableAlbums(server: Self.server) == ["9"])
+        #expect(await store.statuses(server: Self.server).isEmpty, "browsed, not pinned")
+    }
+
+    @Test("offline artwork falls back to the server URL the image cache saw")
+    func artworkFallback() async throws {
+        let (store, _, _) = try makeStore()
+        let snapshot = try Self.fixtureSnapshot()
+        let library = OfflineLibrary(snapshot: snapshot, store: store, token: "tok")
+        let url = try #require(library.artworkURL("/library/metadata/9/thumb/1", size: 200))
+        #expect(url.absoluteString.hasPrefix(Support.base.absoluteString + "/photo/:/transcode"))
+        #expect(OfflineLibrary(snapshot: snapshot, store: store).artworkURL("/x", size: 200) == nil, "no token, no URL")
     }
 
     @Test("replacing the favorites group pins the new and unpins the dropped")

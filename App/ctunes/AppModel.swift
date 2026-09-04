@@ -210,7 +210,7 @@ final class AppModel {
             libraryGeneration += 1
             errorMessage = nil
             state = .signedIn
-            downloads.attach(server: server.machineIdentifier)
+            downloads.attach(server: server.machineIdentifier, offline: false)
             await resumeDownloads()
             await syncFavoritesPin()
         } catch {
@@ -232,13 +232,13 @@ final class AppModel {
     }
 
     private func enterOffline(_ snapshot: LibrarySnapshot) {
-        library = OfflineLibrary(snapshot: snapshot, store: offline)
+        library = OfflineLibrary(snapshot: snapshot, store: offline, token: token)
         serverName = snapshot.serverName
         sections = snapshot.sections
         selectedSection = snapshot.section
         libraryGeneration += 1
         state = .offline
-        downloads.attach(server: snapshot.server)
+        downloads.attach(server: snapshot.server, offline: true)
     }
 
     /// Called by a browse screen when a fetch fails while signed in. A
@@ -284,11 +284,19 @@ final class AppModel {
             section: section,
             albums: albums,
             artists: artists,
-            favorites: favorites
+            favorites: favorites,
+            baseURL: (library as? PlexLibrary)?.baseURL
         )
         try? await offline.save(snapshot)
         await offline.setFavorites(favorites, server: library.serverIdentifier, sources: library.trackSource)
         downloads.refresh()
+    }
+
+    /// Remembers an album's tracks as browsed, so offline the page can list
+    /// them and play whichever are on disk from an earlier play.
+    func rememberTracks(_ tracks: [PlexTrack], inAlbum album: PlexAlbum) async {
+        guard let library, !library.isOffline else { return }
+        await offline.saveTracks(tracks, inAlbum: album.ratingKey, server: library.serverIdentifier)
     }
 
     // MARK: - Downloads
@@ -441,7 +449,7 @@ final class AppModel {
             favoriteOverrides = [:]
             state = .signedOut
             await offline.clear()
-            downloads.attach(server: nil)
+            downloads.attach(server: nil, offline: false)
         } catch {
             errorMessage = error.localizedDescription
         }

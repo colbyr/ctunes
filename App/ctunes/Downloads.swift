@@ -9,6 +9,9 @@ import PlexKit
 final class Downloads {
     /// By album ratingKey, for the server the library is on.
     private(set) var statuses: [String: OfflineStore.AlbumStatus] = [:]
+    /// Offline only: albums with any file on disk, pinned or cached from a
+    /// play, so the grid can tell playable from not.
+    private(set) var available: Set<String> = []
     private(set) var favoritesPinned = false
     /// Bytes of pinned audio and art.
     private(set) var usage = 0
@@ -19,6 +22,7 @@ final class Downloads {
     private let store: OfflineStore
     private let cache: TrackCache
     private var server: String?
+    private var offline = false
     @ObservationIgnored private var events: Task<Void, Never>?
 
     init(store: OfflineStore, cache: TrackCache) {
@@ -33,8 +37,9 @@ final class Downloads {
     }
 
     /// The server whose pins to show; nil clears everything.
-    func attach(server: String?) {
+    func attach(server: String?, offline: Bool) {
         self.server = server
+        self.offline = offline
         refresh()
     }
 
@@ -51,11 +56,24 @@ final class Downloads {
         statuses[album.ratingKey]?.isDownloaded ?? false
     }
 
+    /// Something to play: a pin with at least one file down, or offline,
+    /// any album with a file left from an earlier play.
+    func hasDownloads(_ album: PlexAlbum) -> Bool {
+        statuses[album.ratingKey]?.hasDownloads ?? available.contains(album.ratingKey)
+    }
+
     /// Whether the file is in the pinned root right now.
-    func isDownloaded(_ track: PlexTrack) -> Bool {
+    func isPinned(_ track: PlexTrack) -> Bool {
         _ = generation
         guard let server, let part = track.part else { return false }
         return cache.isPinned(server: server, part: part)
+    }
+
+    /// Whether the file is on disk in either root, so it can play offline.
+    func isAvailable(_ track: PlexTrack) -> Bool {
+        _ = generation
+        guard let server, let part = track.part else { return false }
+        return cache.localURL(server: server, part: part) != nil
     }
 
     /// Pins the album: records it, saves its cover at 600px, and queues
@@ -90,18 +108,22 @@ final class Downloads {
     func refresh() {
         guard let server else {
             statuses = [:]
+            available = []
             favoritesPinned = false
             usage = 0
             generation += 1
             return
         }
+        let offline = offline
         Task {
             let statuses = await store.statuses(server: server)
             let pinned = await store.favoritesPinned(server: server)
             let usage = await store.usage()
+            let available = offline ? await store.availableAlbums(server: server) : []
             self.statuses = statuses
             favoritesPinned = pinned
             self.usage = usage
+            self.available = available
             generation += 1
         }
     }

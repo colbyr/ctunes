@@ -128,7 +128,7 @@ struct MixBuilderView: View {
             subtitle: grouping == .artist ? (album.year.map(String.init) ?? "—") : album.parentTitle,
             thumb: album.thumb,
             vetoed: hidden.contains(album.artistKey),
-            unavailable: model.state == .offline && !model.downloads.isDownloaded(album)
+            unavailable: model.state == .offline && !model.downloads.hasDownloads(album)
         )
     }
 
@@ -346,7 +346,11 @@ struct MixBuilderView: View {
                 for await batch in group { all += batch }
                 return all
             }
-            let playable = tracks.filter { !hidden.contains($0.grandparentRatingKey ?? "") }
+            // Offline, only what's on disk can go in the queue.
+            let offline = model.state == .offline
+            let playable = tracks.filter {
+                !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isAvailable($0))
+            }
             guard !playable.isEmpty else {
                 nothingToPlay = true
                 return

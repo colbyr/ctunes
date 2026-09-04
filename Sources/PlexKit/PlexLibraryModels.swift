@@ -308,6 +308,9 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public let artists: [PlexArtist]
     public let favorites: [PlexTrack]
     public let savedAt: Date
+    /// The connection the snapshot was taken over, so offline artwork can
+    /// ask the image cache for the same URLs it saw online. No token.
+    public let baseURL: URL?
 
     public init(
         server: String,
@@ -317,7 +320,8 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
         albums: [PlexAlbum],
         artists: [PlexArtist],
         favorites: [PlexTrack],
-        savedAt: Date = Date()
+        savedAt: Date = Date(),
+        baseURL: URL? = nil
     ) {
         self.server = server
         self.serverName = serverName
@@ -327,5 +331,6 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
         self.artists = artists
         self.favorites = favorites
         self.savedAt = savedAt
+        self.baseURL = baseURL
     }
 }

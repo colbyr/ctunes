@@ -30,8 +30,9 @@ struct MusicView: View {
     private var offline: Bool { model.state == .offline }
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
     /// Filtered before the pure grouping and search, so those stay pure.
+    /// Anything with a file to play, so an album still downloading shows.
     private var browsable: [PlexAlbum] {
-        downloadedOnly ? albums.filter { model.downloads.isDownloaded($0) } : albums
+        downloadedOnly ? albums.filter { model.downloads.hasDownloads($0) } : albums
     }
     private var groups: [AlbumGroup] {
         AlbumBrowse.groups(browsable, sort: sort, grouping: grouping, hiding: hidden)
@@ -103,6 +104,14 @@ struct MusicView: View {
                 HiddenArtistsLine(model: model, count: hiddenCount)
                     .listRowInsets(.init(top: 12, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
+                // In the list rather than an overlay, so it sits under the
+                // cards and the controls instead of over them.
+                if loaded, !albums.isEmpty, groups.isEmpty, downloadedOnly {
+                    ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
+                                           description: Text("Turn off Downloaded only to see the whole library."))
+                        .listRowInsets(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                        .listRowSeparator(.hidden)
+                }
                 ForEach(groups) { group in
                     Section {
                         grid(group.albums, minimum: 100, spacing: 12, showArtist: grouping != .artist)
@@ -136,9 +145,6 @@ struct MusicView: View {
                 ProgressView()
             } else if albums.isEmpty {
                 ContentUnavailableView("No albums", systemImage: "square.stack")
-            } else if browsable.isEmpty {
-                ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
-                                       description: Text("Turn off Downloaded only to see the whole library."))
             } else if !query.isEmpty && results.isEmpty {
                 ContentUnavailableView.search(text: query)
             }
@@ -244,7 +250,7 @@ struct MusicView: View {
     /// never enter the queue.
     private func allowed(_ tracks: [PlexTrack]) -> [PlexTrack] {
         tracks.filter {
-            !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isDownloaded($0))
+            !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isAvailable($0))
         }
     }
 
@@ -285,6 +291,7 @@ private struct AlbumTile: View {
 
     var body: some View {
         let downloaded = model.downloads.isDownloaded(album)
+        let playable = model.downloads.hasDownloads(album)
         let offline = model.state == .offline
         VStack(alignment: .leading, spacing: 6) {
             Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
@@ -308,7 +315,7 @@ private struct AlbumTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // Browsable but not playable: still in the grid, clearly dimmed.
-        .opacity(offline && !downloaded ? 0.35 : 1)
+        .opacity(offline && !playable ? 0.35 : 1)
         .contentShape(.rect)
     }
 }

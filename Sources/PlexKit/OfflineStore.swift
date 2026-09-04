@@ -10,7 +10,7 @@ import Foundation
 ///
 ///     Tracks/<server>/<partId>-<stamp>.<ext>   the cache's pinned root
 ///     <server>/manifest.json                   Manifest
-///     <server>/albums/<ratingKey>.json         [PlexTrack] per pinned album
+///     <server>/albums/<ratingKey>.json         [PlexTrack] per album ever browsed
 ///     <server>/favorites.json                  [PlexTrack] in the favorites group
 ///     <server>/<section>/library.json          LibrarySnapshot
 ///     <server>/art/<name>.jpg                  album covers for pinned albums
@@ -55,6 +55,14 @@ public actor OfflineStore {
             case .pending: false
             }
         }
+
+        /// At least one file is on disk, so there is something to play.
+        public var hasDownloads: Bool {
+            switch self {
+            case .complete, .partial: true
+            case .pending(let done, _): done > 0
+            }
+        }
     }
 
     // MARK: - Pins
@@ -89,8 +97,8 @@ public actor OfflineStore {
         var manifest = manifest(server)
         guard manifest.albums.removeValue(forKey: ratingKey) != nil else { return }
         let before = wantedPaths(server)
-        albumTracks[albumKey(server, ratingKey)] = nil
-        try? FileManager.default.removeItem(at: albumsDirectory(server).appending(path: "\(ratingKey).json"))
+        // The track list stays: it's what lets the album page show which
+        // tracks are still in the cache root offline.
         save(manifest, server: server)
         let after = wantedPaths(server)
         await cache.unpin(Array(before.subtracting(after)))
@@ -181,10 +189,37 @@ public actor OfflineStore {
 
     // MARK: - Offline reads
 
-    /// The saved track list for a pinned album; nil when it isn't pinned.
+    /// Remembers an album's tracks as browsed online, so offline the page
+    /// can list them and play whichever are on disk, pinned or merely
+    /// cached from a play.
+    public func saveTracks(_ tracks: [PlexTrack], inAlbum ratingKey: String, server: String) {
+        guard !tracks.isEmpty, savedTracks(server, ratingKey) != tracks else { return }
+        albumTracks[albumKey(server, ratingKey)] = tracks
+        try? write(tracks, to: albumsDirectory(server).appending(path: "\(ratingKey).json"))
+    }
+
+    /// The saved track list for any album browsed or pinned; nil when the
+    /// album was never seen.
     public func tracks(inAlbum ratingKey: String, server: String) -> [PlexTrack]? {
-        guard manifest(server).albums[ratingKey] != nil else { return nil }
-        return savedTracks(server, ratingKey)
+        let tracks = savedTracks(server, ratingKey)
+        return tracks.isEmpty ? nil : tracks
+    }
+
+    /// Every album with a saved track list and at least one file on disk in
+    /// either root. Only worth computing offline: it stats every saved
+    /// track.
+    public func availableAlbums(server: String) -> Set<String> {
+        let manager = FileManager.default
+        guard let files = try? manager.contentsOfDirectory(atPath: albumsDirectory(server).path) else { return [] }
+        var result: Set<String> = []
+        for file in files where file.hasSuffix(".json") {
+            let ratingKey = String(file.dropLast(5))
+            let onDisk = savedTracks(server, ratingKey).contains { track in
+                track.part.map { cache.localURL(server: server, part: $0) != nil } ?? false
+            }
+            if onDisk { result.insert(ratingKey) }
+        }
+        return result
     }
 
     /// The favorites group, whether or not the pin is on.

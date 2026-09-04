@@ -88,10 +88,13 @@ re-loaded from the stream URL, or skipped offline. Keep the stream fallback
 and the `-1005` retry: the cache is an optimisation, never the only path.
 
 `OfflineStore` (PlexKit actor, `notes/offline.md`) owns the manifest of pinned
-albums and the favorites pin, per-album track lists, the library snapshot and
-album covers under `Application Support/ctunes/Offline/<server>/`. It hands
-`TrackSource`s to the cache and reads the file system for status; per-track
-download state is never persisted. `Downloads` (app target) mirrors it onto
+albums and the favorites pin, the track list of every album browsed, the
+library snapshot and album covers under
+`Application Support/ctunes/Offline/<server>/`. It hands `TrackSource`s to
+the cache and reads the file system for status; per-track download state is
+never persisted. Offline, a file in either root is playable, so an album
+half-played before the server went away still lists and plays those tracks;
+artwork falls back to the online URL so `ImageLoader`'s disk cache can answer. `Downloads` (app target) mirrors it onto
 the main actor from `cache.events`.
 
 ## Plex API constraints

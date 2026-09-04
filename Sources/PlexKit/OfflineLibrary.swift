@@ -7,10 +7,13 @@ import Foundation
 public struct OfflineLibrary: LibrarySource {
     public let snapshot: LibrarySnapshot
     private let store: OfflineStore
+    /// Kept in memory only, for artwork URLs; never written with the snapshot.
+    private let token: String?
 
-    public init(snapshot: LibrarySnapshot, store: OfflineStore) {
+    public init(snapshot: LibrarySnapshot, store: OfflineStore, token: String? = nil) {
         self.snapshot = snapshot
         self.store = store
+        self.token = token
     }
 
     public var serverIdentifier: String { snapshot.server }
@@ -51,8 +54,12 @@ public struct OfflineLibrary: LibrarySource {
 
     public func trackSource(for track: PlexTrack) -> TrackSource? { nil }
 
-    /// The stored 600px cover, whatever size was asked for.
+    /// The stored cover for a pinned album, whatever size was asked for;
+    /// otherwise the server URL the image loader saw online, which its
+    /// disk cache can still answer for anything scrolled past.
     public func artworkURL(_ thumb: String?, size: Int) -> URL? {
-        store.artURL(thumb, server: snapshot.server)
+        if let saved = store.artURL(thumb, server: snapshot.server) { return saved }
+        guard let base = snapshot.baseURL, let token else { return nil }
+        return PlexLibrary.artworkURL(thumb, size: size, base: base, token: token)
     }
 }

@@ -121,6 +121,7 @@ struct TracksView: View {
                 return
             }
             loaded = true
+            await model.rememberTracks(tracks, inAlbum: album)
             if Self.autoPin, !library.isOffline, !tracks.isEmpty, !model.downloads.isPinned(album) {
                 model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
             }
@@ -230,9 +231,10 @@ struct TracksView: View {
 
     private func row(_ track: PlexTrack, at index: Int) -> some View {
         let favorite = model.isFavorite(track)
-        let downloaded = model.downloads.isDownloaded(track)
-        // Offline, a row with no file has nothing to play.
-        let playable = !offline || downloaded
+        let downloaded = model.downloads.isPinned(track)
+        // Offline, a row with no file has nothing to play; a file left in
+        // the cache root from an earlier play counts.
+        let playable = !offline || model.downloads.isAvailable(track)
         return Button {
             guard let library = model.library, playable else { return }
             player.play(tracks, startingAt: index, library: library)
@@ -309,7 +311,7 @@ struct TracksView: View {
 
     /// Offline, only tracks with a file are worth queueing.
     private var playableTracks: [PlexTrack] {
-        offline ? tracks.filter { model.downloads.isDownloaded($0) } : tracks
+        offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
     }
 
     private func play() {
@@ -327,7 +329,7 @@ struct TracksView: View {
 
     private func enqueue(_ tracks: [PlexTrack], next: Bool) {
         guard let library = model.library else { return }
-        let tracks = offline ? tracks.filter { model.downloads.isDownloaded($0) } : tracks
+        let tracks = offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
         guard !tracks.isEmpty else { return }
         next ? player.playNext(tracks, library: library)
              : player.addToQueue(tracks, library: library)
