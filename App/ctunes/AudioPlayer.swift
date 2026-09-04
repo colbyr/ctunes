@@ -43,6 +43,11 @@ final class AudioPlayer {
     private var currentItemIsLocal = false
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var interruptionObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var routeChangeObserver: NSObjectProtocol?
+    /// Set when an interruption (Siri, a call, a car's voice assistant) cut
+    /// playback that was running, so the end of it can pick back up.
+    private var resumeAfterInterruption = false
     @ObservationIgnored private nonisolated(unsafe) var itemStatusObserver: NSKeyValueObservation?
     /// How many times the current entry's item has been rebuilt after failing
     /// to load. Reset whenever the cursor moves.
@@ -70,6 +75,7 @@ final class AudioPlayer {
         player.actionAtItemEnd = .pause
         observeTime()
         observeItemEnd()
+        observeInterruptions()
     }
 
     /// The session the track cache downloads through. One connection: the
@@ -94,6 +100,8 @@ final class AudioPlayer {
     deinit {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
+        if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
     }
 
     // MARK: - Playback
@@ -114,6 +122,7 @@ final class AudioPlayer {
 
     func resume() {
         guard currentTrack != nil else { return }
+        resumeAfterInterruption = false
         // Nothing left to resume: a lock-screen play after the end starts over.
         if hasEnded {
             restart()
@@ -127,6 +136,7 @@ final class AudioPlayer {
     }
 
     func pause() {
+        resumeAfterInterruption = false
         player.pause()
         isPlaying = false
         updateNowPlayingPlaybackState()
@@ -468,6 +478,72 @@ final class AudioPlayer {
         ) { [weak self] _ in
             Task { @MainActor in self?.currentItemEnded() }
         }
+    }
+
+    /// iOS stops the player and deactivates the session behind our back when
+    /// something else takes the audio (Siri, a call, a car's voice assistant)
+    /// and tells no one but this notification. Without tracking it
+    /// `isPlaying` stays true over silence, the lock screen keeps saying
+    /// "playing", and the first play/pause press "pauses" a stopped player,
+    /// so it takes two presses to get sound back. Nor does anything resume
+    /// when the interruption ends unless we do it here.
+    private func observeInterruptions() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let info = notification.userInfo,
+                  let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw)
+            else { return }
+            let options = AVAudioSession.InterruptionOptions(
+                rawValue: info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            )
+            Task { @MainActor in self?.handleInterruption(type, options: options) }
+        }
+
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: raw)
+            else { return }
+            Task { @MainActor in self?.handleRouteChange(reason) }
+        }
+    }
+
+    private func handleInterruption(
+        _ type: AVAudioSession.InterruptionType,
+        options: AVAudioSession.InterruptionOptions
+    ) {
+        switch type {
+        case .began:
+            guard isPlaying else { return }
+            // The player is already stopped; reflect it without touching it.
+            resumeAfterInterruption = true
+            isPlaying = false
+            updateNowPlayingPlaybackState()
+            reportTimeline(.paused)
+        case .ended:
+            guard resumeAfterInterruption else { return }
+            resumeAfterInterruption = false
+            // No hint to resume means the other audio took over for good
+            // (a phone call answered, say). Stay paused rather than barge in.
+            guard options.contains(.shouldResume) else { return }
+            resume()
+        @unknown default:
+            break
+        }
+    }
+
+    /// Unplugging from the car or pulling headphones out: the system pauses
+    /// the player and the platform convention is to stay paused.
+    private func handleRouteChange(_ reason: AVAudioSession.RouteChangeReason) {
+        guard reason == .oldDeviceUnavailable, isPlaying else { return }
+        pause()
     }
 
     // MARK: - Lock screen

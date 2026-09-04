@@ -69,7 +69,12 @@ UI drift apart. Gapless playback is out of scope and would need a different
 design. **`AVPlayerItemDidPlayToEndTime` is not reliable after a seek near the
 end of a track**: the clock runs past the item's duration at rate 1 and the
 notification never posts, so the periodic time observer also treats
-`currentTime >= duration` as the end, guarded by a per-item flag. Every
+`currentTime >= duration` as the end, guarded by a per-item flag. **iOS
+stops the player silently when Siri, a call or a car's voice assistant takes
+the audio**, so `AudioPlayer` observes `AVAudioSession.interruptionNotification`:
+`.began` marks the player paused, `.ended` with `.shouldResume` plays again.
+Without it `isPlaying` stays true over silence and the head unit needs two
+play/pause presses to recover. Every
 shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
