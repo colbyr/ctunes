@@ -16,6 +16,9 @@ struct AuthView: View {
             Text("Tunes")
                 .font(.largeTitle.bold())
 
+            Text("Album focused listing for Plex")
+                .foregroundStyle(.secondary)
+
             if case .linking(let code) = model.state {
                 VStack(spacing: 8) {
                     ProgressView()
