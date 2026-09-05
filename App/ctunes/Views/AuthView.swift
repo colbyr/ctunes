@@ -6,15 +6,15 @@ struct AuthView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 56))
-                .foregroundStyle(Color.accentText)
+            // The icon asset itself, since the AppIcon set isn't loadable by name.
+            Image("AppIconArt")
+                .resizable()
+                .frame(width: 96, height: 96)
+                .clipShape(.rect(cornerRadius: 22))
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
 
-            Text("ctunes")
+            Text("Tunes")
                 .font(.largeTitle.bold())
-
-            Text("Play your Plex music library.")
-                .foregroundStyle(.secondary)
 
             if case .linking(let code) = model.state {
                 VStack(spacing: 8) {
