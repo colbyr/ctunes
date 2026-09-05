@@ -43,6 +43,9 @@ struct ContentView: View {
                 LibraryView(model: model)
             }
         }
+        // Filled first: the sign-in and connecting screens are only as big
+        // as their text, and the gradient would stop at their edges.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .foregroundStyle(Color.ink)
         .background(ParchmentBackground())
         .environment(player)
