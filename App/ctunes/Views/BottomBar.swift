@@ -33,7 +33,7 @@ struct BottomBar: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.body.weight(.semibold))
-                            .frame(width: 52, height: 52)
+                            .frame(width: 60, height: 60)
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
@@ -45,11 +45,11 @@ struct BottomBar: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 20)
         // Pulled into the home-indicator inset so the gap below the pills is
-        // the 16pt at their sides. Not when the keyboard is up: that inset
+        // a little more than the 20pt at their sides. Not when the keyboard is up: that inset
         // is the keyboard, and the bar would sit on its top edge.
-        .padding(.bottom, bottomInset > 60 ? 0 : 16 - bottomInset)
+        .padding(.bottom, bottomInset > 60 ? 0 : 26 - bottomInset)
         .background {
             GeometryReader { proxy in
                 Color.clear.onChange(of: proxy.safeAreaInsets.bottom, initial: true) { _, inset in
@@ -76,12 +76,12 @@ private struct MiniPlayerPill: View {
         HStack(spacing: 10) {
             Button(action: open) {
                 HStack(spacing: 10) {
-                    Artwork(url: model.library?.artworkURL(track.thumb), size: 40, corner: 20)
+                    Artwork(url: model.library?.artworkURL(track.thumb), size: 44, corner: 22)
                     if !compact {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(track.title).font(.footnote.weight(.medium)).lineLimit(1)
+                            Text(track.title).font(.footnote.weight(.semibold)).lineLimit(1)
                             Text(track.grandparentTitle ?? "")
-                                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .transition(.opacity.combined(with: .move(edge: .leading)))
                     }
@@ -94,22 +94,22 @@ private struct MiniPlayerPill: View {
                 Button { player.togglePlayPause() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title3)
-                        .frame(width: 32, height: 40)
+                        .frame(width: 34, height: 44)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 Button { player.next() } label: {
                     Image(systemName: "forward.fill")
                         .font(.body)
-                        .frame(width: 32, height: 40)
+                        .frame(width: 34, height: 44)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)
             }
         }
-        .padding(6)
-        .padding(.trailing, compact ? 0 : 6)
+        .padding(8)
+        .padding(.trailing, compact ? 0 : 8)
         // Plain buttons only hit-test their opaque content, so without this
         // a tap in the padding lands on the list row underneath the pill.
         .contentShape(.capsule)
@@ -147,7 +147,7 @@ private struct SearchPill: View {
                 }
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(height: 60)
                 .contentShape(.capsule)
             } else {
                 Button {
@@ -155,8 +155,8 @@ private struct SearchPill: View {
                 } label: {
                     Image(systemName: "magnifyingglass")
                         .font(.title3.weight(filtering ? .bold : .regular))
-                        .foregroundStyle(filtering ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-                        .frame(width: 52, height: 52)
+                        .foregroundStyle(filtering ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.primary))
+                        .frame(width: 60, height: 60)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)

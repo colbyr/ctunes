@@ -53,6 +53,7 @@ struct ListenersSheet: View {
                     Text("Listeners are saved on this phone, not in Plex. Choose who's listening from the Music screen.")
                 }
             }
+            .parchment()
             .navigationTitle("Listeners")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -117,7 +118,7 @@ private struct ListenerDetail: View {
                                 model.setListenerColor(id, index: index)
                             } label: {
                                 Label {
-                                    Text(Self.colorNames[index])
+                                    Text(ListenerPalette.names[index])
                                 } icon: {
                                     Image(systemName: index == listener.colorIndex ? "checkmark.circle.fill" : "circle.fill")
                                         .foregroundStyle(ListenerPalette.color(index))
@@ -161,6 +162,7 @@ private struct ListenerDetail: View {
                 }
             }
         }
+        .parchment()
         .navigationTitle(listener.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -186,5 +188,4 @@ private struct ListenerDetail: View {
         .buttonStyle(.plain)
     }
 
-    private static let colorNames = ["Purple", "Green", "Orange", "Teal", "Pink", "Indigo", "Red", "Mint"]
 }

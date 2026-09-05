@@ -59,11 +59,11 @@ struct FilterChip<Content: View>: View {
     var body: some View {
         HStack(spacing: 8) { content }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(active ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.secondary))
+            .foregroundStyle(active ? AnyShapeStyle(Color.pillInk) : AnyShapeStyle(.secondary))
             .padding(.leading, 5)
             .padding(.trailing, 15)
             .frame(height: 34)
-            .background(active ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear), in: .capsule)
+            .background(active ? AnyShapeStyle(Color.pill) : AnyShapeStyle(.clear), in: .capsule)
             .contentShape(.capsule)
     }
 }

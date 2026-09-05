@@ -71,6 +71,7 @@ struct MusicView: View {
             if !query.isEmpty {
                 grid(results, minimum: 100, spacing: 12, showArtist: true)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
+                    .listRowBackground(Color.clear)
             } else {
                 if offline {
                     OfflineBanner(reconnecting: model.reconnecting) {
@@ -78,6 +79,7 @@ struct MusicView: View {
                     }
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
                 // One row for all three cards: the row clips at its insets,
                 // so the shadow between the cards needs no inset at all and
@@ -91,19 +93,23 @@ struct MusicView: View {
                 }
                 .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
                 // The browser starts here: a rule, then the chips with the
                 // arrange button, then the hidden-artist line when any are.
                 Rectangle()
-                    .fill(.separator)
+                    .fill(Color.divider)
                     .frame(height: 1)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 AlbumBrowserControls(model: model, view: $view, downloadedOnly: $downloadedOnly)
                     .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 HiddenArtistsLine(model: model, count: hiddenCount)
                     .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 // In the list rather than an overlay, so it sits under the
                 // cards and the controls instead of over them.
                 if loaded, !albums.isEmpty, groups.isEmpty, downloadedOnly {
@@ -111,6 +117,7 @@ struct MusicView: View {
                                            description: Text("Turn off Downloaded only to see the whole library."))
                         .listRowInsets(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
                 ForEach(groups) { group in
                     Section {
@@ -125,10 +132,12 @@ struct MusicView: View {
                                 .listRowInsets(EdgeInsets())
                         }
                     }
+                    .listRowBackground(Color.clear)
                 }
             }
         }
         .listStyle(.plain)
+        .parchment()
         // The rule is a 1pt row; the default minimum centres it in 44pt.
         .environment(\.defaultMinListRowHeight, 1)
         // The row insets set the gaps; the default section gap on top of
@@ -139,7 +148,7 @@ struct MusicView: View {
         .scrollEdgeEffectStyle(.hard, for: .top)
         .scrollDismissesKeyboard(.immediately)
         // Room to scroll the last row clear of the floating bottom pills.
-        .contentMargins(.bottom, 72, for: .scrollContent)
+        .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
             if !loaded {
                 ProgressView()
@@ -346,8 +355,7 @@ private struct OfflineBanner: View {
             }
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-        .cardShadow()
+        .glassCard(cornerRadius: 24)
     }
 }
 
@@ -363,9 +371,9 @@ private struct ShuffleFavoritesCard: View {
             HStack(spacing: 14) {
                 Image(systemName: "heart.fill")
                     .font(.title3)
-                    .foregroundStyle(.pink)
+                    .foregroundStyle(Color.accentInk)
                     .frame(width: 44, height: 44)
-                    .background(.pink.opacity(0.14), in: .circle)
+                    .background(Color.amber, in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Shuffle Favorites").font(.headline)
                     if let subtitle {
@@ -378,13 +386,12 @@ private struct ShuffleFavoritesCard: View {
                 } else {
                     Image(systemName: "shuffle")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(.pink)
+                        .foregroundStyle(Color.accentText)
                 }
             }
             .padding(14)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-            .cardShadow()
-            .contentShape(.rect(cornerRadius: 18))
+            .glassCard(cornerRadius: 24)
+            .contentShape(.rect(cornerRadius: 24))
         }
         .buttonStyle(.plain)
         .disabled(loading)
@@ -401,17 +408,16 @@ private struct MixTile: View {
             HStack(spacing: 12) {
                 Image(systemName: kind.systemImage)
                     .font(.subheadline)
-                    .foregroundStyle(kind.accent)
+                    .foregroundStyle(Color.chipInk)
                     .frame(width: 36, height: 36)
-                    .background(kind.accent.opacity(0.14), in: .circle)
+                    .background(Color.chip, in: .circle)
                 Text(kind.title).font(.headline)
                 Spacer(minLength: 0)
             }
             .padding(14)
             .frame(maxWidth: .infinity)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-            .cardShadow()
-            .contentShape(.rect(cornerRadius: 18))
+            .glassCard()
+            .contentShape(.rect(cornerRadius: 22))
         }
         .buttonStyle(.plain)
     }

@@ -12,12 +12,8 @@ enum MixKind: String, Hashable {
         }
     }
 
-    var accent: Color {
-        switch self {
-        case .artist: .indigo
-        case .album: .orange
-        }
-    }
+    /// Amber for both: one accent, spent only where something acts.
+    var accent: Color { .accentText }
 
     var systemImage: String {
         switch self {
@@ -196,6 +192,7 @@ struct MixBuilderView: View {
                 // Bottom inset clears the card's shadow; see `cardShadow`.
                 .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             Group {
                 if picks.isEmpty {
                     emptySelection
@@ -204,17 +201,21 @@ struct MixBuilderView: View {
                 }
             }
             .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+            .listRowBackground(Color.clear)
             Rectangle()
-                .fill(.separator)
+                .fill(Color.divider)
                 .frame(height: 1)
                 .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             AlbumBrowserControls(model: model, view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
                 .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             HiddenArtistsLine(model: model, count: hiddenCount)
                 .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             if kind == .album && needle.isEmpty {
                 ForEach(poolGroups) { group in
                     Section {
@@ -229,18 +230,21 @@ struct MixBuilderView: View {
                                 .listRowInsets(EdgeInsets())
                         }
                     }
+                    .listRowBackground(Color.clear)
                 }
             } else {
                 grid(rest, selected: false)
                     .listRowInsets(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
+                    .listRowBackground(Color.clear)
             }
         }
         .listStyle(.plain)
+        .parchment()
         // The separator is a 1pt row; the default minimum centres it in 44pt.
         .environment(\.defaultMinListRowHeight, 1)
         .listSectionSpacing(0)
         .scrollDismissesKeyboard(.immediately)
-        .contentMargins(.bottom, 72, for: .scrollContent)
+        .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
             if !loaded {
                 ProgressView()
@@ -404,10 +408,10 @@ struct MixBuilderView: View {
                         if selected {
                             Image(systemName: "xmark")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(Color(.systemBackground))
+                                .foregroundStyle(Color.pillInk)
                                 .frame(width: 24, height: 24)
-                                .background(Color(.label), in: .circle)
-                                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                                .background(Color.pill, in: .circle)
+                                .overlay(Circle().stroke(Color.parchmentTop, lineWidth: 2))
                                 .offset(x: kind == .artist ? 0 : 6, y: kind == .artist ? 0 : -6)
                         }
                     }
@@ -497,9 +501,9 @@ private struct MixActionCard: View {
             HStack(spacing: compact ? 10 : 14) {
                 Image(systemName: systemImage)
                     .font(compact ? .body.weight(.medium) : .title3.weight(.medium))
-                    .foregroundStyle(enabled ? AnyShapeStyle(kind.accent) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(enabled ? AnyShapeStyle(Color.chipInk) : AnyShapeStyle(.tertiary))
                     .frame(width: compact ? 36 : 44, height: compact ? 36 : 44)
-                    .background(enabled ? AnyShapeStyle(kind.accent.opacity(0.14)) : AnyShapeStyle(.fill.tertiary), in: .circle)
+                    .background(enabled ? AnyShapeStyle(Color.chip) : AnyShapeStyle(.fill.tertiary), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.headline)
@@ -518,9 +522,8 @@ private struct MixActionCard: View {
                 }
             }
             .padding(compact ? 12 : 14)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-            .cardShadow()
-            .contentShape(.rect(cornerRadius: 18))
+            .glassCard()
+            .contentShape(.rect(cornerRadius: 22))
         }
         .buttonStyle(.plain)
         .disabled(!enabled)

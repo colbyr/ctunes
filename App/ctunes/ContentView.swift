@@ -43,6 +43,8 @@ struct ContentView: View {
                 LibraryView(model: model)
             }
         }
+        .foregroundStyle(Color.ink)
+        .background(ParchmentBackground())
         .environment(player)
         .task { await model.bootstrap() }
         // Sign-out lives in the model, which doesn't know the player; stop
@@ -79,7 +81,8 @@ struct ConnectFailedView: View {
             Text(model.errorMessage ?? "No Plex server answered.")
         } actions: {
             Button("Try again") { Task { await model.connect() } }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
+                .foregroundStyle(Color.accentInk)
             Button("Sign out") { Task { await model.signOut() } }
         }
     }

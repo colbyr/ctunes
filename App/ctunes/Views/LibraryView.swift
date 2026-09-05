@@ -13,6 +13,8 @@ struct LibraryView: View {
     @State private var buildingMix = false
 
     var body: some View {
+        // Chrome is ink, not amber: the back chevron, the ••• button, the
+        // toolbar. Amber is reserved for what acts, and those set it by hand.
         NavigationStack(path: $path) {
             Group {
                 if let section = model.selectedSection {
@@ -31,6 +33,7 @@ struct LibraryView: View {
                 }
             }
         }
+        .tint(Color.ink)
         // Attached to the stack, not to its root view: on the root view the
         // inset is replaced along with the content on every push, so the
         // mini player vanishes as soon as you navigate anywhere.
@@ -105,6 +108,7 @@ private struct SectionPicker: View {
                 Label(section.title, systemImage: "music.note.list")
             }
         }
+        .parchment()
         .navigationTitle("Choose a library")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

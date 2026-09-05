@@ -87,6 +87,7 @@ struct TracksView: View {
                 header
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                    .listRowBackground(Color.clear)
             }
 
             ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
@@ -99,15 +100,17 @@ struct TracksView: View {
                         Text(verbatim: "Disc \(number)")
                     }
                 }
+                .listRowBackground(Color.clear)
             }
         }
         .listStyle(.plain)
+        .parchment()
         .overlay {
             if !loaded { ProgressView() }
         }
         .navigationTitle(album.title)
         // Room to scroll the last row clear of the floating bottom pills.
-        .contentMargins(.bottom, 72, for: .scrollContent)
+        .contentMargins(.bottom, 84, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
@@ -217,13 +220,17 @@ struct TracksView: View {
                 Image(systemName: "shuffle")
             }
             .accessibilityLabel("Shuffle")
+            // The one saturated element on the screen.
             Button(action: play) {
                 Image(systemName: "play.fill")
+                    .foregroundStyle(Color.accentInk)
             }
             .accessibilityLabel("Play")
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
+            .tint(Color.amber)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
+        .foregroundStyle(Color.accentText)
         .buttonBorderShape(.circle)
         .controlSize(.large)
         .disabled(tracks.isEmpty)
@@ -258,7 +265,7 @@ struct TracksView: View {
                 if favorite {
                     Image(systemName: "heart.fill")
                         .font(.caption)
-                        .foregroundStyle(.pink)
+                        .foregroundStyle(Color.accentText)
                 }
                 if downloaded {
                     Image(systemName: "arrow.down.circle.fill")
@@ -275,7 +282,7 @@ struct TracksView: View {
         }
         .buttonStyle(.plain)
         .opacity(playable ? 1 : 0.35)
-        .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+        .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.primary))
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button { enqueue([track], next: true) } label: {
                 Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
@@ -295,7 +302,7 @@ struct TracksView: View {
                     Label(favorite ? "Unfavorite" : "Favorite",
                           systemImage: favorite ? "heart.slash" : "heart.fill")
                 }
-                .tint(.pink)
+                .tint(Color.accentText)
             }
         }
     }
@@ -386,7 +393,7 @@ struct DownloadButton: View {
                     Circle().stroke(.tertiary, lineWidth: 2.5)
                     Circle()
                         .trim(from: 0, to: fraction)
-                        .stroke(.tint, style: .init(lineWidth: 2.5, lineCap: .round))
+                        .stroke(Color.accentText, style: .init(lineWidth: 2.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     Image(systemName: "stop.fill").font(.caption2)
                 }

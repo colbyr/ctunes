@@ -8,7 +8,7 @@ struct AuthView: View {
         VStack(spacing: 20) {
             Image(systemName: "music.note.list")
                 .font(.system(size: 56))
-                .foregroundStyle(.tint)
+                .foregroundStyle(Color.accentText)
 
             Text("ctunes")
                 .font(.largeTitle.bold())
@@ -30,7 +30,8 @@ struct AuthView: View {
                 Button("Sign in with Plex") {
                     Task { await model.signIn(using: webAuthenticationSession) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
+                .foregroundStyle(Color.accentInk)
                 .controlSize(.large)
                 .padding(.top, 8)
             }

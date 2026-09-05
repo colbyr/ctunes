@@ -21,6 +21,7 @@ struct NowPlayingView: View {
                 header
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
             // No header once the queue has ended: there is nothing next.
             Section {
@@ -63,8 +64,10 @@ struct NowPlayingView: View {
             } header: {
                 if !ended { Text("Up Next") }
             }
+            .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
+        .parchment()
     }
 
     private var endOfQueue: some View {
@@ -158,7 +161,7 @@ struct NowPlayingView: View {
                     Image(systemName: "arrow.counterclockwise.circle.fill")
                         .font(.system(size: 64))
                 }
-                .foregroundStyle(.tint)
+                .foregroundStyle(Color.bigButton)
                 .accessibilityLabel("Play again")
             } else {
                 Button { player.togglePlayPause() } label: {
@@ -166,6 +169,8 @@ struct NowPlayingView: View {
                         .font(.system(size: 64))
                         .contentTransition(.symbolEffect(.replace))
                 }
+                // Ink disc by day, amber by night; the glyph is the cutout.
+                .foregroundStyle(Color.bigButton)
             }
             Spacer()
             Button { player.next() } label: {
@@ -203,7 +208,7 @@ struct NowPlayingView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(active ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .foregroundStyle(active ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.secondary))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 44, height: 44)
                 .contentShape(.rect)
@@ -238,6 +243,7 @@ struct NowPlayingView: View {
                     }
                 }
             )
+            .tint(Color.amber)
             HStack {
                 Text(TracksView.duration(shown))
                 Spacer()
@@ -268,7 +274,7 @@ struct HeartButton: View {
         } label: {
             Image(systemName: favorite ? "heart.fill" : "heart")
                 .font(.title2)
-                .foregroundStyle(favorite ? AnyShapeStyle(.pink) : AnyShapeStyle(.secondary))
+                .foregroundStyle(favorite ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.secondary))
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
@@ -286,7 +292,7 @@ struct RowButtonStyle: ButtonStyle {
         configuration.label
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(.rect)
-            .background(configuration.isPressed ? Color(.systemGray4) : .clear)
+            .background(configuration.isPressed ? Color.divider : .clear)
     }
 }
 
