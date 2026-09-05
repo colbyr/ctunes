@@ -2,6 +2,7 @@ import AVFoundation
 import MediaPlayer
 import Observation
 import PlexKit
+import os
 import SwiftUI
 
 /// Plays a queue of Plex tracks and keeps the lock screen in sync.
@@ -16,7 +17,17 @@ import SwiftUI
 @Observable
 final class AudioPlayer {
     private(set) var queue = PlayQueue<PlexTrack>()
+    /// Whether playback is wanted: what the transport buttons show. The
+    /// player can lag behind it while a track buffers or a Bluetooth route
+    /// comes up, which is what `playerIsRunning` tracks.
     private(set) var isPlaying = false
+    /// Whether AVPlayer's clock is actually running (`timeControlStatus ==
+    /// .playing`). The lock screen and a car head unit extrapolate their own
+    /// counter from the published rate, so the rate has to follow this, not
+    /// `isPlaying`: publishing rate 1 the moment `play()` is called sent the
+    /// car's timer ticking over silence while the first track loaded, then
+    /// snapping back to zero once audio began.
+    private(set) var playerIsRunning = false
     private(set) var currentTime: Double = 0
     private(set) var duration: Double = 0
     private(set) var repeatMode: RepeatMode = .off
@@ -49,6 +60,10 @@ final class AudioPlayer {
     /// playback that was running, so the end of it can pick back up.
     private var resumeAfterInterruption = false
     @ObservationIgnored private nonisolated(unsafe) var itemStatusObserver: NSKeyValueObservation?
+    @ObservationIgnored private nonisolated(unsafe) var timeControlObserver: NSKeyValueObservation?
+    private nonisolated let log = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "ctunes", category: "AudioPlayer"
+    )
     /// How many times the current entry's item has been rebuilt after failing
     /// to load. Reset whenever the cursor moves.
     private var itemLoadRetries = 0
@@ -74,6 +89,7 @@ final class AudioPlayer {
         self.cache = cache
         player.actionAtItemEnd = .pause
         observeTime()
+        observeTimeControl()
         observeItemEnd()
         observeInterruptions()
     }
@@ -99,6 +115,7 @@ final class AudioPlayer {
 
     deinit {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
+        timeControlObserver?.invalidate()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
         if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
@@ -365,10 +382,22 @@ final class AudioPlayer {
     /// like playback stopping after one track. A fresh item opens a fresh
     /// connection, so retry before giving up on the track.
     private func loadItem(url: URL, autoPlay: Bool) {
+        // The URL itself carries the Plex token, so log only where it points.
+        log.info("load item \(self.currentItemIsLocal ? "local" : "stream", privacy: .public) autoPlay=\(autoPlay) retry=\(self.itemLoadRetries)")
         let item = AVPlayerItem(url: url)
         itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard let self else { return }
+            switch item.status {
+            case .readyToPlay:
+                self.log.info("item ready, duration \(item.duration.seconds, format: .fixed(precision: 1))s")
+            case .failed:
+                let error = item.error.map { "\($0)" } ?? "no error"
+                self.log.error("item failed: \(error, privacy: .public)")
+            default:
+                break
+            }
             guard item.status == .failed else { return }
-            Task { @MainActor in self?.itemFailedToLoad(item, url: url) }
+            Task { @MainActor in self.itemFailedToLoad(item, url: url) }
         }
         player.replaceCurrentItem(with: item)
         if autoPlay {
@@ -384,6 +413,7 @@ final class AudioPlayer {
         // with the stream's own retries still to come. Offline there is no
         // stream, so a bad pinned file evicts and the queue moves on.
         if currentItemIsLocal, let track = currentTrack, let library, let part = track.part {
+            log.error("cached file failed to load, evicting and streaming")
             currentItemIsLocal = false
             let server = library.serverIdentifier
             Task { await cache.evict(server: server, part: part) }
@@ -399,6 +429,7 @@ final class AudioPlayer {
             loadItem(url: url, autoPlay: isPlaying)
             return
         }
+        log.error("giving up on track after \(self.itemLoadRetries) retries, advancing")
         // The track is unplayable: move on rather than stall the queue. No
         // wrapping, so a server that is down doesn't cycle the queue forever.
         advance(wrapping: false)
@@ -453,6 +484,23 @@ final class AudioPlayer {
                 self.updateNowPlayingPlaybackState()
                 self.reportProgressIfDue()
                 self.finishIfRunPastEnd()
+            }
+        }
+    }
+
+    /// Follows the player's own account of whether it is running. `play()`
+    /// only sets the rate; the clock starts once the item is ready and the
+    /// route is up, and stalls silently when it can't keep up.
+    private func observeTimeControl() {
+        timeControlObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) {
+            [weak self] player, _ in
+            guard let self else { return }
+            let status = player.timeControlStatus
+            let reason = player.reasonForWaitingToPlay?.rawValue ?? "-"
+            self.log.info("timeControlStatus \(status.label, privacy: .public) waiting=\(reason, privacy: .public)")
+            Task { @MainActor in
+                self.playerIsRunning = status == .playing
+                self.updateNowPlayingPlaybackState()
             }
         }
     }
@@ -625,7 +673,7 @@ final class AudioPlayer {
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.grandparentTitle ?? "",
             MPMediaItemPropertyAlbumTitle: track.parentTitle ?? "",
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: playerIsRunning ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
@@ -666,7 +714,18 @@ final class AudioPlayer {
     private func updateNowPlayingPlaybackState() {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = playerIsRunning ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+}
+
+private extension AVPlayer.TimeControlStatus {
+    var label: String {
+        switch self {
+        case .paused: "paused"
+        case .waitingToPlayAtSpecifiedRate: "waiting"
+        case .playing: "playing"
+        @unknown default: "unknown"
+        }
     }
 }

@@ -74,7 +74,15 @@ stops the player silently when Siri, a call or a car's voice assistant takes
 the audio**, so `AudioPlayer` observes `AVAudioSession.interruptionNotification`:
 `.began` marks the player paused, `.ended` with `.shouldResume` plays again.
 Without it `isPlaying` stays true over silence and the head unit needs two
-play/pause presses to recover. Every
+play/pause presses to recover. **The published now-playing rate follows
+`AVPlayer.timeControlStatus`, not `isPlaying`.** `isPlaying` is intent (what
+the transport buttons show); `playerIsRunning` is whether the clock is
+actually running. Publishing rate 1 the moment `play()` is called made a car
+head unit extrapolate a ticking timer over silence while the first track
+loaded, then snap to zero when audio began. `AudioPlayer` logs item status and
+`timeControlStatus` transitions under `os.Logger` category `AudioPlayer`; read
+them with `log show --info --predicate 'category == "AudioPlayer"'` (info-level
+lines are dropped without `--info`). Every
 shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
