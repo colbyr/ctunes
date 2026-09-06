@@ -152,17 +152,18 @@ struct NowPlayingView: View {
         }
         .overlay(alignment: .topTrailing) {
             if sizeClass == .regular {
+                // Same glass as the close pill in the bottom bar.
                 Button { presentation.isShown = false } label: {
                     Image(systemName: "xmark")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(.secondary)
                         .frame(width: 44, height: 44)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
                 .accessibilityLabel("Hide Now Playing")
-                .padding(.top, 4)
-                .padding(.trailing, 4)
+                .padding(.top, 8)
+                .padding(.trailing, 8)
             }
         }
     }
