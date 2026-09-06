@@ -1,11 +1,16 @@
 import PlexKit
 import SwiftUI
 
-/// Who's in the car. The owner is always in; each listener toggles. An
-/// optional accessory sits pinned at the trailing edge, outside the scroll.
+/// Who's in the car. The owner is always in; each listener toggles. With
+/// nobody else on the roster a plus chip opens the Listeners sheet, so the
+/// row never reads as empty. An optional accessory sits pinned at the
+/// trailing edge, outside the scroll.
 struct ListenerChips<Trailing: View>: View {
     let model: AppModel
+    /// Every artist in the library, for the Listeners sheet's veto lists.
+    let artists: [AlbumGroup]
     @ViewBuilder let trailing: Trailing
+    @State private var showingListeners = false
 
     private var pinned: Bool { Trailing.self != EmptyView.self }
 
@@ -30,6 +35,20 @@ struct ListenerChips<Trailing: View>: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
                     }
+                    if model.roster.listeners.isEmpty {
+                        Button {
+                            showingListeners = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 34, height: 34)
+                                .background(.fill.tertiary, in: .circle)
+                                .contentShape(.circle)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Add listener")
+                    }
                 }
             }
             .scrollIndicators(.hidden)
@@ -42,12 +61,15 @@ struct ListenerChips<Trailing: View>: View {
             }
         }
         .padding(.vertical, 4)
+        .sheet(isPresented: $showingListeners) {
+            ListenersSheet(model: model, artists: artists)
+        }
     }
 }
 
 extension ListenerChips where Trailing == EmptyView {
-    init(model: AppModel) {
-        self.init(model: model) { EmptyView() }
+    init(model: AppModel, artists: [AlbumGroup]) {
+        self.init(model: model, artists: artists) { EmptyView() }
     }
 }
 

@@ -208,7 +208,7 @@ struct MixBuilderView: View {
                 .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-            AlbumBrowserControls(model: model, view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
+            AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
                 .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)

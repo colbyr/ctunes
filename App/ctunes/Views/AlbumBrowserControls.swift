@@ -32,21 +32,17 @@ struct ArrangeChip: View {
 }
 
 /// The chips plus the arrange button as one row. Each screen keeps its own
-/// stored view; only the roster is shared. With nobody on the roster
-/// there's nothing to toggle, so only the button shows, still pinned right.
+/// stored view; only the roster is shared.
 struct AlbumBrowserControls: View {
     let model: AppModel
+    /// Every artist in the library, for the Listeners sheet the chips open.
+    let artists: [AlbumGroup]
     @Binding var view: AlbumView
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
-        if model.roster.listeners.isEmpty {
+        ListenerChips(model: model, artists: artists) {
             ArrangeChip(view: $view, downloadedOnly: downloadedOnly)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.trailing, 16)
-                .padding(.vertical, 4)
-        } else {
-            ListenerChips(model: model) { ArrangeChip(view: $view, downloadedOnly: downloadedOnly) }
         }
     }
 }

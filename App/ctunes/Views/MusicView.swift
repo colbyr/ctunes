@@ -102,7 +102,7 @@ struct MusicView: View {
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                AlbumBrowserControls(model: model, view: $view, downloadedOnly: $downloadedOnly)
+                AlbumBrowserControls(model: model, artists: artists, view: $view, downloadedOnly: $downloadedOnly)
                     .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
