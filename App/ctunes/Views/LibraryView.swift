@@ -12,19 +12,9 @@ struct LibraryView: View {
     /// filters the builder's pool instead of popping back to the root.
     @State private var buildingMix = false
     @State private var nowPlaying = NowPlayingPresentation()
-    @Environment(AudioPlayer.self) private var player
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    /// Now Playing is worth showing only while there is something to show;
-    /// signing out empties the queue and closes it through this.
-    private var nowPlayingShown: Binding<Bool> {
-        Binding(
-            get: { nowPlaying.isShown && player.currentTrack != nil },
-            set: { nowPlaying.isShown = $0 }
-        )
-    }
 
     var body: some View {
+        @Bindable var nowPlaying = nowPlaying
         // Chrome is ink, not amber: the back chevron, the ••• button, the
         // toolbar. Amber is reserved for what acts, and those set it by hand.
         NavigationStack(path: $path) {
@@ -52,14 +42,11 @@ struct LibraryView: View {
         .safeAreaInset(edge: .bottom) {
             BottomBar(model: model, query: $query, searching: $searching)
         }
-        // Now Playing hosts: a sheet on a phone, a trailing column beside the
-        // stack on an iPad or a Mac. One flag, so any screen can open it
-        // without knowing which it gets.
-        .sheet(isPresented: sizeClass == .compact ? nowPlayingShown : .constant(false)) {
+        // Now Playing's one host. The inspector is a sheet on a compact
+        // width and a trailing column beside the stack on a regular one,
+        // and adapts in place when a split-view drag crosses between them.
+        .inspector(isPresented: $nowPlaying.isShown) {
             NowPlayingView(model: model)
-        }
-        .inspector(isPresented: sizeClass == .regular ? nowPlayingShown : .constant(false)) {
-            NowPlayingView(model: model, showsHandle: false)
                 .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
         }
         .environment(nowPlaying)

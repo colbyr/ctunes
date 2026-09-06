@@ -11,9 +11,10 @@ final class NowPlayingPresentation {
 
 struct NowPlayingView: View {
     let model: AppModel
-    /// False when hosted in the inspector column, which has nothing to drag.
-    var showsHandle = true
     @Environment(AudioPlayer.self) private var player
+    @Environment(NowPlayingPresentation.self) private var presentation
+    /// Compact means the host is a sheet, regular the inspector column.
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// Held while dragging so the slider doesn't fight the time observer.
     @State private var scrubbing: Double?
@@ -139,12 +140,29 @@ struct NowPlayingView: View {
         .padding(.horizontal)
         .padding(.bottom, 8)
         // Overlaid rather than in the stack so it takes no vertical space.
+        // The sheet gets a grab handle; the column, which the system gives
+        // no way to dismiss, gets a close button instead.
         .overlay(alignment: .top) {
-            if showsHandle {
+            if sizeClass == .compact {
                 Capsule()
                     .fill(.quaternary)
                     .frame(width: 40, height: 5)
                     .padding(.top, 8)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if sizeClass == .regular {
+                Button { presentation.isShown = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide Now Playing")
+                .padding(.top, 4)
+                .padding(.trailing, 4)
             }
         }
     }

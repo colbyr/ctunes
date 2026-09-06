@@ -90,28 +90,27 @@ struct MusicView: View {
                 // only the outer edges have to clear it.
                 // Stacked on a phone; one row of three on a wider screen,
                 // where a full-width hero card is mostly empty.
-                if sizeClass == .regular {
-                    HStack(spacing: 12) {
-                        ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
-                        MixTile(kind: .artist) { path.append(MixKind.artist) }
-                        MixTile(kind: .album) { path.append(MixKind.album) }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                } else {
-                    VStack(spacing: 12) {
-                        ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                Group {
+                    if sizeClass == .regular {
                         HStack(spacing: 12) {
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
                             MixTile(kind: .artist) { path.append(MixKind.artist) }
                             MixTile(kind: .album) { path.append(MixKind.album) }
                         }
+                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        VStack(spacing: 12) {
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                            HStack(spacing: 12) {
+                                MixTile(kind: .artist) { path.append(MixKind.artist) }
+                                MixTile(kind: .album) { path.append(MixKind.album) }
+                            }
+                        }
                     }
-                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
                 }
+                .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
                 // The browser starts here: a rule, then the chips with the
                 // arrange button, then the hidden-artist line when any are.
                 Rectangle()
