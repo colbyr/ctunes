@@ -11,6 +11,18 @@ struct LibraryView: View {
     /// True while a mix builder is on top of the stack; the search pill then
     /// filters the builder's pool instead of popping back to the root.
     @State private var buildingMix = false
+    @State private var nowPlaying = NowPlayingPresentation()
+    @Environment(AudioPlayer.self) private var player
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    /// Now Playing is worth showing only while there is something to show;
+    /// signing out empties the queue and closes it through this.
+    private var nowPlayingShown: Binding<Bool> {
+        Binding(
+            get: { nowPlaying.isShown && player.currentTrack != nil },
+            set: { nowPlaying.isShown = $0 }
+        )
+    }
 
     var body: some View {
         // Chrome is ink, not amber: the back chevron, the ••• button, the
@@ -40,6 +52,17 @@ struct LibraryView: View {
         .safeAreaInset(edge: .bottom) {
             BottomBar(model: model, query: $query, searching: $searching)
         }
+        // Now Playing hosts: a sheet on a phone, a trailing column beside the
+        // stack on an iPad or a Mac. One flag, so any screen can open it
+        // without knowing which it gets.
+        .sheet(isPresented: sizeClass == .compact ? nowPlayingShown : .constant(false)) {
+            NowPlayingView(model: model)
+        }
+        .inspector(isPresented: sizeClass == .regular ? nowPlayingShown : .constant(false)) {
+            NowPlayingView(model: model, showsHandle: false)
+                .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
+        }
+        .environment(nowPlaying)
         // Results live on the root, so opening search from deeper in the
         // stack pops back to it. Pushing an album folds the pill back to its
         // icon but keeps the filter, so popping returns to the same results.

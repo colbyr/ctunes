@@ -1,10 +1,19 @@
 import PlexKit
 import SwiftUI
 
+/// Whether Now Playing is on screen. One flag shared by every screen that
+/// can open it, so the host lives in one place (`LibraryView`): a sheet on
+/// compact widths, a trailing inspector beside the stack on regular ones.
+@MainActor @Observable
+final class NowPlayingPresentation {
+    var isShown = false
+}
+
 struct NowPlayingView: View {
     let model: AppModel
+    /// False when hosted in the inspector column, which has nothing to drag.
+    var showsHandle = true
     @Environment(AudioPlayer.self) private var player
-    @Environment(\.dismiss) private var dismiss
 
     /// Held while dragging so the slider doesn't fight the time observer.
     @State private var scrubbing: Double?
@@ -131,10 +140,12 @@ struct NowPlayingView: View {
         .padding(.bottom, 8)
         // Overlaid rather than in the stack so it takes no vertical space.
         .overlay(alignment: .top) {
-            Capsule()
-                .fill(.quaternary)
-                .frame(width: 40, height: 5)
-                .padding(.top, 8)
+            if showsHandle {
+                Capsule()
+                    .fill(.quaternary)
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 8)
+            }
         }
     }
 

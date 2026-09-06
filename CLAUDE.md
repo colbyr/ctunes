@@ -58,6 +58,13 @@ swapped. A fetch that throws a `URLError` while signed in reports to
 offline. Reachability is decided by the server answering, never by
 `NWPathMonitor`.
 
+The app runs on iPhone and iPad (and so on Apple silicon Macs as "Designed
+for iPad"). Now Playing has one host, in `LibraryView`, driven by the
+`NowPlayingPresentation` flag in the environment: a sheet on a compact width,
+a trailing `.inspector` column beside the stack on a regular one. Screens set
+the flag; none presents the sheet themselves. Album grids widen their tile
+minimum on a regular width.
+
 `PlexClient` is an actor that injects the Plex identity headers in one place;
 no call site should build them by hand. `PlexAuth`, `PlexServerDirectory` and
 `PlexLibrary` are actors layered on it.
