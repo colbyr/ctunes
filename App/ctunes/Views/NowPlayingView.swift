@@ -1,10 +1,20 @@
 import PlexKit
 import SwiftUI
 
+/// Whether Now Playing is on screen. One flag shared by every screen that
+/// can open it, so the host lives in one place (`LibraryView`): a sheet on
+/// compact widths, a trailing inspector beside the stack on regular ones.
+@MainActor @Observable
+final class NowPlayingPresentation {
+    var isShown = false
+}
+
 struct NowPlayingView: View {
     let model: AppModel
     @Environment(AudioPlayer.self) private var player
-    @Environment(\.dismiss) private var dismiss
+    @Environment(NowPlayingPresentation.self) private var presentation
+    /// Compact means the host is a sheet, regular the inspector column.
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// Held while dragging so the slider doesn't fight the time observer.
     @State private var scrubbing: Double?
@@ -68,6 +78,9 @@ struct NowPlayingView: View {
         }
         .listStyle(.plain)
         .parchment()
+        .overlay(alignment: .topTrailing) {
+            if sizeClass == .regular { closeButton }
+        }
     }
 
     private var endOfQueue: some View {
@@ -130,12 +143,34 @@ struct NowPlayingView: View {
         .padding(.horizontal)
         .padding(.bottom, 8)
         // Overlaid rather than in the stack so it takes no vertical space.
+        // The sheet gets a grab handle; the column, which the system gives
+        // no way to dismiss, gets a close button instead.
         .overlay(alignment: .top) {
-            Capsule()
-                .fill(.quaternary)
-                .frame(width: 40, height: 5)
-                .padding(.top, 8)
+            if sizeClass == .compact {
+                Capsule()
+                    .fill(.quaternary)
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 8)
+            }
         }
+    }
+
+    /// Floats over the column like the album page's back button: pinned to
+    /// the corner while the list scrolls under it. Same glass as the close
+    /// pill in the bottom bar.
+    private var closeButton: some View {
+        Button { presentation.isShown = false } label: {
+            Image(systemName: "xmark")
+                .font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .cardShadow()
+        .accessibilityLabel("Hide Now Playing")
+        .padding(.top, 8)
+        .padding(.trailing, 8)
     }
 
     /// Once the queue has ended the only sensible action is to start over,

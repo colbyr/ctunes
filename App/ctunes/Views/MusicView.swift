@@ -20,7 +20,8 @@ struct MusicView: View {
     @State private var noFavorites = false
     @State private var everyFavoriteHidden = false
     @State private var showingListeners = false
-    @State private var showingNowPlaying = false
+    @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(\.horizontalSizeClass) private var sizeClass
     /// Bytes of cached audio, for the clear button; nil until read.
     @State private var cacheUsage: Int?
     @State private var confirmingRemoveAll = false
@@ -51,8 +52,8 @@ struct MusicView: View {
     /// Tiles push onto the path by hand: a NavigationLink in a List row makes
     /// the whole row a link too, so one tap pushed two albums and back landed
     /// on the wrong one.
-    private func grid(_ albums: [PlexAlbum], minimum: CGFloat, spacing: CGFloat, showArtist: Bool) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: spacing, alignment: .top)], alignment: .leading, spacing: spacing) {
+    private func grid(_ albums: [PlexAlbum], spacing: CGFloat, showArtist: Bool) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: tileMinimum), spacing: spacing, alignment: .top)], alignment: .leading, spacing: spacing) {
             ForEach(albums) { album in
                 Button { path.append(album) } label: {
                     AlbumTile(model: model, album: album, showArtist: showArtist)
@@ -65,11 +66,14 @@ struct MusicView: View {
 
     /// Matches the nav bar's large title and the bottom pills.
     private static let margin: CGFloat = 16
+    /// Three across on a phone; on an iPad the same minimum gave nine tiny
+    /// tiles, so the floor rises to keep the covers legible.
+    private var tileMinimum: CGFloat { sizeClass == .regular ? 150 : 100 }
 
     var body: some View {
         List {
             if !query.isEmpty {
-                grid(results, minimum: 100, spacing: 12, showArtist: true)
+                grid(results, spacing: 12, showArtist: true)
                     .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
                     .listRowBackground(Color.clear)
             } else {
@@ -84,11 +88,24 @@ struct MusicView: View {
                 // One row for all three cards: the row clips at its insets,
                 // so the shadow between the cards needs no inset at all and
                 // only the outer edges have to clear it.
-                VStack(spacing: 12) {
-                    ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
-                    HStack(spacing: 12) {
-                        MixTile(kind: .artist) { path.append(MixKind.artist) }
-                        MixTile(kind: .album) { path.append(MixKind.album) }
+                // Stacked on a phone; one row of three on a wider screen,
+                // where a full-width hero card is mostly empty.
+                Group {
+                    if sizeClass == .regular {
+                        HStack(spacing: 12) {
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                            MixTile(kind: .artist) { path.append(MixKind.artist) }
+                            MixTile(kind: .album) { path.append(MixKind.album) }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        VStack(spacing: 12) {
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                            HStack(spacing: 12) {
+                                MixTile(kind: .artist) { path.append(MixKind.artist) }
+                                MixTile(kind: .album) { path.append(MixKind.album) }
+                            }
+                        }
                     }
                 }
                 .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
@@ -121,7 +138,7 @@ struct MusicView: View {
                 }
                 ForEach(groups) { group in
                     Section {
-                        grid(group.albums, minimum: 100, spacing: 12, showArtist: view != .artist)
+                        grid(group.albums, spacing: 12, showArtist: view != .artist)
                             .listRowInsets(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     } header: {
                         if !group.name.isEmpty {
@@ -240,9 +257,6 @@ struct MusicView: View {
         .sheet(isPresented: $showingListeners) {
             ListenersSheet(model: model, artists: artists)
         }
-        .sheet(isPresented: $showingNowPlaying) {
-            NowPlayingView(model: model)
-        }
     }
 
     /// "32 tracks for you & Laura"; just the count with no listeners set up,
@@ -292,7 +306,7 @@ struct MusicView: View {
                 return
             }
             player.play(playable.spreadShuffled(), startingAt: 0, library: library)
-            showingNowPlaying = true
+            nowPlaying.isShown = true
         }
     }
 }
@@ -390,6 +404,7 @@ private struct ShuffleFavoritesCard: View {
                 }
             }
             .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .glassCard(cornerRadius: 24)
             .contentShape(.rect(cornerRadius: 24))
         }
@@ -415,7 +430,7 @@ private struct MixTile: View {
                 Spacer(minLength: 0)
             }
             .padding(14)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .glassCard()
             .contentShape(.rect(cornerRadius: 22))
         }

@@ -11,8 +11,10 @@ struct LibraryView: View {
     /// True while a mix builder is on top of the stack; the search pill then
     /// filters the builder's pool instead of popping back to the root.
     @State private var buildingMix = false
+    @State private var nowPlaying = NowPlayingPresentation()
 
     var body: some View {
+        @Bindable var nowPlaying = nowPlaying
         // Chrome is ink, not amber: the back chevron, the ••• button, the
         // toolbar. Amber is reserved for what acts, and those set it by hand.
         NavigationStack(path: $path) {
@@ -40,6 +42,14 @@ struct LibraryView: View {
         .safeAreaInset(edge: .bottom) {
             BottomBar(model: model, query: $query, searching: $searching)
         }
+        // Now Playing's one host. The inspector is a sheet on a compact
+        // width and a trailing column beside the stack on a regular one,
+        // and adapts in place when a split-view drag crosses between them.
+        .inspector(isPresented: $nowPlaying.isShown) {
+            NowPlayingView(model: model)
+                .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
+        }
+        .environment(nowPlaying)
         // Results live on the root, so opening search from deeper in the
         // stack pops back to it. Pushing an album folds the pill back to its
         // icon but keeps the filter, so popping returns to the same results.

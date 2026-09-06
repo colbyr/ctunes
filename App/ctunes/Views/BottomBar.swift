@@ -10,17 +10,20 @@ struct BottomBar: View {
     @Binding var query: String
     @Binding var searching: Bool
     @Environment(AudioPlayer.self) private var player
+    @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @Namespace private var glass
-    @State private var showingNowPlaying = false
     /// The inset under the bar: the home indicator, or the keyboard.
     @State private var bottomInset: CGFloat = 0
 
     var body: some View {
         GlassEffectContainer(spacing: 12) {
             HStack(spacing: 12) {
-                if let track = player.currentTrack {
+                // On a regular width the pill is only the way back to the
+                // column: while that is open it would duplicate the transport.
+                if let track = player.currentTrack, !(sizeClass == .regular && nowPlaying.isShown) {
                     MiniPlayerPill(model: model, track: track, compact: searching) {
-                        showingNowPlaying = true
+                        nowPlaying.isShown = true
                     }
                     .glassEffectID("player", in: glass)
                 }
@@ -59,9 +62,7 @@ struct BottomBar: View {
         }
         .animation(.bouncy(duration: 0.4), value: searching)
         .animation(.bouncy(duration: 0.4), value: player.currentTrack == nil)
-        .sheet(isPresented: $showingNowPlaying) {
-            NowPlayingView(model: model)
-        }
+        .animation(.bouncy(duration: 0.4), value: nowPlaying.isShown)
     }
 }
 

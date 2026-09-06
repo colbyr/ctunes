@@ -8,7 +8,7 @@ struct TracksView: View {
 
     @State private var tracks: [PlexTrack] = []
     @State private var loaded = false
-    @State private var showingNowPlaying = false
+    @Environment(NowPlayingPresentation.self) private var nowPlaying
     @State private var confirmingRemoval = false
 
     private var offline: Bool { model.library?.isOffline ?? false }
@@ -142,14 +142,11 @@ struct TracksView: View {
                     try? await Task.sleep(for: .seconds(2))
                     player.seek(to: max(0, seconds - 4))
                 }
-                showingNowPlaying = Self.autoShowNowPlaying
+                if Self.autoShowNowPlaying { nowPlaying.isShown = true }
             }
             if Self.autoEnqueue, !tracks.isEmpty {
                 player.addToQueue(tracks, library: library)
             }
-        }
-        .sheet(isPresented: $showingNowPlaying) {
-            NowPlayingView(model: model)
         }
         .confirmationDialog("Remove download?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
@@ -245,7 +242,7 @@ struct TracksView: View {
         return Button {
             guard let library = model.library, playable else { return }
             player.play(tracks, startingAt: index, library: library)
-            showingNowPlaying = true
+            nowPlaying.isShown = true
         } label: {
             HStack(spacing: 12) {
                 Text(track.index.map(String.init) ?? "–")
@@ -324,14 +321,14 @@ struct TracksView: View {
     private func play() {
         guard let library = model.library, !playableTracks.isEmpty else { return }
         player.play(playableTracks, startingAt: 0, library: library)
-        showingNowPlaying = true
+        nowPlaying.isShown = true
     }
 
     /// Spread-shuffled once at enqueue time, the same way Shuffle Favorites does it.
     private func shuffle() {
         guard let library = model.library, !playableTracks.isEmpty else { return }
         player.play(playableTracks.spreadShuffled(), startingAt: 0, library: library)
-        showingNowPlaying = true
+        nowPlaying.isShown = true
     }
 
     private func enqueue(_ tracks: [PlexTrack], next: Bool) {

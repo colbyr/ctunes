@@ -57,7 +57,8 @@ struct MixBuilderView: View {
     @State private var selected: [String] = []
     @State private var loadingMix: MixMode?
     @State private var nothingToPlay = false
-    @State private var showingNowPlaying = false
+    @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(\.horizontalSizeClass) private var sizeClass
     /// Per builder rather than the root's key: arranging a pool by play
     /// count shouldn't reorder the album grid behind it.
     @AppStorage private var view: AlbumView
@@ -182,7 +183,10 @@ struct MixBuilderView: View {
     }
 
     private static let margin: CGFloat = 16
-    private static let columns = [GridItem(.adaptive(minimum: 100), spacing: 12, alignment: .top)]
+    /// Same floor as the album browser: wider tiles on a regular width.
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: sizeClass == .regular ? 150 : 100), spacing: 12, alignment: .top)]
+    }
 
     var body: some View {
         let picks = picks
@@ -289,15 +293,12 @@ struct MixBuilderView: View {
         } message: {
             Text("None of the selected \(kind.noun) have any tracks to play right now.")
         }
-        .sheet(isPresented: $showingNowPlaying) {
-            NowPlayingView(model: model)
-        }
     }
 
     /// Stands in for the selected grid, sized by an invisible tile in the
     /// same columns so the pool doesn't jump when the first pick lands.
     private var emptySelection: some View {
-        LazyVGrid(columns: Self.columns, alignment: .leading, spacing: 18) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
             MixTile(kind: kind, item: Item(id: "", title: " ", subtitle: " ", thumb: nil, vetoed: false), selected: false, url: nil)
                 .hidden()
         }
@@ -312,7 +313,7 @@ struct MixBuilderView: View {
     }
 
     private func grid(_ items: [Item], selected isSelected: Bool) -> some View {
-        LazyVGrid(columns: Self.columns, alignment: .leading, spacing: 18) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
             ForEach(items) { item in
                 Button { toggle(item.id) } label: {
                     MixTile(kind: kind, item: item, selected: isSelected, url: model.library?.artworkURL(item.thumb))
@@ -391,7 +392,7 @@ struct MixBuilderView: View {
             case .playAlbums: playable.albumShuffled()
             }
             player.play(ordered, startingAt: 0, library: library)
-            showingNowPlaying = true
+            nowPlaying.isShown = true
         }
     }
 
