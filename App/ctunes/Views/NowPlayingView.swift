@@ -78,6 +78,9 @@ struct NowPlayingView: View {
         }
         .listStyle(.plain)
         .parchment()
+        .overlay(alignment: .topTrailing) {
+            if sizeClass == .regular { closeButton }
+        }
     }
 
     private var endOfQueue: some View {
@@ -150,22 +153,24 @@ struct NowPlayingView: View {
                     .padding(.top, 8)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if sizeClass == .regular {
-                // Same glass as the close pill in the bottom bar.
-                Button { presentation.isShown = false } label: {
-                    Image(systemName: "xmark")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Hide Now Playing")
-                .padding(.top, 8)
-                .padding(.trailing, 8)
-            }
+    }
+
+    /// Floats over the column like the album page's back button: pinned to
+    /// the corner while the list scrolls under it. Same glass as the close
+    /// pill in the bottom bar.
+    private var closeButton: some View {
+        Button { presentation.isShown = false } label: {
+            Image(systemName: "xmark")
+                .font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
         }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .cardShadow()
+        .accessibilityLabel("Hide Now Playing")
+        .padding(.top, 8)
+        .padding(.trailing, 8)
     }
 
     /// Once the queue has ended the only sensible action is to start over,
