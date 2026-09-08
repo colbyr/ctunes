@@ -13,6 +13,8 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         /// Never answers, like a probe to a dead virtual adapter: the
         /// request sits until its timeout or cancellation.
         var hangs = false
+        /// Extra response headers, e.g. a `Content-Length`.
+        var headers: [String: String] = [:]
     }
 
     private static let registry = Registry()
@@ -61,7 +63,7 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
             url: request.url!,
             statusCode: result.status,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: ["Content-Type": "application/json"].merging(result.headers) { $1 }
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: result.body)

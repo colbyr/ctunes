@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Keeps whole track files on disk so a played track is served locally next
 /// time and the next few queue entries are downloaded before they're reached.
@@ -34,6 +35,7 @@ public actor TrackCache {
     /// retried on every cursor move.
     private var failed: [String: Date] = [:]
     var retryAfter: TimeInterval = 5 * 60
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ctunes", category: "TrackCache")
 
     /// Download starts and ends, so a status view can refresh from disk
     /// without polling. Buffered, so a consumer that isn't listening yet
@@ -194,6 +196,7 @@ public actor TrackCache {
         } catch {
             if !(error is CancellationError), (error as? URLError)?.code != .cancelled {
                 failed[path] = Date()
+                logger.error("download failed \(path, privacy: .public): \(String(describing: error), privacy: .public)")
             }
             eventContinuation.yield(.failed(path))
             throw error
@@ -227,9 +230,12 @@ public actor TrackCache {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else { throw Failure.badResponse(status: status) }
 
+        // A truncated body is caught against what the server said it was
+        // sending. The part's `size` is only a fallback: it is the size at
+        // scan time, and a file retagged since is served at its new length
+        // while the metadata still says the old one.
         let actual = (try? manager.attributesOfItem(atPath: temp.path)[.size] as? Int) ?? -1
-        let expected = source.expectedSize
-            ?? (response.expectedContentLength > 0 ? Int(response.expectedContentLength) : nil)
+        let expected = response.expectedContentLength > 0 ? Int(response.expectedContentLength) : source.expectedSize
         if let expected, expected != actual {
             throw Failure.sizeMismatch(expected: expected, actual: actual)
         }
@@ -270,6 +276,17 @@ public actor TrackCache {
 
     /// Whether the sequential download pump is running.
     var isPumping: Bool { pump != nil }
+
+    /// Cache paths whose last fetch failed and are still inside the backoff,
+    /// so a status view can tell a stalled download from a slow one.
+    public func failedPaths() -> Set<String> {
+        Set(failed.keys.filter(recentlyFailed))
+    }
+
+    /// Forgets the backoff, so the next `pin` or `retain` tries again now.
+    public func retryFailed() {
+        failed = [:]
+    }
 
     private func recentlyFailed(_ path: String) -> Bool {
         guard let at = failed[path] else { return false }

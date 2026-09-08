@@ -149,6 +149,12 @@ appears to offer.
   has dropped. `AVPlayer` then sits on the failed item with no error surfaced,
   which looks like playback stopping after one track. `AudioPlayer` watches
   each item's `status` and rebuilds the item on failure; don't remove that.
+- **`Part.size` is the size at scan time and goes stale.** A file retagged
+  after the scan is served at its new length while the metadata keeps the
+  old one (every track of one album was off by ~2%). `TrackCache` checks a
+  download against the response's `Content-Length` and falls back to
+  `Part.size` only when the server sends none; comparing against `size`
+  made those albums fail silently and sit in the downloading state forever.
 - **`forwardUrl` is ignored for a custom scheme.** Nothing redirects back to the
   app, so auth polls while the browser sheet is open and cancels it on success.
 - Response typing is loose: `ratingKey` is a string, `hasThumbnail` is `"1"`.

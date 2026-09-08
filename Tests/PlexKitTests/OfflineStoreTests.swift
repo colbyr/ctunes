@@ -280,7 +280,9 @@ struct OfflineStoreTests {
         await pin(store, album("9"), tracks)
         try await cache.drain()
         #expect(counter.count == 3)
-        #expect(await store.statuses(server: Self.server)["9"] == .pending(done: 2, total: 3))
+        let stalled = await store.statuses(server: Self.server)["9"]
+        #expect(stalled == .pending(done: 2, total: 3, failed: 1))
+        #expect(stalled?.isStalled == true)
 
         await store.resume(server: Self.server, sources: sources)
         try await cache.drain()
@@ -290,6 +292,36 @@ struct OfflineStoreTests {
         await store.resume(server: Self.server, sources: sources)
         try await cache.drain()
         #expect(counter.count == 4)
+    }
+
+    @Test("retryFailed drops the backoff so resume fetches again at once")
+    func retryFailed() async throws {
+        let (store, cache, counter) = try makeStore { _ in .init(status: 500, body: Data()) }
+        await pin(store, album("9"), tracks([1], album: "9"))
+        try await cache.drain()
+        #expect(counter.count == 1)
+        await store.resume(server: Self.server, sources: sources)
+        try await cache.drain()
+        #expect(counter.count == 1)
+
+        await cache.retryFailed()
+        await store.resume(server: Self.server, sources: sources)
+        try await cache.drain()
+        #expect(counter.count == 2)
+    }
+
+    @Test("an album reached only through pinned favorites is available and has a page")
+    func favoritesAlbum() async throws {
+        let (store, cache, _) = try makeStore()
+        let favorite = Support.track(id: 1, album: "9", artist: "A")
+        await store.setFavoritesPinned(true, server: Self.server)
+        await store.setFavorites([favorite], server: Self.server, sources: sources)
+        try await cache.drain()
+
+        #expect(await store.favoriteAlbums(server: Self.server) == ["9"])
+        #expect(await store.availableAlbums(server: Self.server) == ["9"], "never browsed, still playable")
+        #expect(await store.tracks(inAlbum: "9", server: Self.server) == [favorite])
+        #expect(await store.statuses(server: Self.server).isEmpty, "favorites are not an album pin")
     }
 
     @Test("resume rebuilds pins from disk on a fresh store")

@@ -9,7 +9,8 @@ import PlexKit
 final class Downloads {
     /// By album ratingKey, for the server the library is on.
     private(set) var statuses: [String: OfflineStore.AlbumStatus] = [:]
-    /// Offline only: albums with any file on disk, pinned or cached from a
+    /// Albums with a file on disk but no pin of their own: online, the
+    /// albums of pinned favorites; offline, also anything cached from a
     /// play, so the grid can tell playable from not.
     private(set) var available: Set<String> = []
     private(set) var favoritesPinned = false
@@ -105,6 +106,16 @@ final class Downloads {
         }
     }
 
+    /// Drops the cache's failure backoff and re-enqueues every pinned track
+    /// still missing, for a stalled download.
+    func retry(resume: @escaping @MainActor () async -> Void) {
+        Task {
+            await cache.retryFailed()
+            await resume()
+            refresh()
+        }
+    }
+
     func refresh() {
         guard let server else {
             statuses = [:]
@@ -119,7 +130,9 @@ final class Downloads {
             let statuses = await store.statuses(server: server)
             let pinned = await store.favoritesPinned(server: server)
             let usage = await store.usage()
-            let available = offline ? await store.availableAlbums(server: server) : []
+            let available = offline
+                ? await store.availableAlbums(server: server)
+                : await store.favoriteAlbums(server: server)
             self.statuses = statuses
             favoritesPinned = pinned
             self.usage = usage

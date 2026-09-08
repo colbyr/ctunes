@@ -83,6 +83,26 @@ struct TrackCacheTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
+    @Test("the server's Content-Length outranks a stale part size")
+    func contentLengthWins() async throws {
+        // Plex reports the size at scan time; a file retagged since is
+        // served at its new length. That is a complete download, not a
+        // truncated one.
+        let (cache, _, _) = try makeCache { _ in
+            .init(body: Data(count: 900), headers: ["Content-Length": "900"])
+        }
+        let track = source(id: 1017, size: 1024)
+        try await cache.download(track)
+        #expect(cache.localURL(for: track) != nil)
+
+        let (short, _, _) = try makeCache { _ in
+            .init(body: Data(count: 10), headers: ["Content-Length": "900"])
+        }
+        await #expect(throws: TrackCache.Failure.sizeMismatch(expected: 900, actual: 10)) {
+            try await short.download(track)
+        }
+    }
+
     @Test("an error page is discarded")
     func badStatus() async throws {
         let (cache, _, _) = try makeCache { _ in .init(status: 503, body: Data("<html>".utf8)) }

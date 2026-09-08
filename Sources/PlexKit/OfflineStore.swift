@@ -44,7 +44,10 @@ public actor OfflineStore {
     }
 
     public enum AlbumStatus: Sendable, Equatable {
-        case pending(done: Int, total: Int)
+        /// `failed` counts the tracks still missing whose last fetch failed
+        /// and is inside the cache's backoff: a pending status with every
+        /// missing track failed is stalled, not slow.
+        case pending(done: Int, total: Int, failed: Int = 0)
         case complete
         /// Every fetchable track is down; `undownloadable` have no `cacheKey`.
         case partial(undownloadable: Int)
@@ -60,8 +63,14 @@ public actor OfflineStore {
         public var hasDownloads: Bool {
             switch self {
             case .complete, .partial: true
-            case .pending(let done, _): done > 0
+            case .pending(let done, _, _): done > 0
             }
+        }
+
+        /// Nothing left to download will download until it is retried.
+        public var isStalled: Bool {
+            guard case .pending(let done, let total, let failed) = self else { return false }
+            return failed > 0 && done + failed >= total
         }
     }
 
@@ -140,21 +149,26 @@ public actor OfflineStore {
     }
 
     /// Every pinned album's status, by ratingKey, read from disk now.
-    public func statuses(server: String) -> [String: AlbumStatus] {
+    public func statuses(server: String) async -> [String: AlbumStatus] {
+        let failedPaths = await cache.failedPaths()
         var result: [String: AlbumStatus] = [:]
         for ratingKey in manifest(server).albums.keys {
             let tracks = savedTracks(server, ratingKey)
-            var done = 0, total = 0, undownloadable = 0
+            var done = 0, total = 0, undownloadable = 0, failed = 0
             for track in tracks {
-                guard let part = track.part, part.cacheKey != nil else {
+                guard let part = track.part, let path = part.cachePath(server: server) else {
                     undownloadable += 1
                     continue
                 }
                 total += 1
-                if cache.localURL(server: server, part: part) != nil { done += 1 }
+                if cache.localURL(server: server, part: part) != nil {
+                    done += 1
+                } else if failedPaths.contains(path) {
+                    failed += 1
+                }
             }
             result[ratingKey] = done < total
-                ? .pending(done: done, total: total)
+                ? .pending(done: done, total: total, failed: failed)
                 : undownloadable > 0 ? .partial(undownloadable: undownloadable) : .complete
         }
         return result
@@ -198,28 +212,46 @@ public actor OfflineStore {
         try? write(tracks, to: albumsDirectory(server).appending(path: "\(ratingKey).json"))
     }
 
-    /// The saved track list for any album browsed or pinned; nil when the
-    /// album was never seen.
+    /// The saved track list for any album browsed or pinned, or failing
+    /// that the favorites in the album, so an album reached only through
+    /// the favorites pin still has a page offline; nil when the album was
+    /// never seen.
     public func tracks(inAlbum ratingKey: String, server: String) -> [PlexTrack]? {
         let tracks = savedTracks(server, ratingKey)
-        return tracks.isEmpty ? nil : tracks
+        if !tracks.isEmpty { return tracks }
+        let favorites = favoriteTracks(server: server).filter { $0.parentRatingKey == ratingKey }
+        return favorites.isEmpty ? nil : favorites
     }
 
     /// Every album with a saved track list and at least one file on disk in
-    /// either root. Only worth computing offline: it stats every saved
-    /// track.
+    /// either root, plus the albums of favorites on disk. Only worth
+    /// computing offline: it stats every saved track.
     public func availableAlbums(server: String) -> Set<String> {
         let manager = FileManager.default
-        guard let files = try? manager.contentsOfDirectory(atPath: albumsDirectory(server).path) else { return [] }
-        var result: Set<String> = []
+        var result = favoriteAlbums(server: server)
+        guard let files = try? manager.contentsOfDirectory(atPath: albumsDirectory(server).path) else { return result }
         for file in files where file.hasSuffix(".json") {
             let ratingKey = String(file.dropLast(5))
-            let onDisk = savedTracks(server, ratingKey).contains { track in
-                track.part.map { cache.localURL(server: server, part: $0) != nil } ?? false
+            if savedTracks(server, ratingKey).contains(where: { onDisk($0, server: server) }) {
+                result.insert(ratingKey)
             }
-            if onDisk { result.insert(ratingKey) }
         }
         return result
+    }
+
+    /// Albums with a favorite track on disk. Cheap enough to read online:
+    /// the favorites pin is the one way an album gets files without being
+    /// pinned itself, and the grid's Downloaded only filter has to show it.
+    public func favoriteAlbums(server: String) -> Set<String> {
+        var result: Set<String> = []
+        for track in favoriteTracks(server: server) where onDisk(track, server: server) {
+            if let album = track.parentRatingKey { result.insert(album) }
+        }
+        return result
+    }
+
+    private func onDisk(_ track: PlexTrack, server: String) -> Bool {
+        track.part.map { cache.localURL(server: server, part: $0) != nil } ?? false
     }
 
     /// The favorites group, whether or not the pin is on.

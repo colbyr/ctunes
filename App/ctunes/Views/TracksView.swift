@@ -10,6 +10,7 @@ struct TracksView: View {
     @State private var loaded = false
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @State private var confirmingRemoval = false
+    @State private var confirmingRetry = false
 
     private var offline: Bool { model.library?.isOffline ?? false }
 
@@ -152,6 +153,12 @@ struct TracksView: View {
             Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
         } message: {
             Text("The album stays in your library and can be downloaded again.")
+        }
+        .confirmationDialog("Download failed", isPresented: $confirmingRetry, titleVisibility: .visible) {
+            Button("Retry") { model.downloads.retry { await model.resumeDownloads() } }
+            Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
+        } message: {
+            Text("Some tracks couldn't be downloaded from the server.")
         }
     }
 
@@ -306,7 +313,9 @@ struct TracksView: View {
 
     private func toggleDownload() {
         guard let library = model.library, !library.isOffline else { return }
-        if model.downloads.isPinned(album) {
+        if model.downloads.status(album)?.isStalled == true {
+            confirmingRetry = true
+        } else if model.downloads.isPinned(album) {
             confirmingRemoval = true
         } else {
             model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
@@ -384,7 +393,9 @@ struct DownloadButton: View {
                 Image(systemName: "checkmark.circle.fill")
             case .partial?:
                 Image(systemName: "checkmark.circle.badge.questionmark")
-            case .pending(let done, let total)?:
+            case let status? where status.isStalled:
+                Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+            case .pending(let done, let total, _)?:
                 let fraction = total > 0 ? Double(done) / Double(total) : 0
                 ZStack {
                     Circle().stroke(.tertiary, lineWidth: 2.5)
@@ -405,7 +416,8 @@ struct DownloadButton: View {
         switch status {
         case nil: "Download"
         case .complete?, .partial?: "Downloaded, tap to remove"
-        case .pending(let done, let total)?: "Downloading, \(done) of \(total)"
+        case let status? where status.isStalled: "Download failed, tap to retry"
+        case .pending(let done, let total, _)?: "Downloading, \(done) of \(total)"
         }
     }
 }
