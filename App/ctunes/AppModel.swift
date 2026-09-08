@@ -19,6 +19,11 @@ final class AppModel {
         /// from it and pinned albums play. A peer of `signedIn`, rendered
         /// by the same view so the stack and the queue survive the switch.
         case offline
+        /// A cold start with a snapshot: the library is open from it while
+        /// discovery runs behind it, so the browse root shows at once. Ends
+        /// in `signedIn`, or `offline` once nothing answers. Rendered like
+        /// the two, without the offline banner or the dimmed tiles.
+        case reconnecting
     }
 
     private(set) var state: State = .loading
@@ -167,15 +172,21 @@ final class AppModel {
         #endif
     }
 
-    /// Finds a reachable server and opens the library on it. Falls back to
-    /// the last snapshot when nothing answers, so the app is still usable
-    /// with the server off.
+    /// Finds a reachable server and opens the library on it. With a
+    /// snapshot of the last server the library opens from it first and
+    /// discovery runs behind it; without one the connecting screen shows.
+    /// Falls back to the snapshot when nothing answers, so the app is
+    /// still usable with the server off.
     func connect() async {
         if state == .offline {
             await reconnect(force: true)
             return
         }
-        state = .connecting
+        if let snapshot = await lastSnapshot() {
+            enterOffline(snapshot, state: .reconnecting)
+        } else {
+            state = .connecting
+        }
         await attemptConnect(tapped: false)
     }
 
@@ -217,6 +228,11 @@ final class AppModel {
             errorMessage = error.localizedDescription
             // Already offline: stay there; the banner shows the error.
             guard state != .offline else { return }
+            // Browsing the snapshot already: only the banner changes.
+            if state == .reconnecting {
+                state = .offline
+                return
+            }
             if let snapshot = await lastSnapshot() {
                 enterOffline(snapshot)
             } else {
@@ -231,13 +247,13 @@ final class AppModel {
         return await offline.snapshot(server: server, section: section)
     }
 
-    private func enterOffline(_ snapshot: LibrarySnapshot) {
+    private func enterOffline(_ snapshot: LibrarySnapshot, state: State = .offline) {
         library = OfflineLibrary(snapshot: snapshot, store: offline, token: token)
         serverName = snapshot.serverName
         sections = snapshot.sections
         selectedSection = snapshot.section
         libraryGeneration += 1
-        state = .offline
+        self.state = state
         downloads.attach(server: snapshot.server, offline: true)
     }
 

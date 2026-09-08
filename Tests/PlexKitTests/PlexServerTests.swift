@@ -80,6 +80,44 @@ struct PlexServerTests {
         #expect(server.baseURL.absoluteString.contains("192-168-0-193"))
     }
 
+    /// Every launch used to wait for the whole probe group, so the dead
+    /// virtual adapters cost their full timeout even when the best-ranked
+    /// address answered at once.
+    @Test("answers as soon as the best-ranked connection does, without waiting on the rest")
+    func returnsBeforeDeadProbesTimeOut() async throws {
+        let resources = try Fixture.string("resources")
+        let directory = directory { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("plex.tv/api/v2/resources") { return .json(resources) }
+            if url.contains("192-168-0-193") { return Self.identityBody("MACHINE-1") }
+            return .hang
+        }
+
+        let started = ContinuousClock.now
+        let server = try await directory.selectServer(token: "t", timeout: .seconds(5))
+        #expect(server.baseURL.absoluteString.contains("192-168-0-193"))
+        #expect(ContinuousClock.now - started < .seconds(2))
+    }
+
+    /// A hung local probe still has to lose to a remote that answers, but
+    /// only once every better-ranked probe has given up.
+    @Test("waits for better-ranked probes before settling on a lower one")
+    func waitsForBetterRanked() async throws {
+        let resources = try Fixture.string("resources")
+        let directory = directory { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("plex.tv/api/v2/resources") { return .json(resources) }
+            if url.contains("38-42-101-254") { return Self.identityBody("MACHINE-1") }
+            if url.contains("192-168-0-193") { return .hang }
+            return .init(status: 500, body: Data("unreachable".utf8))
+        }
+
+        let started = ContinuousClock.now
+        let server = try await directory.selectServer(token: "t", timeout: .seconds(1))
+        #expect(server.isLocal == false)
+        #expect(ContinuousClock.now - started >= .seconds(1))
+    }
+
     @Test("throws when nothing answers rather than returning a dead URL")
     func noneReachable() async throws {
         let resources = try Fixture.string("resources")

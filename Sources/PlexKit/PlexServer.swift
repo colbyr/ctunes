@@ -50,31 +50,40 @@ public actor PlexServerDirectory {
                 ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset)
             }
 
-            let reachable = await withTaskGroup(
-                of: (Int, PlexServer)?.self,
-                returning: [(Int, PlexServer)].self
+            // Answers as soon as the best-ranked connection is decided:
+            // once it has answered, or every better-ranked probe has
+            // failed. Waiting for the whole group meant every launch paid
+            // the full timeout for the dead virtual adapters.
+            let best = await withTaskGroup(
+                of: (Int, PlexServer?).self,
+                returning: PlexServer?.self
             ) { group in
                 for (order, (_, connection)) in ranked.enumerated() {
                     group.addTask {
-                        guard let server = await self.probe(
+                        let server = await self.probe(
                             connection,
                             resourceName: resource.name,
                             token: token,
                             timeout: timeout
-                        ) else { return nil }
+                        )
                         return (order, server)
                     }
                 }
-                var found: [(Int, PlexServer)] = []
-                for await result in group {
-                    if let result { found.append(result) }
+                var outcomes: [Int: PlexServer?] = [:]
+                for await (order, server) in group {
+                    outcomes[order] = server
+                    for order in ranked.indices {
+                        guard let outcome = outcomes[order] else { break }
+                        if let outcome {
+                            group.cancelAll()
+                            return outcome
+                        }
+                    }
                 }
-                return found
+                return nil
             }
 
-            if let best = reachable.min(by: { $0.0 < $1.0 })?.1 {
-                return best
-            }
+            if let best { return best }
         }
         throw PlexError.noServerReachable
     }

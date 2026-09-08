@@ -39,7 +39,7 @@ struct ContentView: View {
                 ConnectFailedView(model: model)
             // One label for both: two would be two view identities, and the
             // stack would reset on every transition in or out of offline.
-            case .signedIn, .offline:
+            case .signedIn, .offline, .reconnecting:
                 LibraryView(model: model)
             }
         }
@@ -53,7 +53,7 @@ struct ContentView: View {
         // Sign-out lives in the model, which doesn't know the player; stop
         // playback and drop the cached audio here when it happens.
         .onChange(of: model.state) { old, new in
-            guard old == .signedIn || old == .offline, new == .signedOut else { return }
+            guard old == .signedIn || old == .offline || old == .reconnecting, new == .signedOut else { return }
             Task { await player.signOut() }
         }
         // A queue that started offline reports timelines once the server is

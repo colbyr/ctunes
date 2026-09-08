@@ -10,6 +10,9 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     struct Response {
         var status: Int = 200
         var body: Data
+        /// Never answers, like a probe to a dead virtual adapter: the
+        /// request sits until its timeout or cancellation.
+        var hangs = false
     }
 
     private static let registry = Registry()
@@ -53,6 +56,7 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
             return
         }
         let result = handler(request)
+        if result.hangs { return }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: result.status,
@@ -71,4 +75,6 @@ extension MockURLProtocol.Response {
     static func json(_ body: String) -> Self {
         .init(body: Data(body.utf8))
     }
+
+    static var hang: Self { .init(body: Data(), hangs: true) }
 }
