@@ -56,6 +56,19 @@ struct ListenerRosterTests {
         #expect(roster.activeIDs.isEmpty)
     }
 
+    @Test("replacing listeners keeps only the active picks that survive")
+    func replaceListeners() throws {
+        var (roster, laura, kids) = roster()
+        roster.toggleActive(laura.id)
+        roster.toggleActive(kids.id)
+        var renamed = try #require(roster.listener(laura.id))
+        renamed.name = "L"
+        roster.replaceListeners(with: [renamed, Listener(name: "Sam")])
+        #expect(roster.listeners.map(\.name) == ["L", "Sam"])
+        #expect(roster.activeIDs == [laura.id])
+        #expect(roster.hiddenArtistKeys == ["av", "bd"])
+    }
+
     @Test("colors cycle through the palette")
     func colors() {
         var roster = ListenerRoster()

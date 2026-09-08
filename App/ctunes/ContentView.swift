@@ -63,6 +63,7 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
+            model.refreshListeners()
             Task {
                 switch model.state {
                 case .offline: await model.reconnect()
