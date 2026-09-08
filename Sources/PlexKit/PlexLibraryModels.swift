@@ -71,6 +71,9 @@ public struct PlexAlbum: Codable, Sendable, Identifiable, Hashable {
     public let lastViewedAt: Int?
     /// Total track plays across the album.
     public let viewCount: Int?
+    /// Number of tracks. Only `/library/sections/{key}/albums` sends it;
+    /// `all?type=9` leaves it out.
+    public let leafCount: Int?
     /// `yyyy-MM-dd`, finer than `year` when the server has it.
     public let originallyAvailableAt: String?
     public let genres: [String]
@@ -87,6 +90,7 @@ public struct PlexAlbum: Codable, Sendable, Identifiable, Hashable {
         addedAt: Int? = nil,
         lastViewedAt: Int? = nil,
         viewCount: Int? = nil,
+        leafCount: Int? = nil,
         originallyAvailableAt: String? = nil,
         genres: [String] = []
     ) {
@@ -99,6 +103,7 @@ public struct PlexAlbum: Codable, Sendable, Identifiable, Hashable {
         self.addedAt = addedAt
         self.lastViewedAt = lastViewedAt
         self.viewCount = viewCount
+        self.leafCount = leafCount
         self.originallyAvailableAt = originallyAvailableAt
         self.genres = genres
     }
@@ -114,6 +119,7 @@ public struct PlexAlbum: Codable, Sendable, Identifiable, Hashable {
         addedAt = try c.decodeIfPresent(Int.self, forKey: .addedAt)
         lastViewedAt = try c.decodeIfPresent(Int.self, forKey: .lastViewedAt)
         viewCount = try c.decodeIfPresent(Int.self, forKey: .viewCount)
+        leafCount = try c.decodeIfPresent(Int.self, forKey: .leafCount)
         originallyAvailableAt = try c.decodeIfPresent(String.self, forKey: .originallyAvailableAt)
         genres = try c.decodeIfPresent([PlexTag].self, forKey: .genres)?.map(\.tag) ?? []
     }
@@ -131,13 +137,14 @@ public struct PlexAlbum: Codable, Sendable, Identifiable, Hashable {
         try c.encodeIfPresent(addedAt, forKey: .addedAt)
         try c.encodeIfPresent(lastViewedAt, forKey: .lastViewedAt)
         try c.encodeIfPresent(viewCount, forKey: .viewCount)
+        try c.encodeIfPresent(leafCount, forKey: .leafCount)
         try c.encodeIfPresent(originallyAvailableAt, forKey: .originallyAvailableAt)
         try c.encode(genres.map(PlexTag.init), forKey: .genres)
     }
 
     enum CodingKeys: String, CodingKey {
         case ratingKey, title, parentRatingKey, parentTitle, year, thumb
-        case addedAt, lastViewedAt, viewCount, originallyAvailableAt
+        case addedAt, lastViewedAt, viewCount, leafCount, originallyAvailableAt
         case genres = "Genre"
     }
 }
@@ -307,6 +314,8 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public let albums: [PlexAlbum]
     public let artists: [PlexArtist]
     public let favorites: [PlexTrack]
+    /// The section's recent plays, so On Rotation ranks the same offline.
+    public let history: [PlayHistoryEntry]
     public let savedAt: Date
     /// The connection the snapshot was taken over, so offline artwork can
     /// ask the image cache for the same URLs it saw online. No token.
@@ -320,6 +329,7 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
         albums: [PlexAlbum],
         artists: [PlexArtist],
         favorites: [PlexTrack],
+        history: [PlayHistoryEntry] = [],
         savedAt: Date = Date(),
         baseURL: URL? = nil
     ) {
@@ -330,7 +340,69 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
         self.albums = albums
         self.artists = artists
         self.favorites = favorites
+        self.history = history
         self.savedAt = savedAt
         self.baseURL = baseURL
+    }
+
+    /// Snapshots written before `history` existed still load, with none.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        server = try c.decode(String.self, forKey: .server)
+        serverName = try c.decode(String.self, forKey: .serverName)
+        sections = try c.decode([PlexSection].self, forKey: .sections)
+        section = try c.decode(PlexSection.self, forKey: .section)
+        albums = try c.decode([PlexAlbum].self, forKey: .albums)
+        artists = try c.decode([PlexArtist].self, forKey: .artists)
+        favorites = try c.decode([PlexTrack].self, forKey: .favorites)
+        history = try c.decodeIfPresent([PlayHistoryEntry].self, forKey: .history) ?? []
+        savedAt = try c.decode(Date.self, forKey: .savedAt)
+        baseURL = try c.decodeIfPresent(URL.self, forKey: .baseURL)
+    }
+}
+
+/// One track play from `/status/sessions/history/all`. The album and
+/// artist arrive as `key` paths (`/library/metadata/3144`), not rating
+/// keys, so they're reduced to the last path component on decode.
+public struct PlayHistoryEntry: Codable, Sendable, Equatable {
+    /// Rating key of the album; nil for a play the server no longer
+    /// attributes to one, which happens after an album is re-matched.
+    public let albumRatingKey: String?
+    public let artistRatingKey: String?
+    /// Unix seconds.
+    public let viewedAt: Int
+
+    public init(albumRatingKey: String?, artistRatingKey: String? = nil, viewedAt: Int) {
+        self.albumRatingKey = albumRatingKey
+        self.artistRatingKey = artistRatingKey
+        self.viewedAt = viewedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // The snapshot round-trips the reduced form; the server sends paths.
+        if let key = try c.decodeIfPresent(String.self, forKey: .albumRatingKey) {
+            albumRatingKey = key
+            artistRatingKey = try c.decodeIfPresent(String.self, forKey: .artistRatingKey)
+        } else {
+            albumRatingKey = try c.decodeIfPresent(String.self, forKey: .parentKey).map(Self.ratingKey)
+            artistRatingKey = try c.decodeIfPresent(String.self, forKey: .grandparentKey).map(Self.ratingKey)
+        }
+        viewedAt = try c.decode(Int.self, forKey: .viewedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(albumRatingKey, forKey: .albumRatingKey)
+        try c.encodeIfPresent(artistRatingKey, forKey: .artistRatingKey)
+        try c.encode(viewedAt, forKey: .viewedAt)
+    }
+
+    private static func ratingKey(_ path: String) -> String {
+        String(path.split(separator: "/").last ?? Substring(path))
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case albumRatingKey, artistRatingKey, viewedAt, parentKey, grandparentKey
     }
 }

@@ -51,7 +51,12 @@ struct MixBuilderView: View {
     @Environment(AudioPlayer.self) private var player
 
     @State private var artists: [PlexArtist] = []
+    /// Fetched for both pools: the artist pool needs the albums' track
+    /// counts to score artists.
     @State private var albums: [PlexAlbum] = []
+    /// Scored once when the plays land; `.none` before then or when the
+    /// request fails, which leaves On Rotation on the server's play counts.
+    @State private var rotation: Rotation = .none
     @State private var loaded = false
     /// Rating keys in the order they were tapped.
     @State private var selected: [String] = []
@@ -73,7 +78,7 @@ struct MixBuilderView: View {
         self.kind = kind
         _query = query
         _building = building
-        _view = AppStorage(wrappedValue: .recentlyAdded, "mixView.\(kind.rawValue)")
+        _view = AppStorage(wrappedValue: .mostPlayed, "mixView.\(kind.rawValue)")
         _downloadedOnly = AppStorage(wrappedValue: false, "mixDownloadedOnly.\(kind.rawValue)")
         _savedSelection = AppStorage(wrappedValue: "", "mixSelection.\(kind.rawValue)")
     }
@@ -118,11 +123,11 @@ struct MixBuilderView: View {
     private var items: [Item] {
         switch kind {
         case .artist:
-            return view.sorted(artists).map {
+            return view.sorted(artists, rotation: rotation).map {
                 Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb, vetoed: hidden.contains($0.ratingKey))
             }
         case .album:
-            let list = view.sorted(albums)
+            let list = view.sorted(albums, rotation: rotation)
             return list.map(item)
         }
     }
@@ -146,7 +151,7 @@ struct MixBuilderView: View {
     /// flat ranked `rest` instead.
     private var poolGroups: [AlbumGroup] {
         let unpicked = browsable.filter { !selected.contains($0.ratingKey) }
-        return AlbumBrowse.groups(unpicked, view: view, hiding: hidden)
+        return AlbumBrowse.groups(unpicked, view: view, hiding: hidden, rotation: rotation)
     }
 
     /// What survives the vetoes. Search narrows `rest` only, so a pick
@@ -169,7 +174,7 @@ struct MixBuilderView: View {
         case .artist:
             return unpicked.filter { $0.title.localizedCaseInsensitiveContains(needle) }
         case .album:
-            let ranked = AlbumBrowse.search(browsable, query: needle, view: view, hiding: hidden).map(\.ratingKey)
+            let ranked = AlbumBrowse.search(browsable, query: needle, view: view, hiding: hidden, rotation: rotation).map(\.ratingKey)
             let byID = Dictionary(unpicked.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             return ranked.compactMap { byID[$0] }
         }
@@ -277,11 +282,14 @@ struct MixBuilderView: View {
         .onChange(of: selected) { savedSelection = selected.joined(separator: ",") }
         .task(id: model.libraryGeneration) {
             guard let library = model.library else { return }
-            switch kind {
-            case .artist: artists = (try? await library.artists(inSection: section.key)) ?? []
-            case .album: albums = (try? await library.albums(inSection: section.key)) ?? []
+            async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
+            if kind == .artist {
+                artists = (try? await library.artists(inSection: section.key)) ?? []
             }
+            albums = (try? await library.albums(inSection: section.key)) ?? []
             loaded = true
+            let history = (try? await plays) ?? []
+            rotation = Rotation(history: history, albums: albums)
             #if DEBUG
             if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {
                 play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .playAlbums : .shuffleTracks)

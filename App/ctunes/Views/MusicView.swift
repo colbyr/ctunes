@@ -12,6 +12,9 @@ struct MusicView: View {
     @Environment(AudioPlayer.self) private var player
 
     @State private var albums: [PlexAlbum] = []
+    /// Scored once when the plays land; `.none` before then or when the
+    /// request fails, which leaves On Rotation on the server's play counts.
+    @State private var rotation: Rotation = .none
     /// Fetched with the albums so the shuffle card can say how many tracks
     /// it would play; nil until the request lands.
     @State private var favorites: [PlexTrack]?
@@ -25,7 +28,7 @@ struct MusicView: View {
     /// Bytes of cached audio, for the clear button; nil until read.
     @State private var cacheUsage: Int?
     @State private var confirmingRemoveAll = false
-    @AppStorage("albumView") private var view: AlbumView = .recentlyAdded
+    @AppStorage("albumView") private var view: AlbumView = .mostPlayed
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
 
     private var offline: Bool { model.state == .offline }
@@ -36,10 +39,10 @@ struct MusicView: View {
         downloadedOnly ? albums.filter { model.downloads.hasDownloads($0) } : albums
     }
     private var groups: [AlbumGroup] {
-        AlbumBrowse.groups(browsable, view: view, hiding: hidden)
+        AlbumBrowse.groups(browsable, view: view, hiding: hidden, rotation: rotation)
     }
     private var results: [PlexAlbum] {
-        AlbumBrowse.search(browsable, query: query, view: view, hiding: hidden)
+        AlbumBrowse.search(browsable, query: query, view: view, hiding: hidden, rotation: rotation)
     }
     /// Every artist in the library, for the listeners sheet and the count
     /// under the title. Unfiltered, so a veto from another section doesn't
@@ -220,10 +223,15 @@ struct MusicView: View {
         // from whichever library is current.
         .task(id: model.libraryGeneration) {
             guard let library = model.library else { return }
+            var history: [PlayHistoryEntry] = []
             do {
                 async let favoriteTracks = library.favoriteTracks(inSection: section.key)
+                // Optional: the grid falls back to play counts without it.
+                async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
                 albums = try await library.albums(inSection: section.key)
                 loaded = true
+                history = (try? await plays) ?? []
+                rotation = Rotation(history: history, albums: albums)
                 favorites = try? await favoriteTracks
             } catch {
                 await model.connectionLost(error)
@@ -236,7 +244,7 @@ struct MusicView: View {
             }
             #endif
             if !library.isOffline {
-                await model.snapshot(albums: albums, favorites: favorites ?? [])
+                await model.snapshot(albums: albums, favorites: favorites ?? [], history: history)
             }
         }
         .confirmationDialog("Remove all downloads?", isPresented: $confirmingRemoveAll, titleVisibility: .visible) {

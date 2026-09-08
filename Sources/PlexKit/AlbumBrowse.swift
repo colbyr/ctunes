@@ -4,10 +4,12 @@ import Foundation
 /// the two never have to be reconciled in the menu. Raw values are
 /// persisted, so keep them stable.
 public enum AlbumView: String, CaseIterable, Sendable, Codable {
-    /// Newest additions first, flat. The default.
-    case recentlyAdded
-    /// Highest play count first, flat.
+    /// What's on rotation first, flat: recent plays weigh more than old
+    /// ones, per track so a long album doesn't win by length. The default.
+    /// The raw value predates the scoring and is persisted, so it stays.
     case mostPlayed
+    /// Newest additions first, flat.
+    case recentlyAdded
     /// Sectioned by artist A–Z, each artist's albums newest release first.
     case artist
     /// Sectioned by how long ago an album was last played, never-played
@@ -16,8 +18,8 @@ public enum AlbumView: String, CaseIterable, Sendable, Codable {
 
     public var title: String {
         switch self {
+        case .mostPlayed: "On Rotation"
         case .recentlyAdded: "Recently Added"
-        case .mostPlayed: "Most Played"
         case .artist: "Artists"
         case .backCatalog: "Back Catalog"
         }
@@ -25,8 +27,8 @@ public enum AlbumView: String, CaseIterable, Sendable, Codable {
 
     var sort: AlbumSort {
         switch self {
+        case .mostPlayed: .rotation
         case .recentlyAdded: .addedAt
-        case .mostPlayed: .playCount
         case .artist: .releaseDate
         case .backCatalog: .lastPlayedAscending
         }
@@ -41,15 +43,72 @@ public enum AlbumView: String, CaseIterable, Sendable, Codable {
     }
 
     /// The view's order alone, for the mix pools' flat search results.
-    public func sorted(_ albums: [PlexAlbum]) -> [PlexAlbum] {
-        sort.sorted(albums)
+    public func sorted(_ albums: [PlexAlbum], rotation: Rotation = .none) -> [PlexAlbum] {
+        sort.sorted(albums, rotation: rotation)
     }
 
     /// The same view applied to a flat artist list, for the artist mix
     /// pool. An artist has no release date, so the Artist view reads as
     /// name order, which is what its sections do for albums anyway.
-    public func sorted(_ artists: [PlexArtist]) -> [PlexArtist] {
-        sort.sorted(artists)
+    public func sorted(_ artists: [PlexArtist], rotation: Rotation = .none) -> [PlexArtist] {
+        sort.sorted(artists, rotation: rotation)
+    }
+}
+
+/// How much each album and artist is being played lately, from the play
+/// history. Every play is worth `0.5 ^ (age / halfLife)`, so ten plays this
+/// week outrank thirty spread over a year; an album's sum is divided by the
+/// square root of its track count, so a long album doesn't win by length
+/// but a single doesn't win by brevity either. Dividing by the count
+/// itself put every one-track single above whole albums played daily. An
+/// artist's score is the sum over their albums.
+public struct Rotation: Sendable, Equatable {
+    /// Score by album rating key. Albums never played are absent.
+    public let albums: [String: Double]
+    /// Score by artist rating key.
+    public let artists: [String: Double]
+
+    /// No history: the sort falls back to the server's play counts.
+    public static let none = Rotation(albums: [:], artists: [:])
+
+    /// A play from two months ago is worth half of one today. At 90 days,
+    /// ten plays this week only tied thirty spread over a year; at 60 they
+    /// score 9.7 to 7.0.
+    public static let halfLife: TimeInterval = 60 * 86_400
+    /// How far back to fetch. Older plays would weigh under 2%.
+    public static let window: TimeInterval = 365 * 86_400
+
+    public var isEmpty: Bool { albums.isEmpty }
+
+    init(albums: [String: Double], artists: [String: Double]) {
+        self.albums = albums
+        self.artists = artists
+    }
+
+    /// Plays of albums no longer in `albums` are dropped: they can't be
+    /// browsed, and without the album there's no track count to divide by.
+    public init(
+        history: [PlayHistoryEntry],
+        albums: [PlexAlbum],
+        now: Date = .now,
+        halfLife: TimeInterval = Rotation.halfLife
+    ) {
+        var plays: [String: Double] = [:]
+        for entry in history {
+            guard let key = entry.albumRatingKey else { continue }
+            let age = now.timeIntervalSince(Date(timeIntervalSince1970: TimeInterval(entry.viewedAt)))
+            plays[key, default: 0] += pow(0.5, max(age, 0) / halfLife)
+        }
+        var albumScores: [String: Double] = [:]
+        var artistScores: [String: Double] = [:]
+        for album in albums {
+            guard let sum = plays[album.ratingKey] else { continue }
+            let score = sum / Double(max(album.leafCount ?? 1, 1)).squareRoot()
+            albumScores[album.ratingKey] = score
+            artistScores[album.artistKey, default: 0] += score
+        }
+        self.albums = albumScores
+        self.artists = artistScores
     }
 }
 
@@ -57,17 +116,17 @@ public enum AlbumView: String, CaseIterable, Sendable, Codable {
 /// `lastPlayedAscending`, whose missing values go first: an album never
 /// played is the oldest thing in the back catalog.
 enum AlbumSort: Sendable {
-    case addedAt, playCount, releaseDate, lastPlayedAscending
+    case addedAt, rotation, releaseDate, lastPlayedAscending
 
     /// Stable ordering: albums missing the key sort to the bottom (top for
     /// the ascending sort), ties fall back to title so the order doesn't
     /// shift between loads.
-    func sorted(_ albums: [PlexAlbum]) -> [PlexAlbum] {
-        sorted(albums, key: key, title: \.title)
+    func sorted(_ albums: [PlexAlbum], rotation: Rotation = .none) -> [PlexAlbum] {
+        sorted(albums, key: { key($0, rotation: rotation) }, title: \.title)
     }
 
-    func sorted(_ artists: [PlexArtist]) -> [PlexArtist] {
-        sorted(artists, key: key, title: \.title)
+    func sorted(_ artists: [PlexArtist], rotation: Rotation = .none) -> [PlexArtist] {
+        sorted(artists, key: { key($0, rotation: rotation) }, title: \.title)
     }
 
     private var ascending: Bool { self == .lastPlayedAscending }
@@ -83,20 +142,23 @@ enum AlbumSort: Sendable {
         }
     }
 
-    private func key(_ album: PlexAlbum) -> Double? {
+    /// Without history, rotation reads the server's lifetime play count,
+    /// so the view still orders something before the history lands or
+    /// from a snapshot taken before it was saved.
+    private func key(_ album: PlexAlbum, rotation: Rotation) -> Double? {
         switch self {
         case .addedAt: album.addedAt.map(Double.init)
         case .lastPlayedAscending: album.lastViewedAt.map(Double.init)
         case .releaseDate: album.releaseOrdinal
-        case .playCount: album.viewCount.map(Double.init)
+        case .rotation: rotation.isEmpty ? album.viewCount.map(Double.init) : rotation.albums[album.ratingKey]
         }
     }
 
-    private func key(_ artist: PlexArtist) -> Double? {
+    private func key(_ artist: PlexArtist, rotation: Rotation) -> Double? {
         switch self {
         case .addedAt: artist.addedAt.map(Double.init)
         case .lastPlayedAscending: artist.lastViewedAt.map(Double.init)
-        case .playCount: artist.viewCount.map(Double.init)
+        case .rotation: rotation.isEmpty ? artist.viewCount.map(Double.init) : rotation.artists[artist.ratingKey]
         case .releaseDate: nil
         }
     }
@@ -127,9 +189,10 @@ public enum AlbumBrowse {
         _ albums: [PlexAlbum],
         view: AlbumView,
         hiding hidden: Set<String> = [],
+        rotation: Rotation = .none,
         now: Date = .now
     ) -> [AlbumGroup] {
-        let sorted = view.sort.sorted(albums.filter { !hidden.contains($0.artistKey) })
+        let sorted = view.sort.sorted(albums.filter { !hidden.contains($0.artistKey) }, rotation: rotation)
         var order: [String] = []
         var members: [String: [PlexAlbum]] = [:]
         var names: [String: String] = [:]
@@ -181,11 +244,12 @@ public enum AlbumBrowse {
         _ albums: [PlexAlbum],
         query: String,
         view: AlbumView,
-        hiding hidden: Set<String> = []
+        hiding hidden: Set<String> = [],
+        rotation: Rotation = .none
     ) -> [PlexAlbum] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty else { return [] }
-        let ranked: [(rank: Int, album: PlexAlbum)] = view.sort.sorted(albums).compactMap { album in
+        let ranked: [(rank: Int, album: PlexAlbum)] = view.sort.sorted(albums, rotation: rotation).compactMap { album in
             guard !hidden.contains(album.artistKey) else { return nil }
             let title = MatchQuality(album.title, needle)
             let artist = MatchQuality(album.parentTitle ?? "", needle)

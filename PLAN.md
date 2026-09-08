@@ -137,7 +137,8 @@ gear). That makes local connections fail at DNS rather than at connect.
 ```
 GET /library/sections                                    → filter type == "artist"
 GET /library/sections/{key}/all?type=8                   → artists
-GET /library/sections/{key}/all?type=9                   → every album (browse)
+GET /library/sections/{key}/albums                       → every album (browse), with leafCount
+GET /status/sessions/history/all?librarySectionID={key}  → track plays, for On Rotation
 GET /library/sections/{key}/all?type=9&artist.id={rk}    → albums of an artist
 GET /library/metadata/{albumKey}/children                → tracks of an album
 ```

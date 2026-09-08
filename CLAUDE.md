@@ -151,6 +151,20 @@ appears to offer.
   `N` in 0–10, `-1` clears. The app treats only a full 10 as a favorite. Query
   favorite tracks with `/library/sections/{key}/all?type=10&userRating=10` —
   exact match. `userRating>>=10` returns nothing even though `>>=1` works.
+- **The album list comes from `/library/sections/{key}/albums`, not
+  `all?type=9`.** Same albums, same fields, plus `leafCount` (track count),
+  which `all?type=9` omits however it is asked. The per-artist query stays on
+  `all?type=9&artist.id=`.
+- **Play history: `/status/sessions/history/all?librarySectionID={key}&viewedAt>={unix}&sort=viewedAt:desc`**,
+  one track play per entry with `parentKey`/`grandparentKey` as
+  `/library/metadata/{rk}` paths, not rating keys. A year of plays is ~5 MB
+  and under a second on a LAN, so it is fetched whole, not paged. Foundation
+  encodes the filter as `viewedAt%3E=`, which the server accepts;
+  `%3E%3D` is a 400. A few entries have no `parentKey` at all. The "On
+  Rotation" view (`Rotation` in `AlbumBrowse.swift`) scores each album as
+  the sum of `0.5^(age/60d)` over its plays divided by `sqrt(leafCount)`
+  (dividing by the count itself put every single on top), and falls back to
+  `viewCount` when there is no history.
 
 ## Concurrency hazards hit here
 

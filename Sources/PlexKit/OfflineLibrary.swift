@@ -25,6 +25,10 @@ public struct OfflineLibrary: LibrarySource {
 
     public func albums(inSection section: String) async throws -> [PlexAlbum] { snapshot.albums }
 
+    public func playHistory(inSection section: String, since: Date) async throws -> [PlayHistoryEntry] {
+        snapshot.history.filter { $0.viewedAt >= Int(since.timeIntervalSince1970) }
+    }
+
     public func albums(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexAlbum] {
         snapshot.albums.filter { $0.parentRatingKey == artistRatingKey }
     }

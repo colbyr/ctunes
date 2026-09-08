@@ -40,8 +40,24 @@ public actor PlexLibrary {
     /// Every album in the library, in the server's own order (artist, then
     /// album). The browse list groups these by artist rather than making one
     /// request per artist, which would be a request per row.
+    ///
+    /// `/albums` rather than `all?type=9`: the same albums with the same
+    /// fields, measured against a real library, plus `leafCount`, which
+    /// On Rotation divides by.
     public func albums(inSection section: String) async throws -> [PlexAlbum] {
-        try await fetch(PlexAlbum.self, path: "/library/sections/\(section)/all?type=9")
+        try await fetch(PlexAlbum.self, path: "/library/sections/\(section)/albums")
+    }
+
+    /// The section's track plays since `since`, newest first. One request
+    /// for the whole range: a year of plays is a few megabytes and well
+    /// under a second on a LAN, and paging would be a request per screen.
+    /// `>=` reaches the server as `%3E=`, which it accepts; `%3E%3D` is a 400.
+    public func playHistory(inSection section: String, since: Date) async throws -> [PlayHistoryEntry] {
+        let stamp = Int(since.timeIntervalSince1970)
+        return try await fetch(
+            PlayHistoryEntry.self,
+            path: "/status/sessions/history/all?librarySectionID=\(section)&viewedAt>=\(stamp)&sort=viewedAt:desc"
+        )
     }
 
     /// Albums for one artist.

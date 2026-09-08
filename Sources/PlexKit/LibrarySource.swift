@@ -10,6 +10,8 @@ public protocol LibrarySource: Sendable {
     func musicSections() async throws -> [PlexSection]
     func artists(inSection section: String) async throws -> [PlexArtist]
     func albums(inSection section: String) async throws -> [PlexAlbum]
+    /// Track plays in the section since `since`, for the On Rotation view.
+    func playHistory(inSection section: String, since: Date) async throws -> [PlayHistoryEntry]
     func albums(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexAlbum]
     func tracks(inAlbum albumRatingKey: String) async throws -> [PlexTrack]
     func tracks(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexTrack]

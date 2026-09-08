@@ -290,7 +290,7 @@ final class AppModel {
     /// next launch can browse without the server. Keyed by section, so
     /// switching libraries snapshots each on first browse. Also brings the
     /// favorites pin up to date with the set as the server has it.
-    func snapshot(albums: [PlexAlbum], favorites: [PlexTrack]) async {
+    func snapshot(albums: [PlexAlbum], favorites: [PlexTrack], history: [PlayHistoryEntry]) async {
         guard let library, !library.isOffline, let section = selectedSection else { return }
         guard let artists = try? await library.artists(inSection: section.key) else { return }
         let snapshot = LibrarySnapshot(
@@ -301,6 +301,7 @@ final class AppModel {
             albums: albums,
             artists: artists,
             favorites: favorites,
+            history: history,
             baseURL: (library as? PlexLibrary)?.baseURL
         )
         try? await offline.save(snapshot)

@@ -69,13 +69,35 @@ struct PlexLibraryTests {
 
         let albums = try await library.albums(inSection: "3")
         let url = try #require(seen.get())
-        #expect(url.contains("/library/sections/3/all"))
-        #expect(url.contains("type=9"))
+        // `/albums`, not `all?type=9`: the same list, plus leafCount.
+        #expect(url.contains("/library/sections/3/albums"))
         #expect(!url.contains("artist.id"))
 
         // The grouping key comes off the album, so it has to decode.
         let first = try #require(albums.first)
         #expect(first.parentRatingKey == "1028")
+        let abbey = try #require(albums.first { $0.title.hasPrefix("Abbey Road") })
+        #expect(abbey.leafCount == 17)
+    }
+
+    @Test("play history asks for the section since a date, newest first")
+    func playHistoryQuery() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("history")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        let plays = try await library.playHistory(inSection: "3", since: Date(timeIntervalSince1970: 1_700_000_000))
+        let url = try #require(seen.get())
+        #expect(url.contains("/status/sessions/history/all"))
+        #expect(url.contains("librarySectionID=3"))
+        // The server accepts `%3E=`, which is how Foundation encodes `>=`;
+        // fully encoding it as `%3E%3D` is a 400.
+        #expect(url.contains("viewedAt%3E=1700000000"))
+        #expect(url.contains("sort=viewedAt:desc"))
+        #expect(plays.count == 9)
     }
 
     /// The bug this avoids: /children under-reports albums for some artists.
