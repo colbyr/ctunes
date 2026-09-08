@@ -56,12 +56,17 @@ final class AppModel {
     /// every copy.
     private var favoriteOverrides: [String: Bool] = [:]
 
-    /// People who share the phone and the artists they'd rather skip. Kept on
-    /// the device, never in Plex, so it survives sign-out like any setting.
+    /// People who share the phone and the artists they'd rather skip. Never
+    /// in Plex, so it survives sign-out like any setting. The listeners live
+    /// in the iCloud key-value store so every device on the Apple ID shares
+    /// them; who is currently listening stays on this device, since the
+    /// phone in the car and the Mac at home differ. `UserDefaults` keeps a
+    /// full copy so launch never waits on iCloud.
     private(set) var roster = ListenerRoster()
 
     private static let sectionDefaultsKey = "selected-section-key"
     private static let rosterDefaultsKey = "listeners"
+    private static let listenersCloudKey = "listeners"
     private static let serverDefaultsKey = "last-server-id"
 
     private var auth: PlexAuth?
@@ -79,6 +84,7 @@ final class AppModel {
         downloads = Downloads(store: offline, cache: cache)
         roster = Self.loadRoster()
         seedDevelopmentListeners()
+        startListenerSync()
     }
 
     func bootstrap() async {
@@ -403,8 +409,67 @@ final class AppModel {
     }
 
     private func saveRoster() {
-        guard let data = try? JSONEncoder().encode(roster) else { return }
-        UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+        if let data = try? JSONEncoder().encode(roster) {
+            UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+        }
+        pushListenersToCloud()
+    }
+
+    // MARK: Listener sync
+
+    /// Adopts whatever iCloud already holds, seeds it from this device when
+    /// it holds nothing, and follows later changes from other devices. The
+    /// store is a local cache that iCloud syncs behind the scenes, so none
+    /// of this waits on the network. The observer is never removed: one
+    /// model lives as long as the process.
+    private func startListenerSync() {
+        let store = NSUbiquitousKeyValueStore.default
+        NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: store,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.pullListenersFromCloud() }
+        }
+        store.synchronize()
+        if store.data(forKey: Self.listenersCloudKey) == nil {
+            pushListenersToCloud()
+        } else {
+            pullListenersFromCloud()
+        }
+    }
+
+    /// Called when the scene comes forward so a change made on another
+    /// device while this one was in the background lands right away rather
+    /// than on iCloud's own schedule.
+    func refreshListeners() {
+        NSUbiquitousKeyValueStore.default.synchronize()
+        pullListenersFromCloud()
+    }
+
+    private func pullListenersFromCloud() {
+        guard let data = NSUbiquitousKeyValueStore.default.data(forKey: Self.listenersCloudKey),
+              let listeners = try? JSONDecoder().decode([Listener].self, from: data),
+              listeners != roster.listeners
+        else { return }
+        roster.replaceListeners(with: listeners)
+        if let data = try? JSONEncoder().encode(roster) {
+            UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+        }
+    }
+
+    /// Only the listeners go up; the active set is this device's alone.
+    /// Skipped when the store already matches, so toggling who is listening
+    /// doesn't churn iCloud.
+    private func pushListenersToCloud() {
+        let store = NSUbiquitousKeyValueStore.default
+        guard let data = try? JSONEncoder().encode(roster.listeners) else { return }
+        if let current = store.data(forKey: Self.listenersCloudKey),
+           let listeners = try? JSONDecoder().decode([Listener].self, from: current),
+           listeners == roster.listeners {
+            return
+        }
+        store.set(data, forKey: Self.listenersCloudKey)
     }
 
     /// Puts two listeners on an empty roster so the chips show up in a

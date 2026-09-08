@@ -1,7 +1,9 @@
 import Foundation
 
 /// Someone who rides along with the library owner and has artists they'd
-/// rather not hear. Lives on the phone, not in Plex, so no account is needed.
+/// rather not hear. Lives in the owner's iCloud key-value store, not in
+/// Plex, so no account is needed and every device on the same Apple ID
+/// sees the same people.
 public struct Listener: Codable, Sendable, Identifiable, Hashable {
     public let id: UUID
     public var name: String
@@ -30,7 +32,8 @@ public struct Listener: Codable, Sendable, Identifiable, Hashable {
 
 /// Every listener plus the set currently in the car. The owner is implicit and
 /// always listening, so what's hidden is just the union of the active
-/// listeners' vetoes.
+/// listeners' vetoes. The listeners sync across devices; who is listening is
+/// per device, since the phone in the car and the Mac at home differ.
 public struct ListenerRoster: Codable, Sendable, Equatable {
     public var listeners: [Listener] = []
     public var activeIDs: Set<UUID> = []
@@ -92,6 +95,14 @@ public struct ListenerRoster: Codable, Sendable, Equatable {
                 $0.vetoedArtistKeys.insert(artistKey)
             }
         }
+    }
+
+    /// Adopts another device's listeners wholesale, keeping only the active
+    /// picks that still name someone. Last writer wins; there is no per-field
+    /// merge, which is fine for a list this small.
+    public mutating func replaceListeners(with listeners: [Listener]) {
+        self.listeners = listeners
+        activeIDs = activeIDs.intersection(listeners.map(\.id))
     }
 
     public mutating func update(_ id: UUID, _ change: (inout Listener) -> Void) {

@@ -107,6 +107,14 @@ renamed, never fetched twice. A local item that fails to load is evicted and
 re-loaded from the stream URL, or skipped offline. Keep the stream fallback
 and the `-1005` retry: the cache is an optimisation, never the only path.
 
+Listeners (`ListenerRoster`, owned by `AppModel`) sync through
+`NSUbiquitousKeyValueStore` under one `listeners` key holding the `[Listener]`
+JSON, last writer wins. The active set is per device and never leaves
+`UserDefaults`, which also keeps a full copy so launch never waits on iCloud.
+The store needs the `ubiquity-kvstore-identifier` entitlement in
+`App/ctunes.entitlements` and iCloud enabled on the App ID; a build signed
+without it silently stores locally and nothing syncs.
+
 `OfflineStore` (PlexKit actor, `notes/offline.md`) owns the manifest of pinned
 albums and the favorites pin, the track list of every album browsed, the
 library snapshot and album covers under
