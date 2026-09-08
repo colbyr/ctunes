@@ -62,7 +62,6 @@ struct MusicView: View {
                 .buttonStyle(.plain)
             }
         }
-        .listRowSeparator(.hidden)
     }
 
     /// Matches the nav bar's large title and the bottom pills.
@@ -72,95 +71,74 @@ struct MusicView: View {
     private var tileMinimum: CGFloat { sizeClass == .regular ? 150 : 100 }
 
     var body: some View {
-        List {
-            if !query.isEmpty {
-                grid(results, spacing: 12, showArtist: true)
-                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
-                    .listRowBackground(Color.clear)
-            } else {
-                if offline {
-                    OfflineBanner(reconnecting: model.reconnecting) {
-                        Task { await model.reconnect(force: true) }
-                    }
-                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                }
-                // One row for all three cards: the row clips at its insets,
-                // so the shadow between the cards needs no inset at all and
-                // only the outer edges have to clear it.
-                // Stacked on a phone; one row of three on a wider screen,
-                // where a full-width hero card is mostly empty.
-                Group {
-                    if sizeClass == .regular {
-                        HStack(spacing: 12) {
-                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
-                            MixTile(kind: .artist) { path.append(MixKind.artist) }
-                            MixTile(kind: .album) { path.append(MixKind.album) }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if !query.isEmpty {
+                    grid(results, spacing: 12, showArtist: true)
+                        .padding(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
+                } else {
+                    if offline {
+                        OfflineBanner(reconnecting: model.reconnecting) {
+                            Task { await model.reconnect(force: true) }
                         }
-                        .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        VStack(spacing: 12) {
-                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
+                        .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
+                    }
+                    // Stacked on a phone; one row of three on a wider screen,
+                    // where a full-width hero card is mostly empty.
+                    Group {
+                        if sizeClass == .regular {
                             HStack(spacing: 12) {
+                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                                 MixTile(kind: .artist) { path.append(MixKind.artist) }
                                 MixTile(kind: .album) { path.append(MixKind.album) }
+                            }
+                            .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            VStack(spacing: 12) {
+                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
+                                HStack(spacing: 12) {
+                                    MixTile(kind: .artist) { path.append(MixKind.artist) }
+                                    MixTile(kind: .album) { path.append(MixKind.album) }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    // The browser starts here: a rule, then the chips with the
+                    // arrange button, then the hidden-artist line when any are.
+                    Rectangle()
+                        .fill(Color.divider)
+                        .frame(height: 1)
+                        .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    AlbumBrowserControls(model: model, artists: artists, view: $view, downloadedOnly: $downloadedOnly)
+                        .padding(.top, 16)
+                    HiddenArtistsLine(model: model, count: hiddenCount)
+                        .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                    // In the stack rather than an overlay, so it sits under the
+                    // cards and the controls instead of over them.
+                    if loaded, !albums.isEmpty, groups.isEmpty, downloadedOnly {
+                        ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
+                                               description: Text("Turn off Downloaded only to see the whole library."))
+                            .frame(maxWidth: .infinity)
+                            .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    }
+                    ForEach(groups) { group in
+                        Section {
+                            grid(group.albums, spacing: 12, showArtist: view != .artist)
+                                .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                        } header: {
+                            if !group.name.isEmpty {
+                                AlbumGroupHeader(group: group)
+                                    .padding(.leading, Self.margin)
+                                    .padding(.top, 14)
+                                    .padding(.bottom, 6)
                             }
                         }
                     }
                 }
-                .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                // The browser starts here: a rule, then the chips with the
-                // arrange button, then the hidden-artist line when any are.
-                Rectangle()
-                    .fill(Color.divider)
-                    .frame(height: 1)
-                    .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                AlbumBrowserControls(model: model, artists: artists, view: $view, downloadedOnly: $downloadedOnly)
-                    .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                HiddenArtistsLine(model: model, count: hiddenCount)
-                    .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                // In the list rather than an overlay, so it sits under the
-                // cards and the controls instead of over them.
-                if loaded, !albums.isEmpty, groups.isEmpty, downloadedOnly {
-                    ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
-                                           description: Text("Turn off Downloaded only to see the whole library."))
-                        .listRowInsets(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-                ForEach(groups) { group in
-                    Section {
-                        grid(group.albums, spacing: 12, showArtist: view != .artist)
-                            .listRowInsets(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    } header: {
-                        if !group.name.isEmpty {
-                            AlbumGroupHeader(group: group)
-                                .padding(.leading, Self.margin)
-                                .padding(.top, 14)
-                                .padding(.bottom, 6)
-                                .listRowInsets(EdgeInsets())
-                        }
-                    }
-                    .listRowBackground(Color.clear)
-                }
             }
         }
-        .listStyle(.plain)
         .parchment()
-        // The rule is a 1pt row; the default minimum centres it in 44pt.
-        .environment(\.defaultMinListRowHeight, 1)
-        // The row insets set the gaps; the default section gap on top of
-        // them left too much air above each group title.
-        .listSectionSpacing(0)
         // The collapsed title and subtitle sit over artwork once you scroll;
         // the soft edge effect leaves the subtitle hard to read.
         .scrollEdgeEffectStyle(.hard, for: .top)

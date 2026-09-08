@@ -202,62 +202,48 @@ struct MixBuilderView: View {
     var body: some View {
         let picks = picks
         let playable = playable
-        List {
-            MixActions(kind: kind, loading: loadingMix, action: play)
-                // Bottom inset clears the card's shadow; see `cardShadow`.
-                .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            Group {
-                if picks.isEmpty {
-                    emptySelection
-                } else {
-                    grid(picks, selected: true)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                MixActions(kind: kind, loading: loadingMix, action: play)
+                    // Bottom inset clears the card's shadow; see `cardShadow`.
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                Group {
+                    if picks.isEmpty {
+                        emptySelection
+                    } else {
+                        grid(picks, selected: true)
+                    }
                 }
-            }
-            .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-            .listRowBackground(Color.clear)
-            Rectangle()
-                .fill(Color.divider)
-                .frame(height: 1)
-                .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
-                .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            HiddenArtistsLine(model: model, count: hiddenCount)
-                .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            if kind == .album && needle.isEmpty {
-                ForEach(poolGroups) { group in
-                    Section {
-                        grid(group.albums.map(item), selected: false)
-                            .listRowInsets(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    } header: {
-                        if !group.name.isEmpty {
-                            AlbumGroupHeader(group: group)
-                                .padding(.leading, Self.margin)
-                                .padding(.top, 14)
-                                .padding(.bottom, 6)
-                                .listRowInsets(EdgeInsets())
+                .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                Rectangle()
+                    .fill(Color.divider)
+                    .frame(height: 1)
+                    .padding(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
+                    .padding(.top, 16)
+                HiddenArtistsLine(model: model, count: hiddenCount)
+                    .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                if kind == .album && needle.isEmpty {
+                    ForEach(poolGroups) { group in
+                        Section {
+                            grid(group.albums.map(item), selected: false)
+                                .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                        } header: {
+                            if !group.name.isEmpty {
+                                AlbumGroupHeader(group: group)
+                                    .padding(.leading, Self.margin)
+                                    .padding(.top, 14)
+                                    .padding(.bottom, 6)
+                            }
                         }
                     }
-                    .listRowBackground(Color.clear)
+                } else {
+                    grid(rest, selected: false)
+                        .padding(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
                 }
-            } else {
-                grid(rest, selected: false)
-                    .listRowInsets(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
-                    .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.plain)
         .parchment()
-        // The separator is a 1pt row; the default minimum centres it in 44pt.
-        .environment(\.defaultMinListRowHeight, 1)
-        .listSectionSpacing(0)
         .scrollDismissesKeyboard(.immediately)
         .scrollEdgeEffectStyle(.hard, for: .top)
         // Past the action cards (about their height plus the row insets).
@@ -335,7 +321,6 @@ struct MixBuilderView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
         }
-        .listRowSeparator(.hidden)
     }
 
     private func grid(_ items: [Item], selected isSelected: Bool) -> some View {
@@ -349,7 +334,6 @@ struct MixBuilderView: View {
                 .accessibilityHint(item.vetoed ? "Hidden for a listener, so it won't be played" : "")
             }
         }
-        .listRowSeparator(.hidden)
     }
 
     private func toggle(_ id: String) {
