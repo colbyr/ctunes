@@ -19,5 +19,11 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+
+	<!-- Answers App Store Connect's export compliance question up front so
+	     TestFlight builds skip the prompt. The app only uses HTTPS to talk to
+	     Plex, which is exempt. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
