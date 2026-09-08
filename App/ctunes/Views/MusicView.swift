@@ -326,13 +326,14 @@ private struct AlbumTile: View {
 
     var body: some View {
         let downloaded = model.downloads.isDownloaded(album)
+        let downloading = !downloaded && model.downloads.isPinned(album)
         let playable = model.downloads.hasDownloads(album)
         let offline = model.state == .offline
         VStack(alignment: .leading, spacing: 6) {
             Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
                 .artworkShadow()
                 .overlay(alignment: .bottomTrailing) {
-                    if downloaded { DownloadedBadge() }
+                    if downloaded || downloading { DownloadedBadge(downloading: downloading) }
                 }
             VStack(alignment: .leading, spacing: 1) {
                 Text(album.title)

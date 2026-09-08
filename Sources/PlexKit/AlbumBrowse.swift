@@ -283,17 +283,17 @@ public enum AlbumBrowse {
     }
 }
 
-/// "Played in the Last Week", "It's Been a While"… for the Back Catalog view.
+/// "Last Week", "It's Been a While"… for the Back Catalog view.
 public enum RecencyBucket: Int, CaseIterable, Sendable {
     case today, pastWeek, pastMonth, pastSixMonths, pastYear, earlier, never
 
     public var title: String {
         switch self {
         case .today: "Played Today"
-        case .pastWeek: "Played in the Last Week"
-        case .pastMonth: "Played in the Last Month"
-        case .pastSixMonths: "Played in the Last 6 Months"
-        case .pastYear: "Played in the Last Year"
+        case .pastWeek: "Last Week"
+        case .pastMonth: "Last Month"
+        case .pastSixMonths: "Last 6 Months"
+        case .pastYear: "Last Year"
         case .earlier: "It's Been a While"
         case .never: "Never Played"
         }

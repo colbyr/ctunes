@@ -27,9 +27,11 @@ public protocol LibrarySource: Sendable {
 }
 
 extension LibrarySource {
-    /// List-cell size, the default every grid uses.
+    /// List-cell size, the default every grid uses. A tile is ~110pt on a
+    /// 3x phone, so 200px was upscaled and read blurry; 400 covers that
+    /// and a 150pt tile on a 2x iPad.
     public func artworkURL(_ thumb: String?) -> URL? {
-        artworkURL(thumb, size: 200)
+        artworkURL(thumb, size: 400)
     }
 }
 

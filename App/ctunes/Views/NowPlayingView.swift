@@ -72,7 +72,7 @@ struct NowPlayingView: View {
                     }
                 }
             } header: {
-                if !ended { Text("Up Next") }
+                if !ended { upNextHeader }
             }
             .listRowBackground(Color.clear)
         }
@@ -81,6 +81,26 @@ struct NowPlayingView: View {
         .overlay(alignment: .topTrailing) {
             if sizeClass == .regular { closeButton }
         }
+    }
+
+    /// The title with repeat and shuffle at its trailing edge: both act on
+    /// the queue, so they live with it rather than in the transport.
+    private var upNextHeader: some View {
+        HStack(spacing: 4) {
+            Text("Up Next")
+            Spacer()
+            modeButton(
+                systemImage: player.repeatMode == .one ? "repeat.1" : "repeat",
+                active: player.repeatMode != .off,
+                label: repeatLabel
+            ) { player.cycleRepeat() }
+            modeButton(
+                systemImage: "shuffle",
+                active: player.isShuffled,
+                label: player.isShuffled ? "Shuffle on" : "Shuffle off"
+            ) { player.toggleShuffle() }
+        }
+        .buttonStyle(.plain)
     }
 
     private var endOfQueue: some View {
@@ -178,19 +198,11 @@ struct NowPlayingView: View {
     private var transport: some View {
         let ended = player.hasEnded
         let dimmed = ended ? 0.35 : 1.0
-        return HStack {
-            modeButton(
-                systemImage: player.repeatMode == .one ? "repeat.1" : "repeat",
-                active: player.repeatMode != .off,
-                label: repeatLabel
-            ) { player.cycleRepeat() }
-            .opacity(dimmed)
-            Spacer()
+        return HStack(spacing: 40) {
             Button { player.previous() } label: {
                 Image(systemName: "backward.fill").font(.title)
             }
             .opacity(dimmed)
-            Spacer()
             if ended {
                 Button { player.restart() } label: {
                     Image(systemName: "arrow.counterclockwise.circle.fill")
@@ -207,17 +219,9 @@ struct NowPlayingView: View {
                 // Ink disc by day, amber by night; the glyph is the cutout.
                 .foregroundStyle(Color.bigButton)
             }
-            Spacer()
             Button { player.next() } label: {
                 Image(systemName: "forward.fill").font(.title)
             }
-            .opacity(dimmed)
-            Spacer()
-            modeButton(
-                systemImage: "shuffle",
-                active: player.isShuffled,
-                label: player.isShuffled ? "Shuffle on" : "Shuffle off"
-            ) { player.toggleShuffle() }
             .opacity(dimmed)
         }
         .animation(.default, value: ended)
@@ -242,7 +246,7 @@ struct NowPlayingView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.title3.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(active ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.secondary))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 44, height: 44)

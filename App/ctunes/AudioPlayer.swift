@@ -130,6 +130,10 @@ final class AudioPlayer {
         sessionIdentifier = UUID().uuidString
         activateSession()
         configureRemoteCommands()
+        // Shuffle is a property of the queue, and this is a new one: without
+        // this the lock screen and a car head unit keep showing the old
+        // queue's shuffle as on.
+        updateNowPlayingModes()
         loadCurrentItem(autoPlay: true)
     }
 

@@ -29,7 +29,7 @@ struct Artwork: View {
                         )
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: corner))
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         .task(id: url) {
             guard let url else { image = nil; return }
             // Synchronous hit avoids a placeholder flash on reused rows.
@@ -42,9 +42,12 @@ struct Artwork: View {
 
 /// The small download mark in the corner of album art, shared by every
 /// album tile so it reads the same on the browse root and in the mix pool.
+/// A dotted ring while the album is pinned but still coming down.
 struct DownloadedBadge: View {
+    var downloading = false
+
     var body: some View {
-        Image(systemName: "arrow.down.circle.fill")
+        Image(systemName: downloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
             .font(.caption)
             .foregroundStyle(.white, .black.opacity(0.55))
             .padding(5)

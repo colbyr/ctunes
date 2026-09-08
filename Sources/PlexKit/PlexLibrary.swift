@@ -178,7 +178,7 @@ public actor PlexLibrary {
     }
 
     /// Artwork resized by the server, so list cells don't pull full-size covers.
-    public nonisolated func artworkURL(_ thumb: String?, size: Int = 200) -> URL? {
+    public nonisolated func artworkURL(_ thumb: String?, size: Int = 400) -> URL? {
         Self.artworkURL(thumb, size: size, base: server.baseURL, token: token)
     }
 

@@ -62,6 +62,9 @@ struct MixBuilderView: View {
     @State private var selected: [String] = []
     @State private var loadingMix: MixMode?
     @State private var nothingToPlay = false
+    /// Whether the action cards are on screen; once they scroll away the
+    /// toolbar takes over with icon-only copies.
+    @State private var actionsVisible = true
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// Per builder rather than the root's key: arranging a pool by play
@@ -109,6 +112,8 @@ struct MixBuilderView: View {
         var unavailable = false
         /// Every track on disk: the same badge as the browse root.
         var downloaded = false
+        /// Pinned but still coming down: the dotted badge.
+        var downloading = false
     }
 
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
@@ -142,7 +147,8 @@ struct MixBuilderView: View {
             thumb: album.thumb,
             vetoed: hidden.contains(album.artistKey),
             unavailable: model.state == .offline && !model.downloads.hasDownloads(album),
-            downloaded: model.downloads.isDownloaded(album)
+            downloaded: model.downloads.isDownloaded(album),
+            downloading: !model.downloads.isDownloaded(album) && model.downloads.isPinned(album)
         )
     }
 
@@ -253,6 +259,13 @@ struct MixBuilderView: View {
         .environment(\.defaultMinListRowHeight, 1)
         .listSectionSpacing(0)
         .scrollDismissesKeyboard(.immediately)
+        .scrollEdgeEffectStyle(.hard, for: .top)
+        // Past the action cards (about their height plus the row insets).
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top > 90
+        } action: { _, scrolledPast in
+            withAnimation(.snappy) { actionsVisible = !scrolledPast }
+        }
         .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
             if !loaded {
@@ -266,9 +279,14 @@ struct MixBuilderView: View {
         .navigationTitle(kind.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Clear") { withAnimation(.snappy) { selected = [] } }
-                    .disabled(picks.isEmpty)
+            // The cards' actions follow you down the pool as icons.
+            if !actionsVisible {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Mix Albums", systemImage: "square.on.square") { play(.playAlbums) }
+                        .disabled(loadingMix != nil)
+                    Button("Mix Tracks", systemImage: "shuffle") { play(.shuffleTracks) }
+                        .disabled(loadingMix != nil)
+                }
             }
         }
         .onAppear {
@@ -458,7 +476,7 @@ struct MixBuilderView: View {
                 Artwork(url: url, size: nil, corner: 8)
                     .artworkShadow()
                     .overlay(alignment: .bottomTrailing) {
-                        if item.downloaded { DownloadedBadge() }
+                        if item.downloaded || item.downloading { DownloadedBadge(downloading: item.downloading) }
                     }
                     .overlay {
                         if selected {

@@ -110,6 +110,9 @@ struct TracksView: View {
             if !loaded { ProgressView() }
         }
         .navigationTitle(album.title)
+        // Same solid edge as the browse root, so the title stays legible
+        // over the rows.
+        .scrollEdgeEffectStyle(.hard, for: .top)
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
@@ -266,16 +269,18 @@ struct TracksView: View {
                     }
                 }
                 Spacer()
-                if favorite {
-                    Image(systemName: "heart.fill")
-                        .font(.caption)
-                        .foregroundStyle(Color.accentText)
-                }
-                if downloaded {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                // Both marks keep their slot when off, so the duration column
+                // doesn't shift as hearts and files come and go.
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .opacity(downloaded ? 1 : 0)
+                    .accessibilityHidden(!downloaded)
+                Image(systemName: "heart.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.accentText)
+                    .opacity(favorite ? 1 : 0)
+                    .accessibilityHidden(!favorite)
                 if let seconds = track.durationSeconds {
                     Text(Self.duration(seconds))
                         .font(.caption.monospacedDigit())
@@ -291,11 +296,11 @@ struct TracksView: View {
             Button { enqueue([track], next: true) } label: {
                 Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
-            .tint(.orange)
+            .tint(ListenerPalette.clay)
             Button { enqueue([track], next: false) } label: {
                 Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
             }
-            .tint(.blue)
+            .tint(ListenerPalette.slate)
         }
         .swipeActions(edge: .trailing) {
             // Hearts are read-only offline.

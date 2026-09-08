@@ -42,6 +42,11 @@ struct LibraryView: View {
         .safeAreaInset(edge: .bottom) {
             BottomBar(model: model, query: $query, searching: $searching)
         }
+        // The bar lifts itself from the keyboard's frame notification.
+        // SwiftUI's own avoidance is applied to whichever screen is on top
+        // when the keyboard rises, so a search opened from an album page
+        // popped with the bar still under the keyboard.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         // Now Playing's one host. The inspector is a sheet on a compact
         // width and a trailing column beside the stack on a regular one,
         // and adapts in place when a split-view drag crosses between them.

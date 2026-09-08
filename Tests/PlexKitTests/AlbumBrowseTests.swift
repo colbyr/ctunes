@@ -111,7 +111,7 @@ struct AlbumBrowseTests {
             Self.album("Oldest", artist: "x", played: Self.ago(300)),
         ]
         let groups = AlbumBrowse.groups(albums, view: .backCatalog, now: Self.now)
-        #expect(groups.map(\.name) == ["Never Played", "It's Been a While", "Played in the Last Year", "Played in the Last 6 Months", "Played in the Last Week", "Played Today"])
+        #expect(groups.map(\.name) == ["Never Played", "It's Been a While", "Last Year", "Last 6 Months", "Last Week", "Played Today"])
         #expect(groups[2].albums.map(\.title) == ["Oldest", "Older"])
     }
 

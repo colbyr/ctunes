@@ -15,6 +15,9 @@ enum ListenerPalette {
         Color(hex: 0xF2B33D), // amber
     ]
     static let names = ["Clay", "Sage", "Slate", "Plum", "Teal", "Amber"]
+    /// The two the queue swipe actions borrow, so they sit in the palette.
+    static let clay = colors[0]
+    static let slate = colors[2]
 
     static func color(_ index: Int) -> Color {
         colors[((index % colors.count) + colors.count) % colors.count]
