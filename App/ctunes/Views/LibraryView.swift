@@ -20,7 +20,11 @@ struct LibraryView: View {
         NavigationStack(path: $path) {
             Group {
                 if let section = model.selectedSection {
+                    // Keyed on the section so switching libraries from
+                    // Settings starts the screen over instead of leaving the
+                    // old albums under the new title.
                     MusicView(model: model, section: section, query: $query, path: $path)
+                        .id(section.key)
                 } else {
                     SectionPicker(model: model)
                 }

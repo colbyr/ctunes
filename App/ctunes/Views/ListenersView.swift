@@ -1,9 +1,9 @@
 import PlexKit
 import SwiftUI
 
-/// Listener setup, reached from the ••• menu on the Music screen. Adding,
-/// naming and coloring happen here; picking who's in the car happens on the
-/// Music screen itself.
+/// Listener setup, reached from the listener chips on the Music screen or
+/// the Listeners row in Settings. Adding, naming and coloring happen here;
+/// picking who's in the car happens on the Music screen itself.
 struct ListenersSheet: View {
     let model: AppModel
     /// Every artist in the library, so a veto list can be edited in one place.
@@ -13,57 +13,14 @@ struct ListenersSheet: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            List {
-                Section("Library owner") {
-                    HStack(spacing: 12) {
-                        OwnerAvatar(size: 40)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("You")
-                            Text("Hears everything · always listening")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+            ListenersList(model: model, artists: artists)
+                .navigationTitle("Listeners")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
                     }
                 }
-                Section {
-                    ForEach(model.roster.listeners) { listener in
-                        NavigationLink(value: listener.id) {
-                            HStack(spacing: 12) {
-                                ListenerAvatar(listener: listener, size: 40)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(listener.name)
-                                    Text(Self.summary(listener))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .onDelete { offsets in
-                        for id in offsets.map({ model.roster.listeners[$0].id }) {
-                            model.removeListener(id)
-                        }
-                    }
-                    Button {
-                        path.append(model.addListener(name: "New Listener").id)
-                    } label: {
-                        Label("Add Listener", systemImage: "plus.circle.fill")
-                    }
-                } header: {
-                    Text("Other listeners")
-                } footer: {
-                    Text("Listeners are saved on this phone, not in Plex. Choose who's listening from the Music screen.")
-                }
-            }
-            .parchment()
-            .navigationTitle("Listeners")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .navigationDestination(for: Listener.ID.self) { id in
-                ListenerDetail(model: model, id: id, artists: artists)
-            }
         }
         .task {
             #if DEBUG
@@ -73,6 +30,67 @@ struct ListenersSheet: View {
                 path = [first.id]
             }
             #endif
+        }
+    }
+}
+
+/// The roster itself. Pushes each listener's page onto whichever stack it
+/// sits in, so the sheet and the Settings screen share one list.
+struct ListenersList: View {
+    let model: AppModel
+    let artists: [AlbumGroup]
+    /// A just-added listener, pushed straight to its page for naming. Held
+    /// here rather than in the enclosing stack's path so the list needs no
+    /// knowledge of which stack it's in.
+    @State private var added: Listener.ID?
+
+    var body: some View {
+        List {
+            Section("Library owner") {
+                HStack(spacing: 12) {
+                    OwnerAvatar(size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("You")
+                        Text("Hears everything · always listening")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section {
+                ForEach(model.roster.listeners) { listener in
+                    NavigationLink(value: listener.id) {
+                        HStack(spacing: 12) {
+                            ListenerAvatar(listener: listener, size: 40)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(listener.name)
+                                Text(Self.summary(listener))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .onDelete { offsets in
+                    for id in offsets.map({ model.roster.listeners[$0].id }) {
+                        model.removeListener(id)
+                    }
+                }
+                Button {
+                    added = model.addListener(name: "New Listener").id
+                } label: {
+                    Label("Add Listener", systemImage: "plus.circle.fill")
+                }
+            } header: {
+                Text("Other listeners")
+            } footer: {
+                Text("Listeners are saved on this phone, not in Plex. Choose who's listening from the Music screen.")
+            }
+        }
+        .parchment()
+        .navigationDestination(for: Listener.ID.self) { id in
+            ListenerDetail(model: model, id: id, artists: artists)
+        }
+        .navigationDestination(item: $added) { id in
+            ListenerDetail(model: model, id: id, artists: artists)
         }
     }
 

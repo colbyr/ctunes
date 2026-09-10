@@ -23,11 +23,9 @@ struct MusicView: View {
     @State private var noFavorites = false
     @State private var everyFavoriteHidden = false
     @State private var showingListeners = false
+    @State private var showingSettings = false
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(\.horizontalSizeClass) private var sizeClass
-    /// Bytes of cached audio, for the clear button; nil until read.
-    @State private var cacheUsage: Int?
-    @State private var confirmingRemoveAll = false
     @AppStorage("albumView") private var view: AlbumView = .mostPlayed
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
 
@@ -181,54 +179,8 @@ struct MusicView: View {
         .navigationTitle("Tunes")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("Listeners…", systemImage: "person.2") { showingListeners = true }
-                    if model.sections.count > 1, !offline {
-                        Button("Change library") { model.clearSectionChoice() }
-                    }
-                    Section("Streaming") {
-                        Picker("Quality", systemImage: "antenna.radiowaves.left.and.right", selection: Binding(
-                            get: { player.streamQuality },
-                            set: { player.streamQuality = $0 }
-                        )) {
-                            ForEach(StreamQuality.allCases, id: \.self) { quality in
-                                Text(quality.label).tag(quality)
-                            }
-                        }
-                        .disabled(offline)
-                    }
-                    Section("Downloads") {
-                        Toggle("Keep favorites offline", systemImage: "heart", isOn: Binding(
-                            get: { model.isFavoritesPinned },
-                            set: { on in Task { await model.setFavoritesPinned(on) } }
-                        ))
-                        .disabled(offline)
-                        if model.downloads.usage > 0 {
-                            Text("Downloads: \(Self.bytes(model.downloads.usage))")
-                            Button("Remove all downloads", systemImage: "trash", role: .destructive) {
-                                confirmingRemoveAll = true
-                            }
-                        }
-                        if let cacheUsage, cacheUsage > 0 {
-                            Button("Clear cached tracks (\(Self.bytes(cacheUsage)))", systemImage: "trash") {
-                                Task {
-                                    await player.clearCache()
-                                    self.cacheUsage = await player.cacheUsage()
-                                }
-                            }
-                        }
-                    }
-                    Button("Sign out", role: .destructive) {
-                        Task { await model.signOut() }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
+                Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }
-        }
-        // Re-read as the queue moves, since every track played adds a file.
-        .task(id: player.currentTrack?.id) {
-            cacheUsage = await player.cacheUsage()
         }
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
@@ -253,15 +205,13 @@ struct MusicView: View {
             if ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS_SHEET"] != nil {
                 showingListeners = true
             }
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_SETTINGS"] == "1" {
+                showingSettings = true
+            }
             #endif
             if !library.isOffline {
                 await model.snapshot(albums: albums, favorites: favorites ?? [], history: history)
             }
-        }
-        .confirmationDialog("Remove all downloads?", isPresented: $confirmingRemoveAll, titleVisibility: .visible) {
-            Button("Remove All Downloads", role: .destructive) { model.downloads.removeAll() }
-        } message: {
-            Text("Pinned albums and favorites will stream again. Nothing is removed from your library.")
         }
         .alert("No favorites yet", isPresented: $noFavorites) {
             Button("OK") {}
@@ -275,6 +225,9 @@ struct MusicView: View {
         }
         .sheet(isPresented: $showingListeners) {
             ListenersSheet(model: model, artists: artists)
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsSheet(model: model, artists: artists)
         }
     }
 
@@ -297,10 +250,6 @@ struct MusicView: View {
         tracks.filter {
             !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isAvailable($0))
         }
-    }
-
-    private static func bytes(_ count: Int) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
     }
 
     /// Every favorite track in the library, in a fresh random order each tap.
