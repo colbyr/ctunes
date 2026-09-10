@@ -178,6 +178,9 @@ struct PlexLibraryTests {
         let favorites = tracks.filter(\.isFavorite).map(\.ratingKey)
         #expect(favorites == ["1030", "1034"])
         #expect(tracks.first { $0.ratingKey == "1031" }?.userRating == nil)
+        // The rating's timestamp rides along, so the list can sort newest first.
+        #expect(tracks.first { $0.ratingKey == "1030" }?.lastRatedAt == 1_788_313_957)
+        #expect(tracks.first { $0.ratingKey == "1031" }?.lastRatedAt == nil)
     }
 
     @Test("every track in a section is one type=10 query")

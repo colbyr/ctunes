@@ -499,19 +499,20 @@ private struct MixActions: View {
     var body: some View {
         HStack(spacing: 12) {
             MixActionCard(
-                kind: kind, systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
+                systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
                 enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
             ) { action(.playAlbums) }
             MixActionCard(
-                kind: kind, systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
+                systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
                 enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
             ) { action(.shuffleTracks) }
         }
     }
 }
 
-private struct MixActionCard: View {
-    let kind: MixKind
+/// A play action as a raised card. Shared with the Favorites page, whose
+/// Play and Shuffle pair reads the same way.
+struct MixActionCard: View {
     let systemImage: String
     let title: String
     /// Nil for the side-by-side pair, where the title has the width.

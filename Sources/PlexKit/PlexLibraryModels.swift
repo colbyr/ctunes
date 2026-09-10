@@ -176,6 +176,9 @@ public struct PlexTrack: Codable, Sendable, Identifiable, Hashable {
     public let thumb: String?
     /// Plex's 0–10 star scale; absent when never rated.
     public let userRating: Double?
+    /// Unix seconds of the last rating change; absent when never rated.
+    /// Orders the Favorites page newest heart first.
+    public let lastRatedAt: Int?
     public let media: [PlexMedia]?
 
     public var id: String { ratingKey }
@@ -200,7 +203,7 @@ public struct PlexTrack: Codable, Sendable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case ratingKey, title, index, duration, grandparentRatingKey, grandparentTitle
-        case parentRatingKey, parentTitle, parentIndex, originalTitle, thumb, userRating
+        case parentRatingKey, parentTitle, parentIndex, originalTitle, thumb, userRating, lastRatedAt
         case media = "Media"
     }
 }

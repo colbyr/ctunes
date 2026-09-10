@@ -38,6 +38,11 @@ struct LibraryView: View {
                     MixBuilderView(model: model, section: section, kind: kind, query: $query, building: $buildingMix)
                 }
             }
+            .navigationDestination(for: FavoritesRoute.self) { _ in
+                if let section = model.selectedSection {
+                    FavoritesView(model: model, section: section)
+                }
+            }
         }
         .tint(Color.ink)
         // Attached to the stack, not to its root view: on the root view the
@@ -84,6 +89,9 @@ struct LibraryView: View {
             if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
                let kind = MixKind(rawValue: String(raw.prefix { $0 != ":" })) {
                 path.append(kind)
+            }
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_FAVORITES"] == "1" {
+                path.append(FavoritesRoute())
             }
             if let seed = ProcessInfo.processInfo.environment["CTUNES_DEV_SEARCH"], !seed.isEmpty {
                 try? await Task.sleep(for: .seconds(3))

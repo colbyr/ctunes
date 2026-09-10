@@ -94,14 +94,14 @@ struct MusicView: View {
                 Group {
                     if sizeClass == .regular {
                         HStack(spacing: 12) {
-                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                             MixTile(kind: .artist) { path.append(MixKind.artist) }
                             MixTile(kind: .album) { path.append(MixKind.album) }
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     } else {
                         VStack(spacing: 12) {
-                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites)
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                             HStack(spacing: 12) {
                                 MixTile(kind: .artist) { path.append(MixKind.artist) }
                                 MixTile(kind: .album) { path.append(MixKind.album) }
@@ -343,42 +343,59 @@ private struct OfflineBanner: View {
 }
 
 /// Sits above the grid as a raised card so it reads as the one action on
-/// the page rather than another row.
+/// the page rather than another row. The body shuffles; the chevron past
+/// the rule opens the full list.
 private struct ShuffleFavoritesCard: View {
     let subtitle: String?
     let loading: Bool
     let action: () -> Void
+    let open: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: "heart.fill")
-                    .font(.title3)
-                    .foregroundStyle(Color.accentInk)
-                    .frame(width: 44, height: 44)
-                    .background(Color.amber, in: .circle)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Shuffle Favorites").font(.headline)
-                    if let subtitle {
-                        Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+        HStack(spacing: 0) {
+            Button(action: action) {
+                HStack(spacing: 14) {
+                    Image(systemName: "heart.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color.accentInk)
+                        .frame(width: 44, height: 44)
+                        .background(Color.amber, in: .circle)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Shuffle Favorites").font(.headline)
+                        if let subtitle {
+                            Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if loading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "shuffle")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color.accentText)
                     }
                 }
-                Spacer()
-                if loading {
-                    ProgressView()
-                } else {
-                    Image(systemName: "shuffle")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.accentText)
-                }
+                .padding(14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(.rect)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .glassCard(cornerRadius: 24)
-            .contentShape(.rect(cornerRadius: 24))
+            .disabled(loading)
+            Rectangle()
+                .fill(Color.divider)
+                .frame(width: 1)
+                .padding(.vertical, 12)
+            Button(action: open) {
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(.rect)
+            }
+            .accessibilityLabel("All Favorites")
         }
         .buttonStyle(.plain)
-        .disabled(loading)
+        .glassCard(cornerRadius: 24)
     }
 }
 
