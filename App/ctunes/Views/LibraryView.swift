@@ -12,58 +12,88 @@ struct LibraryView: View {
     /// filters the builder's pool instead of popping back to the root.
     @State private var buildingMix = false
     @State private var nowPlaying = NowPlayingPresentation()
+    @Environment(AudioPlayer.self) private var player
+    /// Compact is a phone, where Now Playing is a sheet; regular but too
+    /// narrow for the column (an iPad in portrait, a small Mac window) gets
+    /// it full screen instead, since a form sheet floating over the grid
+    /// reads as a dialog.
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The window's width, measured rather than read off the size class:
+    /// see `NowPlayingPresentation.isColumn`.
+    @State private var width: CGFloat = 0
+
+    /// Narrower than this and Now Playing is a presentation: the phone
+    /// layout. An iPad is a column in landscape and a cover in portrait,
+    /// where a column would leave two tiles across.
+    private static let columnThreshold: CGFloat = 960
+    /// A share of the window rather than a fixed inspector width, so the
+    /// column grows with the window instead of staying a strip beside an
+    /// ever wider grid.
+    private var columnWidth: CGFloat { min(max(width * 0.36, 360), 560) }
+
+    /// The presentation while the window is narrow. Both modifiers share
+    /// it; only the one for the current size class ever sees true.
+    private func presented(_ style: NowPlayingStyle) -> Binding<Bool> {
+        Binding(
+            get: { nowPlaying.isShown && !nowPlaying.isColumn && Self.style(for: sizeClass) == style },
+            set: { nowPlaying.isShown = $0 }
+        )
+    }
+
+    private static func style(for sizeClass: UserInterfaceSizeClass?) -> NowPlayingStyle {
+        sizeClass == .compact ? .sheet : .fullScreen
+    }
 
     var body: some View {
-        @Bindable var nowPlaying = nowPlaying
-        // Chrome is ink, not amber: the back chevron, the ••• button, the
-        // toolbar. Amber is reserved for what acts, and those set it by hand.
-        NavigationStack(path: $path) {
-            Group {
-                if let section = model.selectedSection {
-                    // Keyed on the section so switching libraries from
-                    // Settings starts the screen over instead of leaving the
-                    // old albums under the new title.
-                    MusicView(model: model, section: section, query: $query, path: $path)
-                        .id(section.key)
-                } else {
-                    SectionPicker(model: model)
-                }
-            }
-            // Declared at the stack root so a seeded path can reach it.
-            .navigationDestination(for: PlexAlbum.self) { album in
-                TracksView(model: model, album: album)
-            }
-            .navigationDestination(for: MixKind.self) { kind in
-                if let section = model.selectedSection {
-                    MixBuilderView(model: model, section: section, kind: kind, query: $query, building: $buildingMix)
-                }
-            }
-            .navigationDestination(for: FavoritesRoute.self) { _ in
-                if let section = model.selectedSection {
-                    FavoritesView(model: model, section: section)
-                }
+        // Now Playing's one host: a trailing column beside the stack in a
+        // wide window, always there, and a presentation over the stack in
+        // a narrow one. Not `.inspector`, which follows the size class: on
+        // the Mac that only turns compact a hair above the window's minimum
+        // width, so the column stayed however small the window got, and
+        // its width was capped well under what a wide window can afford.
+        HStack(spacing: 0) {
+            stack
+            if nowPlaying.isColumn {
+                Rectangle()
+                    .fill(Color.divider)
+                    .frame(width: 1)
+                    .ignoresSafeArea()
+                NowPlayingView(model: model, style: .column)
+                    .frame(width: columnWidth)
+                    .transition(.move(edge: .trailing))
             }
         }
+        // Chrome is ink, not amber: the back chevron, the toolbar buttons.
+        // Amber is reserved for what acts, and those set it by hand.
         .tint(Color.ink)
-        // Attached to the stack, not to its root view: on the root view the
-        // inset is replaced along with the content on every push, so the
-        // mini player vanishes as soon as you navigate anywhere.
-        .safeAreaInset(edge: .bottom) {
-            BottomBar(model: model, query: $query, searching: $searching)
-        }
-        // The bar lifts itself from the keyboard's frame notification.
-        // SwiftUI's own avoidance is applied to whichever screen is on top
-        // when the keyboard rises, so a search opened from an album page
-        // popped with the bar still under the keyboard.
-        .ignoresSafeArea(.keyboard, edges: .bottom)
-        // Now Playing's one host. The inspector is a sheet on a compact
-        // width and a trailing column beside the stack on a regular one,
-        // and adapts in place when a split-view drag crosses between them.
-        .inspector(isPresented: $nowPlaying.isShown) {
-            NowPlayingView(model: model)
-                .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
-        }
+        .animation(.snappy, value: nowPlaying.isColumn)
         .environment(nowPlaying)
+        // Both presentations are handed the observables by hand. When a
+        // Mac window drags across the compact/regular boundary UIKit
+        // re-hosts the open presentation, and that pass evaluates the
+        // content without the environment it inherited from above: "No
+        // Observable object of type AudioPlayer found", a trap, at 730pt
+        // every time.
+        .sheet(isPresented: presented(.sheet)) {
+            NowPlayingView(model: model, style: .sheet)
+                .environment(player)
+                .environment(nowPlaying)
+        }
+        .fullScreenCover(isPresented: presented(.fullScreen)) {
+            NowPlayingView(model: model, style: .fullScreen)
+                .environment(player)
+                .environment(nowPlaying)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            self.width = width
+            let column = width >= Self.columnThreshold
+            guard column != nowPlaying.isColumn else { return }
+            nowPlaying.isColumn = column
+            // Crossing either way closes the presentation: into the column
+            // it is redundant, out of it the column is gone and the stack
+            // should be what's left, not a cover over it.
+            nowPlaying.isShown = false
+        }
         // Results live on the root, so opening search from deeper in the
         // stack pops back to it. Pushing an album folds the pill back to its
         // icon but keeps the filter, so popping returns to the same results.
@@ -100,6 +130,47 @@ struct LibraryView: View {
             }
             #endif
         }
+    }
+
+    private var stack: some View {
+        NavigationStack(path: $path) {
+            Group {
+                if let section = model.selectedSection {
+                    // Keyed on the section so switching libraries from
+                    // Settings starts the screen over instead of leaving the
+                    // old albums under the new title.
+                    MusicView(model: model, section: section, query: $query, path: $path)
+                        .id(section.key)
+                } else {
+                    SectionPicker(model: model)
+                }
+            }
+            // Declared at the stack root so a seeded path can reach it.
+            .navigationDestination(for: PlexAlbum.self) { album in
+                TracksView(model: model, album: album)
+            }
+            .navigationDestination(for: MixKind.self) { kind in
+                if let section = model.selectedSection {
+                    MixBuilderView(model: model, section: section, kind: kind, query: $query, building: $buildingMix)
+                }
+            }
+            .navigationDestination(for: FavoritesRoute.self) { _ in
+                if let section = model.selectedSection {
+                    FavoritesView(model: model, section: section)
+                }
+            }
+        }
+        // Attached to the stack, not to its root view: on the root view the
+        // inset is replaced along with the content on every push, so the
+        // mini player vanishes as soon as you navigate anywhere.
+        .safeAreaInset(edge: .bottom) {
+            BottomBar(model: model, query: $query, searching: $searching)
+        }
+        // The bar lifts itself from the keyboard's frame notification.
+        // SwiftUI's own avoidance is applied to whichever screen is on top
+        // when the keyboard rises, so a search opened from an album page
+        // popped with the bar still under the keyboard.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     /// Debug-only deep link so the deeper screens can be driven in a

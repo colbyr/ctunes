@@ -196,7 +196,7 @@ struct MixBuilderView: View {
     private static let margin: CGFloat = 16
     /// Same floor as the album browser: wider tiles on a regular width.
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 150 : 100), spacing: 12, alignment: .top)]
+        [GridItem(.adaptive(minimum: sizeClass == .regular ? 180 : 100), spacing: 12, alignment: .top)]
     }
 
     var body: some View {

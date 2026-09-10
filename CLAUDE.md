@@ -60,10 +60,23 @@ offline. Reachability is decided by the server answering, never by
 
 The app runs on iPhone and iPad (and so on Apple silicon Macs as "Designed
 for iPad"). Now Playing has one host, in `LibraryView`, driven by the
-`NowPlayingPresentation` flag in the environment: a sheet on a compact width,
-a trailing `.inspector` column beside the stack on a regular one. Screens set
-the flag; none presents the sheet themselves. Album grids widen their tile
-minimum on a regular width.
+`NowPlayingPresentation` flag in the environment: a sheet in a window
+narrower than 960pt, a trailing column beside the stack (36% of the width,
+360–560pt) in a wider one. The host measures the window itself rather than
+reading the size class: a Mac window only turns compact a hair above its
+640pt minimum, so `.inspector` kept the column at every usable width. The
+column pins the header and scrolls only the queue, in its own
+`NavigationStack` so the close button is a toolbar item level with
+Settings. Screens set the flag; none presents the sheet themselves. **A
+sheet must be handed `.environment(player)` and `.environment(nowPlaying)`
+explicitly**: when a Mac window is dragged across the compact/regular
+boundary UIKit re-hosts the open sheet without the inherited environment
+and traps. **Keep width-dependent rows out of `List`** on any screen that
+reaches the Mac (grids, square artwork): a self-sizing row whose height
+follows the width recurses in `UICollectionView` during a live resize.
+The browse and mix grids are `ScrollView` + `LazyVStack` for that reason.
+Album grids widen their tile minimum on a regular width. The Mac runs iPad
+points at 77%, so a 1400pt Mac window is ~1818 iPad points.
 
 `PlexClient` is an actor that injects the Plex identity headers in one place;
 no call site should build them by hand. `PlexAuth`, `PlexServerDirectory` and

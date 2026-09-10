@@ -67,8 +67,15 @@ struct MusicView: View {
     /// Matches the nav bar's large title and the bottom pills.
     private static let margin: CGFloat = 16
     /// Three across on a phone; on an iPad the same minimum gave nine tiny
-    /// tiles, so the floor rises to keep the covers legible.
-    private var tileMinimum: CGFloat { sizeClass == .regular ? 150 : 100 }
+    /// tiles, so the floor rises to keep the covers legible. 180 rather than 150:
+    /// on a Mac window the smaller floor still packed six across, and the
+    /// covers read as thumbnails rather than art.
+    private var tileMinimum: CGFloat { sizeClass == .regular ? 180 : 100 }
+    /// The screen's width, for the hero cards' layout.
+    @State private var width: CGFloat = 0
+    /// Three cards across need about 280pt each before the favorites
+    /// title and its track count stop wrapping.
+    private static let heroRowMinimum: CGFloat = 880
 
     var body: some View {
         ScrollView {
@@ -83,10 +90,15 @@ struct MusicView: View {
                         }
                         .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
                     }
-                    // Stacked on a phone; one row of three on a wider screen,
-                    // where a full-width hero card is mostly empty.
+                    // One row of three when the screen has the width for
+                    // it, where a full-width hero card is mostly empty;
+                    // otherwise the favorites card takes its own row. By
+                    // measured width, not size class: beside the Now
+                    // Playing column, or in a small Mac window, a "regular"
+                    // stack can be 600pt, where three across wraps the
+                    // favorites title one letter per line.
                     Group {
-                        if sizeClass == .regular {
+                        if width >= Self.heroRowMinimum {
                             HStack(spacing: 12) {
                                 ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                                 MixTile(kind: .artist) { path.append(MixKind.artist) }
@@ -139,6 +151,7 @@ struct MusicView: View {
             }
         }
         .parchment()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         // The collapsed title and subtitle sit over artwork once you scroll;
         // the soft edge effect leaves the subtitle hard to read.
         .scrollEdgeEffectStyle(.hard, for: .top)

@@ -11,7 +11,6 @@ struct BottomBar: View {
     @Binding var searching: Bool
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @Namespace private var glass
     /// The home indicator inset under the bar. The stack ignores the
     /// keyboard's safe area, so this never includes it.
@@ -26,9 +25,9 @@ struct BottomBar: View {
     var body: some View {
         GlassEffectContainer(spacing: 8) {
             HStack(spacing: 8) {
-                // On a regular width the pill is only the way back to the
-                // column: while that is open it would duplicate the transport.
-                if let track = player.currentTrack, !(sizeClass == .regular && nowPlaying.isShown) {
+                // In a wide window the column is always up, and the pill
+                // would only duplicate its transport.
+                if let track = player.currentTrack, !nowPlaying.isColumn {
                     MiniPlayerPill(model: model, track: track, compact: searching) {
                         nowPlaying.isShown = true
                     }

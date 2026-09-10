@@ -2,85 +2,131 @@ import PlexKit
 import SwiftUI
 
 /// Whether Now Playing is on screen. One flag shared by every screen that
-/// can open it, so the host lives in one place (`LibraryView`): a sheet on
-/// compact widths, a trailing inspector beside the stack on regular ones.
+/// can open it, so the host lives in one place (`LibraryView`): a sheet in
+/// a narrow window, a trailing column beside the stack in a wide one.
 @MainActor @Observable
 final class NowPlayingPresentation {
     var isShown = false
+    /// Set by the host from the window width, not the size class: a Mac
+    /// window only turns compact a hair above its minimum width, and the
+    /// column has to give way to the sheet well before the window is
+    /// that narrow.
+    var isColumn = false
+}
+
+/// How Now Playing is on screen. The column and the cover pin the header
+/// and scroll only the queue; the sheet scrolls the header away with it.
+enum NowPlayingStyle {
+    /// A phone: the system sheet, grab handle, drag to dismiss.
+    case sheet
+    /// Regular width but too narrow for the column: covers the stack, with
+    /// a close button in its toolbar.
+    case fullScreen
+    /// Beside the stack in a wide window. Always there; nothing closes it.
+    case column
 }
 
 struct NowPlayingView: View {
     let model: AppModel
+    var style: NowPlayingStyle = .sheet
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var presentation
-    /// Compact means the host is a sheet, regular the inspector column.
-    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// Held while dragging so the slider doesn't fight the time observer.
     @State private var scrubbing: Double?
 
     var body: some View {
+        if style == .sheet {
+            List {
+                // The header scrolls with the queue, Spotify-style, so Up Next
+                // gets the whole sheet rather than whatever is left under the art.
+                Section {
+                    header
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+                queueSection
+            }
+            .listStyle(.plain)
+            .parchment()
+        } else {
+            // The header lives outside the List on purpose. A List row whose
+            // height follows the width (the art is a square of the column)
+            // recurses in UICollectionView's layout during a live window
+            // resize on the Mac; a plain VStack does not. The queue rows are
+            // fixed height, so they stay in a List and keep swipe to remove.
+            // Its own stack so the title bar lines up with the one in the
+            // stack beside it, and the cover's close button is a real
+            // toolbar item.
+            NavigationStack {
+                VStack(spacing: 0) {
+                    header
+                    List { queueSection }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                }
+                .parchment()
+                .navigationTitle("Now Playing")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    if style == .fullScreen {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Hide Now Playing", systemImage: "xmark") { presentation.isShown = false }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Up Next. No header once the queue has ended: there is nothing next.
+    private var queueSection: some View {
         // Read unconditionally so the list observes queue mutations.
         let upcoming = player.upcoming
         let ended = player.hasEnded
 
-        List {
-            // The header scrolls with the queue, Spotify-style, so Up Next
-            // gets the whole sheet rather than whatever is left under the art.
-            Section {
-                header
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+        return Section {
+            if ended {
+                endOfQueue
+            } else if upcoming.isEmpty {
+                Text("Last track").foregroundStyle(.secondary)
             }
-            // No header once the queue has ended: there is nothing next.
-            Section {
-                if ended {
-                    endOfQueue
-                } else if upcoming.isEmpty {
-                    Text("Last track").foregroundStyle(.secondary)
-                }
-                ForEach(upcoming) { entry in
-                    Button { player.jump(to: entry) } label: {
-                        HStack(spacing: 12) {
-                            Artwork(url: model.library?.artworkURL(entry.item.thumb), size: 44)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.item.title).lineLimit(1)
-                                Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            if let seconds = entry.item.durationSeconds {
-                                Text(TracksView.duration(seconds))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
+            ForEach(upcoming) { entry in
+                Button { player.jump(to: entry) } label: {
+                    HStack(spacing: 12) {
+                        Artwork(url: model.library?.artworkURL(entry.item.thumb), size: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.item.title).lineLimit(1)
+                            Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                    }
-                    .buttonStyle(.row)
-                    // Zero insets so the press highlight reaches the row edges;
-                    // the label pads itself back to the standard inset.
-                    .listRowInsets(EdgeInsets())
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) { player.remove(entry) } label: {
-                            Label("Remove", systemImage: "trash")
+                        Spacer()
+                        if let seconds = entry.item.durationSeconds {
+                            Text(TracksView.duration(seconds))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
                         }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
                 }
-            } header: {
-                if !ended { upNextHeader }
+                .buttonStyle(.row)
+                // Zero insets so the press highlight reaches the row edges;
+                // the label pads itself back to the standard inset.
+                .listRowInsets(EdgeInsets())
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) { player.remove(entry) } label: {
+                        Label("Remove", systemImage: "trash")
+                    }
+                }
             }
-            .listRowBackground(Color.clear)
+        } header: {
+            if !ended { upNextHeader }
         }
-        .listStyle(.plain)
-        .parchment()
-        .overlay(alignment: .topTrailing) {
-            if sizeClass == .regular { closeButton }
-        }
+        .listRowBackground(Color.clear)
     }
 
     /// The title with repeat and shuffle at its trailing edge: both act on
@@ -126,12 +172,15 @@ struct NowPlayingView: View {
         VStack(spacing: 24) {
             // Edge to edge less a margin, so the art is as big as the sheet
             // allows rather than a fixed 300pt. Inset from the top by the same
-            // 28pt it is from the sides (16 header + 12 here).
+            // 28pt it is from the sides (16 header + 12 here). In the column
+            // the toolbar already clears the top, and the art is capped so a
+            // wide column in a short window still leaves room for the queue.
             Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 900),
                     size: nil, corner: 14)
                 .shadow(radius: 12, y: 6)
+                .frame(maxWidth: style == .sheet ? nil : 400)
                 .padding(.horizontal, 12)
-                .padding(.top, 28)
+                .padding(.top, style == .sheet ? 28 : 8)
 
             HStack(alignment: .top) {
                 // Balances the heart so the text stays centred.
@@ -163,34 +212,15 @@ struct NowPlayingView: View {
         .padding(.horizontal)
         .padding(.bottom, 8)
         // Overlaid rather than in the stack so it takes no vertical space.
-        // The sheet gets a grab handle; the column, which the system gives
-        // no way to dismiss, gets a close button instead.
+        // Only the sheet gets a grab handle: the others have a title bar.
         .overlay(alignment: .top) {
-            if sizeClass == .compact {
+            if style == .sheet {
                 Capsule()
                     .fill(.quaternary)
                     .frame(width: 40, height: 5)
                     .padding(.top, 8)
             }
         }
-    }
-
-    /// Floats over the column like the album page's back button: pinned to
-    /// the corner while the list scrolls under it. Same glass as the close
-    /// pill in the bottom bar.
-    private var closeButton: some View {
-        Button { presentation.isShown = false } label: {
-            Image(systemName: "xmark")
-                .font(.body.weight(.semibold))
-                .frame(width: 44, height: 44)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .circle)
-        .cardShadow()
-        .accessibilityLabel("Hide Now Playing")
-        .padding(.top, 8)
-        .padding(.trailing, 8)
     }
 
     /// Once the queue has ended the only sensible action is to start over,
