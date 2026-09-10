@@ -108,9 +108,9 @@ struct FavoritesView: View {
             ListenerChips(model: model, artists: AlbumBrowse.groups(albums, view: .artist)) {
                 HStack(spacing: 8) {
                     Button(action: toggleOffline) {
-                        // Ink by name: a Menu label takes the stack's ink
-                        // tint, but a plain Button's `.primary` is the system
-                        // white, one shade off the sort circle beside it.
+                        // Ink by name: a ternary with a Color turns `.primary`
+                        // into `Color.primary`, the system white, rather than
+                        // the hierarchical style that inherits the app's ink.
                         Image(systemName: model.isFavoritesPinned ? "checkmark.circle.fill" : "arrow.down.circle")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(model.isFavoritesPinned ? Color.accentText : Color.ink)
