@@ -29,6 +29,9 @@ Current state that matters (from the inventory):
 
 ### Pricing recommendation
 
+> Superseded by `notes/payments.md`: free download, 7-day trial, then a
+> yearly subscription. Kept for the reasoning.
+
 Go paid-up-front rather than yearly subscription:
 
 - Guideline 3.1.2 says subscriptions must deliver ongoing value. ctunes has no
