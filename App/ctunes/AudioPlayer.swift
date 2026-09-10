@@ -507,7 +507,14 @@ final class AudioPlayer {
     private func activateSession() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
-        try? session.setActive(true)
+        // iOS 27 logs the synchronous call as a main-thread hang risk. The
+        // player activates the session itself on play, so this can go
+        // async without holding playback back.
+        if #available(iOS 27, *) {
+            Task { try? await session.activate(options: []) }
+        } else {
+            try? session.setActive(true)
+        }
     }
 
     private func observeTime() {

@@ -118,9 +118,8 @@ struct TracksView: View {
             if !loaded { ProgressView() }
         }
         .navigationTitle(album.title)
-        // Same solid edge as the browse root, so the title stays legible
-        // over the rows.
-        .scrollEdgeEffectStyle(.hard, for: .top)
+        // Same edge as the browse root; see MusicView for why not `.hard`.
+        .scrollEdgeEffectStyle(.soft, for: .top)
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)

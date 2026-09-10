@@ -77,6 +77,8 @@ struct MusicView: View {
     /// title and its track count stop wrapping.
     private static let heroRowMinimum: CGFloat = 880
 
+    @State private var scrollPosition = ScrollPosition()
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
@@ -151,10 +153,12 @@ struct MusicView: View {
             }
         }
         .parchment()
+        .scrollPosition($scrollPosition)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        // The collapsed title and subtitle sit over artwork once you scroll;
-        // the soft edge effect leaves the subtitle hard to read.
-        .scrollEdgeEffectStyle(.hard, for: .top)
+        // Explicit so every screen fades the same way. `.hard` kept the
+        // collapsed title crisper over artwork, but on iOS 27 it paints its
+        // backdrop at rest too, leaving a line under the large title.
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .scrollDismissesKeyboard(.immediately)
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
@@ -198,6 +202,12 @@ struct MusicView: View {
             }
             if ProcessInfo.processInfo.environment["CTUNES_DEV_SETTINGS"] == "1" {
                 showingSettings = true
+            }
+            if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
+                // Let the grid lay out, then scroll so the collapsed
+                // title sits over artwork.
+                try? await Task.sleep(for: .seconds(1))
+                scrollPosition.scrollTo(y: y)
             }
             #endif
             if !library.isOffline {

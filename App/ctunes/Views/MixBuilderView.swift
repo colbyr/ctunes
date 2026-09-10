@@ -244,7 +244,7 @@ struct MixBuilderView: View {
         }
         .parchment()
         .scrollDismissesKeyboard(.immediately)
-        .scrollEdgeEffectStyle(.hard, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         // Past the action cards (about their height plus the row insets).
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top > 90
