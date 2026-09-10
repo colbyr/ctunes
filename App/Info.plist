@@ -2,28 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Everything else comes from the INFOPLIST_KEY_ build settings on the
-	     target (GENERATE_INFOPLIST_FILE = YES); Xcode merges this file in.
-	     Keeps audio running once the screen locks. Must be a real array;
-	     there is no INFOPLIST_KEY_ build setting that emits it. -->
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>audio</string>
-	</array>
-
-	<!-- Kept here rather than INFOPLIST_KEY_UIApplicationSceneManifest_Generation,
-	     which sets UIApplicationSupportsMultipleScenes to true. One window: the
-	     player and queue are shared app-wide. -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
-
-	<!-- Answers App Store Connect's export compliance question up front so
-	     TestFlight builds skip the prompt. The app only uses HTTPS to talk to
-	     Plex, which is exempt. -->
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>
