@@ -108,7 +108,9 @@ struct FavoritesView: View {
             ListenerChips(model: model, artists: AlbumBrowse.groups(albums, view: .artist)) {
                 HStack(spacing: 8) {
                     Button(action: toggleOffline) {
-                        Image(systemName: model.isFavoritesPinned ? "checkmark.circle.fill" : "arrow.down.circle")
+                        // Bare glyphs, like the arrange button: a ringed one
+                        // reads heavier than the rest of the row.
+                        Image(systemName: model.isFavoritesPinned ? "checkmark" : "arrow.down")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(model.isFavoritesPinned ? Color.accentText : .primary)
                             .frame(width: 34, height: 34)
