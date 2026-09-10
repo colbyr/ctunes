@@ -322,6 +322,8 @@ struct NowPlayingView: View {
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal)
+        .onAppear { player.scrubberAppeared() }
+        .onDisappear { player.scrubberDisappeared() }
         // A track change mid-scrub would otherwise leave the thumb stuck.
         // Keyed on the queue entry, not the track: two adjacent copies of the
         // same track share a ratingKey and would otherwise not reset it.

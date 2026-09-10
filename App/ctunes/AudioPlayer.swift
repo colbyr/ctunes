@@ -66,6 +66,15 @@ final class AudioPlayer {
     /// can fall back to the stream instead of burning a retry.
     private var currentItemIsLocal = false
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
+    /// How many scrubbers are on screen. A counter, not a flag: when a Mac
+    /// window crosses the compact/regular boundary the new host can appear
+    /// before the old one disappears.
+    @ObservationIgnored private var scrubbersShown = 0 {
+        didSet {
+            guard (scrubbersShown > 0) != (oldValue > 0) else { return }
+            observeTime()
+        }
+    }
     @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var errorLogObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var interruptionObserver: NSObjectProtocol?
@@ -120,6 +129,11 @@ final class AudioPlayer {
         config.waitsForConnectivity = false
         return URLSession(configuration: config)
     }
+
+    /// A scrubber on screen wants the clock at 0.5s; otherwise it ticks once
+    /// a second. Balanced by `scrubberDisappeared`.
+    func scrubberAppeared() { scrubbersShown += 1 }
+    func scrubberDisappeared() { scrubbersShown = max(0, scrubbersShown - 1) }
 
     /// Swaps the library under a running queue. Offline the queue keeps
     /// playing from pinned files; back online it reports timelines again
@@ -517,8 +531,13 @@ final class AudioPlayer {
         }
     }
 
+    /// Only a scrubber needs the clock at 0.5s; nothing else reads it more
+    /// than once a second. Halving the tick halves the main-actor hops for
+    /// the whole session, most of which plays with the screen off.
     private func observeTime() {
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        if let timeObserver { player.removeTimeObserver(timeObserver) }
+        let seconds = scrubbersShown > 0 ? 0.5 : 1.0
+        let interval = CMTime(seconds: seconds, preferredTimescale: 600)
         // Hop to the main actor rather than asserting isolation: the observer
         // block isn't guaranteed to satisfy the main-thread dispatch assertion
         // even when the queue is .main, and assuming it crashes the process.
@@ -532,7 +551,11 @@ final class AudioPlayer {
                    itemDuration.isFinite, itemDuration > 0 {
                     self.duration = itemDuration
                 }
-                self.updateNowPlayingPlaybackState()
+                // Not `updateNowPlayingPlaybackState()`: the system
+                // extrapolates elapsed time from the last rate it was given,
+                // so the lock screen needs a write on state changes only.
+                // Sending the dictionary every tick was an XPC round trip
+                // twice a second for the whole session.
                 self.reportProgressIfDue()
                 self.finishIfRunPastEnd()
             }
@@ -778,9 +801,13 @@ final class AudioPlayer {
         }
     }
 
+    /// Called on every change of rate or position (play, pause, seek, stall,
+    /// track change), never on the clock tick. The player's own time rather
+    /// than `currentTime`, which can be most of a tick behind.
     private func updateNowPlayingPlaybackState() {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        let playerTime = player.currentTime().seconds
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = playerTime.isFinite ? playerTime : currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = playerIsRunning ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }

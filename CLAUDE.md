@@ -99,7 +99,13 @@ play/pause presses to recover. **The published now-playing rate follows
 the transport buttons show); `playerIsRunning` is whether the clock is
 actually running. Publishing rate 1 the moment `play()` is called made a car
 head unit extrapolate a ticking timer over silence while the first track
-loaded, then snap to zero when audio began. `AudioPlayer` logs item status and
+loaded, then snap to zero when audio began. **Now-playing info is written on
+state changes only** (play, pause, seek, stall, track change), never from the
+periodic time observer: the system extrapolates elapsed time from the rate,
+and writing the dictionary every tick was an XPC round trip twice a second
+for the whole session, which Xcode's energy gauge rated High while the app
+sat in the background. The observer ticks once a second, 0.5s only while a
+scrubber is on screen. `AudioPlayer` logs item status and
 `timeControlStatus` transitions under `os.Logger` category `AudioPlayer`; read
 them with `log show --info --predicate 'category == "AudioPlayer"'` (info-level
 lines are dropped without `--info`). **Streaming quality** (`StreamQuality`,
