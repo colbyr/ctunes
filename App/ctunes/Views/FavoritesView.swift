@@ -12,7 +12,7 @@ enum FavoritesSort: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .recent: "Recently Hearted"
+        case .recent: "Recently Favorited"
         case .artist: "Artist"
         case .album: "Album"
         }
@@ -210,7 +210,7 @@ struct FavoritesView: View {
                 Task { await model.setFavoritesPinned(false) }
             }
         } message: {
-            Text("Your favorites stay hearted and will stream again. Albums you downloaded on their own are kept.")
+            Text("Your favorites stay favorited and will stream again. Albums you downloaded on their own are kept.")
         }
     }
 

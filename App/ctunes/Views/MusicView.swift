@@ -363,7 +363,9 @@ private struct ShuffleFavoritesCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Shuffle Favorites").font(.headline)
                         if let subtitle {
-                            Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                            // One line: a longer listener list wrapping made
+                            // the card grow as listeners toggled.
+                            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                     Spacer()
