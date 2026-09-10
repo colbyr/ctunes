@@ -201,7 +201,6 @@ struct MixBuilderView: View {
 
     var body: some View {
         let picks = picks
-        let playable = playable
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 MixActions(kind: kind, loading: loadingMix, action: play)

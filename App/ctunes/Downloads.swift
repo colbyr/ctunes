@@ -32,7 +32,7 @@ final class Downloads {
         events = Task { [weak self, cache] in
             for await _ in cache.events {
                 guard let self else { return }
-                await self.refresh()
+                self.refresh()
             }
         }
     }

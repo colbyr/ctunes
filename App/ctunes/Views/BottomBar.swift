@@ -18,6 +18,9 @@ struct BottomBar: View {
     /// How much of the screen the keyboard covers, from its own
     /// notifications, so the bar tracks it whatever screen was on top.
     @State private var keyboardHeight: CGFloat = 0
+    /// The window the bar sits in, for converting the keyboard's
+    /// screen-space frame; `UIScreen.main` is gone.
+    @State private var window: UIWindow?
     /// A hardware keyboard's accessory strip is short; anything taller
     /// is the real thing.
     private var keyboardUp: Bool { keyboardHeight > 60 }
@@ -68,13 +71,17 @@ struct BottomBar: View {
                 }
             }
         }
+        .background { WindowReader { window = $0 } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
-            guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
-            // Screen coordinates: the covered part is below the frame's top.
-            let bounds = UIScreen.main.bounds
+            guard let window,
+                  let screenFrame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+            else { return }
+            // The frame is in screen coordinates; the covered part of this
+            // window is below its top.
+            let frame = window.convert(screenFrame, from: nil)
             let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
             withAnimation(.easeOut(duration: duration)) {
-                keyboardHeight = max(0, bounds.maxY - frame.minY)
+                keyboardHeight = max(0, window.bounds.maxY - frame.minY)
             }
         }
         .animation(.bouncy(duration: 0.4), value: searching)
@@ -188,6 +195,32 @@ private struct SearchPill: View {
         // Keyboard dismissed with nothing typed: nothing to keep open.
         .onChange(of: focused) { _, isFocused in
             if !isFocused && !filtering { query = ""; searching = false }
+        }
+    }
+}
+
+/// Hands the view's window to `onWindow` once it is attached.
+private struct WindowReader: UIViewRepresentable {
+    let onWindow: (UIWindow?) -> Void
+
+    func makeUIView(context: Context) -> View { View(onWindow: onWindow) }
+    func updateUIView(_ view: View, context: Context) { view.onWindow = onWindow }
+
+    final class View: UIView {
+        var onWindow: (UIWindow?) -> Void
+
+        init(onWindow: @escaping (UIWindow?) -> Void) {
+            self.onWindow = onWindow
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            onWindow(window)
         }
     }
 }
