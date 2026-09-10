@@ -70,7 +70,9 @@ struct AlbumGroupHeader: View {
     var body: some View {
         Text(group.name)
             .font(.title3.weight(.semibold))
-            .foregroundStyle(Color.primary)
+            // The palette's ink, not the system primary: on dark that is
+            // pure white against every other cream label on the page.
+            .foregroundStyle(Color.ink)
             .textCase(nil)
     }
 }
