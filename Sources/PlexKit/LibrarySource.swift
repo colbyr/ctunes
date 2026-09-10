@@ -21,12 +21,19 @@ public protocol LibrarySource: Sendable {
     func setFavorite(_ ratingKey: String, _ favorite: Bool) async throws
     func reportTimeline(_ track: PlexTrack, state: PlaybackState, time: Double, sessionIdentifier: String) async throws
     /// Synchronous: the player picks an item URL without hopping actors.
-    func streamURL(for track: PlexTrack) -> URL?
+    /// `sessionIdentifier` names the transcode session when `quality` asks
+    /// for one, and is unused for `.original`.
+    func streamURL(for track: PlexTrack, quality: StreamQuality, sessionIdentifier: String) -> URL?
     func trackSource(for track: PlexTrack) -> TrackSource?
     func artworkURL(_ thumb: String?, size: Int) -> URL?
 }
 
 extension LibrarySource {
+    /// The part file as stored.
+    public func streamURL(for track: PlexTrack) -> URL? {
+        streamURL(for: track, quality: .original, sessionIdentifier: "")
+    }
+
     /// List-cell size, the default every grid uses. A tile is ~110pt on a
     /// 3x phone, so 200px was upscaled and read blurry; 400 covers that
     /// and a 150pt tile on a 2x iPad.

@@ -10,7 +10,7 @@ Toolchain confirmed present: Xcode 26.6, Swift 6.3, iOS 26.5 SDK.
 
 ## Decisions already made
 
-- **Direct play only** — now confirmed against the real library rather than assumed. A codec census over both music sections found flac 532, mp3 370, aac 266, pcm 7, and mp3 1077 in audiobooks: all 2,252 tracks decode natively on iOS. No transcode session lifecycle, no teardown bookkeeping, no restart-on-seek.
+- **Direct play by default** — confirmed against the real library rather than assumed. A codec census over both music sections found flac 532, mp3 370, aac 266, pcm 7, and mp3 1077 in audiobooks: all 2,252 tracks decode natively on iOS. Transcoding arrived later as a bandwidth setting, not a codec fallback: `StreamQuality` streams through the universal transcoder's HLS when set, with no teardown bookkeeping and no restart-on-seek (`notes/always-transcode.md`).
 - **PIN link flow** for auth, not credential POST. Survives 2FA, and the token is the same either way.
 - **Connect over the `plex.direct` HTTPS URI**, not the raw LAN IP: it carries a valid TLS cert, sidestepping App Transport Security entirely. But never trust `local: true` — the real account advertises six connections, four of them local addresses on virtual interfaces that nothing can reach. Probe concurrently and let reachability decide.
 - **Two-part project**: a `PlexKit` SPM package with no UIKit/SwiftUI dependency, and a thin app target. The package stays testable from the command line without booting a simulator.

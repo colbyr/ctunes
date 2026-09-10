@@ -23,6 +23,17 @@ struct PlexIdentityTests {
         #expect(identity.headers["Accept"] == "application/json")
     }
 
+    @Test("query items carry the same identity, without Accept")
+    func queryItems() {
+        let items = identity.queryItems
+        let names = Set(items.map(\.name))
+        for header in identity.headers.keys where header != "Accept" {
+            #expect(names.contains(header), "\(header) missing from the query")
+        }
+        #expect(!names.contains("Accept"))
+        #expect(items.first { $0.name == "X-Plex-Client-Identifier" }?.value == "TEST-UUID")
+    }
+
     @Test("request injects identity headers and the token")
     func requestInjection() async {
         let client = PlexClient(identity: identity)

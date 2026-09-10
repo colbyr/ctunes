@@ -157,11 +157,74 @@ public actor PlexLibrary {
 
     // MARK: - URLs
 
-    /// The audio file itself. AVPlayer won't attach custom headers to media
-    /// requests, so the token has to ride in the query string here.
-    public nonisolated func streamURL(for track: PlexTrack) -> URL? {
+    /// The audio file itself, or the transcoder's HLS playlist for it.
+    /// AVPlayer won't attach custom headers to media requests, so the token
+    /// has to ride in the query string here.
+    ///
+    /// The transcoder, measured against a real server:
+    /// - `start.m3u8` is a 400 for an iOS client unless
+    ///   `X-Plex-Client-Profile-Extra` adds a music transcode target; the
+    ///   built-in profile has none. The whole identity rides the query
+    ///   since AVPlayer sends no headers.
+    /// - The master points at `session/{id}/base/index.m3u8`, a relative
+    ///   path AVPlayer resolves itself. That playlist and its `.ts` segments
+    ///   need no token: the session id is the credential. It lists every
+    ///   1s segment up front with `#EXT-X-ENDLIST`, so the duration is
+    ///   finite and seeks are ordinary.
+    /// - `musicBitrate` is honoured; a bitrate limitation in the profile
+    ///   extra also works and wins when both are given.
+    /// - A new start under the same `session` replaces the previous
+    ///   transcode, so track changes need no `stop` call.
+    /// - The server reuses a finished transcode of the same track for a few
+    ///   minutes, at whatever bitrate it was first asked for.
+    public nonisolated func streamURL(
+        for track: PlexTrack,
+        quality: StreamQuality,
+        sessionIdentifier: String
+    ) -> URL? {
         guard let part = track.part else { return nil }
-        return URL(string: server.baseURL.absoluteString + part.key + "?X-Plex-Token=\(token)")
+        guard let bitrate = quality.bitrate else {
+            return URL(string: server.baseURL.absoluteString + part.key + "?X-Plex-Token=\(token)")
+        }
+        let items: [URLQueryItem] = [
+            .init(name: "path", value: "/library/metadata/\(track.ratingKey)"),
+            .init(name: "mediaIndex", value: "0"),
+            .init(name: "partIndex", value: "0"),
+            .init(name: "protocol", value: "hls"),
+            .init(name: "directPlay", value: "0"),
+            .init(name: "directStream", value: "0"),
+            // Without this a segment beyond what has been cut takes ~2.2s
+            // while the transcoder restarts at the offset, and AVFoundation
+            // drops the only variant after 1s ("No response for media file
+            // in 1s", -12880) and stalls for good. With it the same segment
+            // arrives in ~0.2s, so seeks and the near-end dev hook work.
+            .init(name: "fastSeek", value: "1"),
+            .init(name: "musicBitrate", value: String(bitrate)),
+            .init(name: "session", value: sessionIdentifier),
+            // The server keys its streaming session by this, and without it
+            // borrows the last one seen in a timeline report. The `stopped`
+            // report for the previous track then lands after the new start
+            // and terminates the new transcode: every segment 200s with an
+            // empty body. Its own identifier keeps the two apart.
+            .init(name: "X-Plex-Session-Identifier", value: sessionIdentifier),
+            .init(
+                name: "X-Plex-Client-Profile-Extra",
+                value: "add-transcode-target(type=musicProfile&context=streaming"
+                    + "&protocol=hls&container=mpegts&audioCodec=aac)"
+            ),
+            .init(name: "X-Plex-Token", value: token),
+        ] + client.identity.queryItems
+        // Strict encoding: the profile extra carries `&` and `=` that
+        // `URLComponents` would leave bare and the server would split on.
+        let query = items.map { "\(Self.encode($0.name))=\(Self.encode($0.value ?? ""))" }
+            .joined(separator: "&")
+        return URL(string: server.baseURL.absoluteString + "/music/:/transcode/universal/start.m3u8?" + query)
+    }
+
+    private nonisolated static func encode(_ value: String) -> String {
+        value.addingPercentEncoding(
+            withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~"))
+        ) ?? value
     }
 
     /// The same file for the track cache to download. Unlike `streamURL`

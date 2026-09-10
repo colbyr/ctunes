@@ -186,6 +186,17 @@ struct MusicView: View {
                     if model.sections.count > 1, !offline {
                         Button("Change library") { model.clearSectionChoice() }
                     }
+                    Section("Streaming") {
+                        Picker("Quality", systemImage: "antenna.radiowaves.left.and.right", selection: Binding(
+                            get: { player.streamQuality },
+                            set: { player.streamQuality = $0 }
+                        )) {
+                            ForEach(StreamQuality.allCases, id: \.self) { quality in
+                                Text(quality.label).tag(quality)
+                            }
+                        }
+                        .disabled(offline)
+                    }
                     Section("Downloads") {
                         Toggle("Keep favorites offline", systemImage: "heart", isOn: Binding(
                             get: { model.isFavoritesPinned },

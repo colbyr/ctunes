@@ -63,11 +63,10 @@ Alternatives dropped:
   a 320 kbps MP3 is also worth reducing on a slow link. Transcoding everything keeps the
   rule explainable.
 
-## The transcoder endpoint
+## The transcoder endpoint, as measured
 
-None of this has been measured yet. Verify with `curl` against the real server before
-writing Swift, the way every other endpoint in CLAUDE.md was. Expected shape, from
-python-plexapi's `getStreamURL` and Plex Web's requests:
+Measured 2026-09-10 against the Mac Mini server (PMS on the LAN, FLAC sources) with a
+Python probe over `urllib`, then in the simulator. What the app sends:
 
 ```
 GET {server}/music/:/transcode/universal/start.m3u8
@@ -75,40 +74,82 @@ GET {server}/music/:/transcode/universal/start.m3u8
     &mediaIndex=0&partIndex=0
     &protocol=hls
     &directPlay=0&directStream=0
+    &fastSeek=1
     &musicBitrate=192
-    &session={sessionIdentifier}
+    &session={fresh UUID per item}
+    &X-Plex-Client-Profile-Extra=add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=aac)
     &X-Plex-Token={token}
-    &X-Plex-Client-Identifier={clientIdentifier}
-    &X-Plex-Product=ctunes&X-Plex-Platform=iOS
+    &X-Plex-Client-Identifier=…&X-Plex-Product=ctunes&X-Plex-Version=…&X-Plex-Device=…&X-Plex-Platform=iOS
 ```
 
-Things to establish with curl, and to record in this note once known:
+Every value is strictly percent-encoded (`&`, `=`, `(`, `)` included); the server splits
+on a bare `&` inside the profile extra. `URLComponents` leaves those bare, so the query
+is built by hand.
 
-1. The master playlist comes back as `application/vnd.apple.mpegurl` and points at a
-   variant playlist with a full segment list and `#EXT-X-ENDLIST`, so the duration is
-   finite. If the playlist is `EVENT` type with no end list, AVPlayer reports an indefinite
-   duration and live-style seeking; the metadata duration seed then does the work and the
-   note must say so.
-2. Which query parameters are actually honoured: `musicBitrate` (kbps), `audioCodec`
-   (`aac` or `mp3`), and whether `directStream=0` is required to stop the server passing a
-   FLAC through untouched. `X-Plex-Client-Profile-Extra=add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=aac)`
-   is the escape hatch if the default profile refuses.
-3. Whether the identity headers are needed in the query. AVPlayer sends none, so every
-   `X-Plex-*` value the transcoder wants has to ride the URL like the token already does.
-   This is the one place the app would build identity outside `PlexClient`; keep it in
-   `PlexIdentity` as a `queryItems` twin of `headers` so the values still come from one
-   spot.
-4. Session behaviour: whether starting a new `start.m3u8` under the same `session` kills
-   the previous transcode (Plex Web relies on this), or whether the app must call
-   `/music/:/transcode/universal/stop?session=` on every track change. The app already has
-   a `sessionIdentifier` per player for the timeline; reuse it. Measure how long an
-   abandoned transcode lingers in `/status/sessions` and in `top` on the server.
-5. Seeking far ahead in the playlist: does the server jump the transcoder, and how long
-   does the segment take to arrive. Audio transcodes run well above real time, so the whole
-   track is probably done before the first seek; confirm.
-6. What the `/:/timeline` report looks like for a transcoded item. The `key` and
-   `ratingKey` are unchanged, so it should be identical; check that play history still
-   records the play, or On Rotation goes blind for transcoded listening.
+1. **Shape.** The master is `application/vnd.apple.mpegurl`, one variant,
+   `BANDWIDTH=182000` whatever the bitrate, pointing at the relative path
+   `session/{id}/base/index.m3u8`. AVPlayer resolves that itself. The variant lists every
+   segment up front (`#EXTINF:1` each, `#EXT-X-TARGETDURATION:1`, `#EXT-X-ALLOW-CACHE:NO`,
+   no playlist type) and ends with `#EXT-X-ENDLIST`, so the duration is finite: AVPlayer
+   reported 260.0s for a 260s track. Segments are `video/MP2T`, ~25–30 KB each at 192k.
+   **The variant playlist and the segments need no token**; the session id is the
+   credential.
+2. **Parameters.** Without the profile extra, `start.m3u8` is a `400 Bad Request` for
+   `X-Plex-Platform=iOS` (it works for `Chrome`, so the built-in iOS profile simply has no
+   music transcode target). With it, `musicBitrate` is honoured: 64 → 83 kbps of TS,
+   192 → ~230–240 kbps, 320 → 336 kbps (MPEG-TS overhead on top of the AAC). A
+   `+add-limitation(scope=musicCodec&scopeName=aac&type=upperBound&name=audio.bitrate&value=N)`
+   in the profile extra also works and wins when both are given; the app sends only
+   `musicBitrate`. `audioCodec=mp3` in the target gives mp3. `directPlay=0&directStream=0`
+   were sent throughout; not tested without.
+   **The server reuses a finished transcode of the same track for a few minutes,
+   regardless of the bitrate or codec asked for.** Every probe of track 1030 after the
+   first came back byte-identical at 192k whatever was requested; fresh tracks honoured
+   the request. Switching quality and replaying the same track right away serves the old
+   bitrate; harmless.
+3. **Identity.** `X-Plex-Token` alone is not enough (400); the identity has to be in the
+   query. `PlexIdentity.queryItems` mirrors `headers` minus `Accept`.
+4. **Sessions.** Starting a new `start.m3u8` under the same `session` for another track
+   replaces the transcode in `/transcode/sessions` (one entry, new duration) and the
+   variant answers at once from `curl`. **In the app it did not**: the next track under
+   the key the previous one was still streaming from got `HTTP 404` on its segments for
+   30s (AVFoundation retries with backoff) before playing. A fresh UUID per item made the
+   transition 0.25s. Starting a session for the same client also killed the previous
+   session's transcode outright (`e1` vanished the moment `e2` started), so there is
+   nothing to stop. `/music/:/transcode/universal/stop?session=` works (200, entry gone)
+   but is unused. An abandoned session that was fetched from disappears within a minute
+   or two; one that was started but never fetched lingers as a zero-progress entry for
+   ~5 minutes. **A paused session is reaped after ~4 minutes** even with paused
+   `/:/timeline` reports every 20s under the same `X-Plex-Session-Identifier`. Resuming
+   after that hits 404s; the existing item-failure retry rebuilds from the same URL, which
+   starts the transcode again from zero. Not handled in v1, see follow-ups.
+5. **Seeking.** Without `fastSeek`, a segment beyond what has been cut takes ~2.2s
+   (the transcoder restarts at the offset) and AVFoundation logs
+   `-12889 No response for media file in 1s`, then `-12880 Can not proceed after
+   removing variants`, and the item sits in `waiting` forever with no `status` change,
+   so the retry never fires. With `fastSeek=1` the same segment arrives in 0.18s and the
+   near-end seek plays. The 1s budget seems to follow the 1s target duration. Transcode
+   speed shows as ~3x while streaming and ~100x when cutting a jump, so the whole track is
+   not done early; the server throttles.
+6. **Timeline.** The report is the same call, but **a `stopped` report kills a transcode
+   that started just before it.** The server keys its "Streaming Resource" session by
+   client: `start.m3u8` adds one, tagged with the last `X-Plex-Session-Identifier` seen
+   from that client, and a `/:/timeline?state=stopped` from the same client terminates
+   whatever that session currently is, "Client stopped playback". The app fired `stopped`
+   for the old track and loaded the new item in the same turn, so the report landed a few
+   milliseconds after the new start and terminated it; every segment then came back as a
+   200 with an empty body (`ERROR - Session 0x… terminated` per request in the server
+   log), AVFoundation reported -1005 on its own backoff for 30s, and the item failed. On
+   the phone that was every mid-album skip; the simulator only ever transitioned at the
+   end of finished tracks, where the order happened to be right. Sending the transcode
+   its own `X-Plex-Session-Identifier` did not help. Fix: no `stopped` report on any
+   track-to-track move; the next track's `playing` report carries the session on, and
+   `finish`, an emptied queue and sign-out still send it. Diagnosed from the server's
+   own log, `GET /diagnostics/logs` with the token returns the zip. A full
+   uninterrupted play of a transcoded track in the simulator showed up in
+   `/status/sessions/history` at once, so On Rotation sees transcoded listening. A seek
+   to 3s from the end followed by the play-out did **not** record a play, for direct play
+   or transcoded alike; the dev hook is not a substitute for a real listen here.
 
 ## Steps
 
@@ -175,32 +216,64 @@ the `Downloads` section). Add a `Section("Streaming")` above it with a `Picker` 
 picker so it reads as a submenu. Disabled offline, like the favorites toggle, since nothing
 streams there anyway. No new screen.
 
-### 5. Teardown, if step 4 of the measurements says it's needed
+### 5. Teardown
 
-`PlexLibrary.stopTranscode(sessionIdentifier:)` calling `/music/:/transcode/universal/stop`,
-fire-and-forget from `loadCurrentItem` before the new item is built and from `signOut`,
-in the same style as `reportTimeline`. Skip it entirely if a new start under the same
-session supersedes the old one.
+Not needed: a new session for the client kills the previous transcode, and an
+abandoned one is reaped in minutes (measurement 4). No `stop` call.
+
+### What shipped differs from the plan in two places
+
+- `sessionIdentifier` is **not** reused for the transcode: `remoteURL(for:)` mints a UUID
+  per item (measurement 4). The parameter stays on `streamURL(for:quality:sessionIdentifier:)`
+  so the library has no state.
+- `fastSeek=1` is in the URL (measurement 5).
 
 ## Verification
 
-- `make test`: the URL test above, and the existing `streamURL` and cache tests unchanged.
-- `make live-test`: extend the live stream test to fetch the `.m3u8` at `kbps192` and check
-  the response is a playlist, not JSON or an error page.
-- Simulator, `CTUNES_DEV_ALBUM` + `CTUNES_DEV_AUTOPLAY=1` with the setting on: the
-  `AudioPlayer` log shows `stream(192k)`, the item reaches `readyToPlay`, the duration is
-  finite, and `Caches/Tracks` does not grow. Scrub to the last ten seconds and confirm the
-  next-track transition (`CTUNES_DEV_AUTOPLAY=end` after the setting persists).
-- Device on cellular with Wi-Fi off: play an album, watch Settings → Cellular's counter
-  for the app against a known track length. This is the number the setting exists for.
-- Device with a pinned album and the setting on: the pinned tracks play `local`, the rest
-  `stream(192k)`; the lock-screen scrubber works on a transcoded track.
-- On the server, `/status/sessions` after skipping through five tracks: at most one
-  transcode session for this client.
+Done 2026-09-10:
+
+- `make test`: the URL test, the identity query-items test, everything else unchanged.
+- `make live-test`: the live walk fetches the `.m3u8` at `kbps192` and gets
+  `application/vnd.apple.mpegurl` starting `#EXTM3U`.
+- Simulator, Abbey Road (not pinned) with `streamQuality` set to `kbps192` via
+  `simctl spawn booted defaults write com.colbyr.ctunes streamQuality kbps192`:
+  `load item stream(192k)`, ready in 0.6s, duration 260.0s, `Caches/Tracks` never
+  created, one AAC session in `/transcode/sessions`. The pinned Soulmate Stuff still
+  plays `local`. `CTUNES_DEV_AUTOPLAY=end`: the near-end seek plays and the next track
+  is ready 0.25s after the transition. A full play of Come Together landed in history.
+  `CTUNES_DEV_AUTOPLAY=skip` (added for measurement 6) reproduced the phone's mid-track
+  stall on demand and, after the fix, lands on the next track in 0.3s.
+
+Still to do on a device:
+
+- On cellular with Wi-Fi off: play an album, watch Settings → Cellular's counter for the
+  app against a known track length. This is the number the setting exists for.
+- The lock-screen scrubber on a transcoded track.
+- Pause for five minutes, resume: expect the 404 stall described in measurement 4.
 
 ## Follow-ups, not in v1
 
+- **Resume after a long pause.** The transcode session dies ~4 minutes into a pause and
+  the item 404s on resume. Options: rebuild the item on the first `-12938` error-log entry
+  and seek back to `currentTime`, or a periodic `/music/:/transcode/universal/ping?session=`
+  while paused, if the server honours it (unmeasured). Worth doing before this is the
+  default on cellular.
 - `case automatic`: transcode unless the chosen connection is local and answered the probe.
-- A separate quality for the window prefetch, which would need a transcoded namespace in
-  `TrackCache` and an integrity check that isn't `Content-Length`.
+- A separate download quality. Measured 2026-09-10 and deliberately left at Original:
+  - A transcoded download is `start?protocol=http` with a
+    `container=mp3&audioCodec=mp3` target: `audio/mpeg`, chunked, no `Content-Length`,
+    `Accept-Ranges: none`, and MP3 whatever container is asked for (`mp4`/`aac` targets
+    still came back as MP3). The token works in a header. The bitrate is honoured.
+  - **The server runs one music transcode per account at a time.** Starting a playback
+    transcode killed an in-flight download mid-body (`IncompleteRead`), and starting a
+    download killed the playback session. A second client identifier, product and device
+    name changed nothing. A download started while another transcode was live once came
+    back with the wrong bytes: 1.5 MB for a 23s track that alone is 486 KB.
+  - So it would need: a transcoded namespace in `TrackCache` (`<id>-<stamp>-q192.mp3`),
+    an integrity check that is "completed cleanly and non-empty" rather than a length,
+    `localURL` accepting any variant, and a rule that the pump runs transcoded downloads
+    only while the player is not streaming a transcoded item, with the player cancelling
+    an in-flight transcoded download before it starts one. Reduced-quality downloads
+    would then happen at home on Wi-Fi with streaming at Original, and pause while
+    streaming transcoded.
 - Codec choice (`aac` vs `mp3`) if the server's AAC encoder turns out to be the poor one.

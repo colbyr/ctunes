@@ -271,6 +271,36 @@ struct PlexLibraryTests {
         #expect(url.absoluteString.hasSuffix("?X-Plex-Token=TOKEN"))
     }
 
+    @Test("transcoded stream URL asks the universal transcoder for HLS at the bitrate")
+    func transcodedStreamURL() async throws {
+        let body = try Fixture.string("tracks")
+        let library = library { _ in .json(body) }
+        let track = try #require(try await library.tracks(inAlbum: "1029").first)
+
+        let url = try #require(library.streamURL(for: track, quality: .kbps192, sessionIdentifier: "S1"))
+        let string = url.absoluteString
+        #expect(string.hasPrefix("https://example.plex.direct:32400/music/:/transcode/universal/start.m3u8?"))
+        let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        func value(_ name: String) -> String? { query.first { $0.name == name }?.value }
+        #expect(value("path") == "/library/metadata/\(track.ratingKey)")
+        #expect(value("protocol") == "hls")
+        #expect(value("directPlay") == "0")
+        #expect(value("directStream") == "0")
+        #expect(value("fastSeek") == "1")
+        #expect(value("musicBitrate") == "192")
+        #expect(value("session") == "S1")
+        #expect(value("X-Plex-Session-Identifier") == "S1")
+        #expect(value("X-Plex-Token") == "TOKEN")
+        #expect(value("X-Plex-Client-Identifier") == "TEST")
+        #expect(value("X-Plex-Platform") == "iOS")
+        // Decoded whole: the server splits on a bare `&` inside it.
+        #expect(value("X-Plex-Client-Profile-Extra")?.hasPrefix("add-transcode-target(type=musicProfile&") == true)
+        #expect(string.contains("audioCodec%3Daac%29"))
+
+        let original = try #require(library.streamURL(for: track, quality: .original, sessionIdentifier: "S1"))
+        #expect(original == library.streamURL(for: track))
+    }
+
     @Test("artwork URL goes through the photo transcoder")
     func artworkURL() async throws {
         let library = library { _ in .json("{}") }

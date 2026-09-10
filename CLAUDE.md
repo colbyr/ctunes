@@ -89,7 +89,12 @@ head unit extrapolate a ticking timer over silence while the first track
 loaded, then snap to zero when audio began. `AudioPlayer` logs item status and
 `timeControlStatus` transitions under `os.Logger` category `AudioPlayer`; read
 them with `log show --info --predicate 'category == "AudioPlayer"'` (info-level
-lines are dropped without `--info`). Every
+lines are dropped without `--info`). **Streaming quality** (`StreamQuality`,
+`notes/always-transcode.md`) is a per-device `UserDefaults` setting owned by
+`AudioPlayer`: anything but `original` streams every track through the
+universal transcoder as HLS/AAC at that bitrate, logged as `stream(192k)`
+next to `local`/`stream`. A file on disk still wins, pins are untouched, and
+the prefetch window is empty while it is on. Every
 shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
@@ -144,6 +149,21 @@ appears to offer.
   registers a new device on the account.
 - **`AVPlayer` won't attach custom headers to media requests**, so stream URLs
   carry `?X-Plex-Token=`; everything else uses the header.
+- **The universal transcoder
+  (`/music/:/transcode/universal/start.m3u8?protocol=hls&…`) is a 400 for an
+  iOS client unless `X-Plex-Client-Profile-Extra` adds a music transcode
+  target**, and the whole identity has to ride the query. The variant
+  playlist and segments need no token. `musicBitrate` is honoured.
+  **`fastSeek=1` is required**: without it a segment past the cut point takes
+  ~2.2s and AVFoundation gives up after 1s, stalling the item for good.
+  **Use a fresh `session` per item**: the next track under the key the last
+  one streamed from gave 30s of 404s. **Never send a `stopped` timeline
+  report on a track-to-track move**: the server terminates the client's
+  current transcode on it, and a fire-and-forget stop for the old track
+  lands after the new start. The next `playing` report carries the session
+  on. Measurements in `notes/always-transcode.md`. The server's own log is
+  at `GET /diagnostics/logs` (a zip) and names the request that killed a
+  session.
 - **A new track's first range request intermittently fails with
   `NSURLError -1005`** when CFNetwork reuses a keep-alive connection the server
   has dropped. `AVPlayer` then sits on the failed item with no error surfaced,
@@ -216,7 +236,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 |---|---|
 | `CTUNES_DEV_TOKEN` | skips sign-in with a token from the environment |
 | `CTUNES_DEV_ALBUM` | `ratingKey\|title\|artist\|artistKey`, pushes that album onto the stack |
-| `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load; `last` starts on the final track 3s from its end, so the queue finishes at once; `end` starts on the first track 3s from its end, so the next-track transition happens at once |
+| `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load; `last` starts on the final track 3s from its end, so the queue finishes at once; `end` starts on the first track 3s from its end, so the next-track transition happens at once; `skip` starts on the first track and skips 8s in, while the server is still serving it |
 | `CTUNES_DEV_NOWPLAYING` | `1` opens the Now Playing sheet |
 | `CTUNES_DEV_ENQUEUE` | `1` appends the album to the queue again, so Up Next has duplicates |
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |

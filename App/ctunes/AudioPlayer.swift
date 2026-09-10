@@ -49,11 +49,25 @@ final class AudioPlayer {
     private nonisolated let cache: TrackCache
     /// How many upcoming entries `prefetch` keeps on disk.
     private let prefetchDepth = 3
+    /// How streamed tracks leave the server. Per device, never synced: it
+    /// is about the network this device is on. A change takes effect on
+    /// the next item; rebuilding the current one would restart the track.
+    /// While transcoding the prefetch window is empty, since downloading
+    /// the originals behind a bandwidth setting defeats it. Pins and files
+    /// already on disk are untouched: local always wins.
+    var streamQuality: StreamQuality {
+        didSet {
+            UserDefaults.standard.set(streamQuality.rawValue, forKey: Self.streamQualityKey)
+            prefetch()
+        }
+    }
+    private static let streamQualityKey = "streamQuality"
     /// Whether the current item was built from a cached file, so a failure
     /// can fall back to the stream instead of burning a retry.
     private var currentItemIsLocal = false
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var errorLogObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var interruptionObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var routeChangeObserver: NSObjectProtocol?
     /// Set when an interruption (Siri, a call, a car's voice assistant) cut
@@ -87,6 +101,8 @@ final class AudioPlayer {
 
     init(cache: TrackCache) {
         self.cache = cache
+        streamQuality = UserDefaults.standard.string(forKey: Self.streamQualityKey)
+            .flatMap(StreamQuality.init(rawValue:)) ?? .original
         player.actionAtItemEnd = .pause
         observeTime()
         observeTimeControl()
@@ -117,6 +133,7 @@ final class AudioPlayer {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeControlObserver?.invalidate()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        if let errorLogObserver { NotificationCenter.default.removeObserver(errorLogObserver) }
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
         if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
     }
@@ -124,7 +141,6 @@ final class AudioPlayer {
     // MARK: - Playback
 
     func play(_ tracks: [PlexTrack], startingAt index: Int, library: any LibrarySource) {
-        reportTimeline(.stopped)
         self.library = library
         queue = PlayQueue(tracks, startingAt: index)
         sessionIdentifier = UUID().uuidString
@@ -173,14 +189,19 @@ final class AudioPlayer {
     /// Plays the queue again from the top, whatever the repeat mode.
     func restart() {
         guard !queue.isEmpty else { return }
-        reportTimeline(.stopped)
         queue.jump(to: 0)
         loadCurrentItem(autoPlay: true)
     }
 
+    /// No `stopped` report for the track being left, here or in any other
+    /// track-to-track move: the next track's `playing` report carries the
+    /// session on. The server keys its transcode session by client, and a
+    /// `stopped` that lands after the next track's transcode has started
+    /// terminates it, after which every segment is a 200 with no body and
+    /// the item fails a minute later with -1005. Fire-and-forget reports
+    /// can't be ordered against the item load, so the stop is simply not
+    /// sent. `finish` still sends it when the queue runs out.
     private func advance(wrapping: Bool) {
-        // Report before the cursor moves so the stop lands on the right track.
-        reportTimeline(.stopped)
         guard queue.advance(wrapping: wrapping) else {
             finish()
             return
@@ -237,7 +258,6 @@ final class AudioPlayer {
             seek(to: 0)
             return
         }
-        reportTimeline(.stopped)
         _ = queue.retreat()
         loadCurrentItem(autoPlay: true)
     }
@@ -266,14 +286,15 @@ final class AudioPlayer {
 
     func jump(to entry: PlayQueue<PlexTrack>.Entry) {
         guard let index = queue.index(of: entry.id), index != queue.currentIndex else { return }
-        reportTimeline(.stopped)
         queue.jump(to: index)
         loadCurrentItem(autoPlay: true)
     }
 
     func remove(_ entry: PlayQueue<PlexTrack>.Entry) {
         guard let index = queue.index(of: entry.id) else { return }
-        if index == queue.currentIndex { reportTimeline(.stopped) }
+        // Only a real stop: removing the current entry with nothing left to
+        // play. Otherwise the next track's report takes over (see `advance`).
+        if index == queue.currentIndex, queue.entries.count == 1 { reportTimeline(.stopped) }
         guard queue.remove(at: index) else {
             prefetch()
             return
@@ -315,6 +336,12 @@ final class AudioPlayer {
     /// `cycleRepeat`.
     private func prefetch() {
         guard let library else { return }
+        // Transcoding: nothing downloads, not even the current track. An
+        // empty window cancels every unpinned fetch and leaves pins alone.
+        guard streamQuality == .original else {
+            Task { await cache.retain(window: []) }
+            return
+        }
         var tracks = Array(queue.upcoming.prefix(prefetchDepth).map(\.item))
         if repeatMode == .all, tracks.count < prefetchDepth {
             tracks += queue.entries.prefix(prefetchDepth - tracks.count).map(\.item)
@@ -362,7 +389,7 @@ final class AudioPlayer {
         // offline library has no source to give.
         let server = library.serverIdentifier
         let local = cache.localURL(server: server, part: part)
-        guard let url = local ?? library.streamURL(for: track) else { return }
+        guard let url = local ?? remoteURL(for: track) else { return }
         currentItemIsLocal = local != nil
         if currentItemIsLocal {
             Task { await cache.touch(server: server, part: part) }
@@ -379,6 +406,18 @@ final class AudioPlayer {
         prefetch()
     }
 
+    /// The stream for `track` at the current quality. Both the first load
+    /// and the re-stream after a bad local file come through here.
+    ///
+    /// One transcode session per item, not the listening session's id:
+    /// starting the next track under the key the previous one was still
+    /// streaming from gave 30s of 404s on the new segments before AVPlayer
+    /// found them. A fresh key per item sidesteps that, and the server
+    /// tears down the client's previous transcode on its own either way.
+    private func remoteURL(for track: PlexTrack) -> URL? {
+        library?.streamURL(for: track, quality: streamQuality, sessionIdentifier: UUID().uuidString)
+    }
+
     /// Builds the player item for `url` and watches it fail. The first range
     /// request for a new track has been seen to die with `NSURLError -1005`
     /// when CFNetwork reuses a keep-alive connection the server has already
@@ -387,7 +426,8 @@ final class AudioPlayer {
     /// connection, so retry before giving up on the track.
     private func loadItem(url: URL, autoPlay: Bool) {
         // The URL itself carries the Plex token, so log only where it points.
-        log.info("load item \(self.currentItemIsLocal ? "local" : "stream", privacy: .public) autoPlay=\(autoPlay) retry=\(self.itemLoadRetries)")
+        let source = currentItemIsLocal ? "local" : streamQuality.bitrate.map { "stream(\($0)k)" } ?? "stream"
+        log.info("load item \(source, privacy: .public) autoPlay=\(autoPlay) retry=\(self.itemLoadRetries)")
         let item = AVPlayerItem(url: url)
         itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard let self else { return }
@@ -421,7 +461,7 @@ final class AudioPlayer {
             currentItemIsLocal = false
             let server = library.serverIdentifier
             Task { await cache.evict(server: server, part: part) }
-            guard let streamURL = library.streamURL(for: track) else {
+            guard let streamURL = remoteURL(for: track) else {
                 advance(wrapping: false)
                 return
             }
@@ -529,6 +569,22 @@ final class AudioPlayer {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.currentItemEnded() }
+        }
+        // An HLS item reports segment failures (404s, timeouts, bandwidth)
+        // here and nowhere else: the status stays readyToPlay while it
+        // retries, so this is the only record of what stalled a transcoded
+        // track. The URI never carries the token; the master URL does, and
+        // is logged only by path.
+        errorLogObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.newErrorLogEntryNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self, let item = notification.object as? AVPlayerItem,
+                  let event = item.errorLog()?.events.last
+            else { return }
+            let uri = event.uri.flatMap(URL.init(string:))?.path ?? event.uri ?? "?"
+            self.log.error("item error log: \(event.errorStatusCode) \(event.errorDomain, privacy: .public) \(event.errorComment ?? "", privacy: .public) uri=\(uri, privacy: .public)")
         }
     }
 

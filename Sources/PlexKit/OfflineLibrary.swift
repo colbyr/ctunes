@@ -60,7 +60,7 @@ public struct OfflineLibrary: LibrarySource {
     public func reportTimeline(_ track: PlexTrack, state: PlaybackState, time: Double, sessionIdentifier: String) async throws {}
 
     /// Nothing to stream from; the player resolves by server and part.
-    public func streamURL(for track: PlexTrack) -> URL? { nil }
+    public func streamURL(for track: PlexTrack, quality: StreamQuality, sessionIdentifier: String) -> URL? { nil }
 
     public func trackSource(for track: PlexTrack) -> TrackSource? { nil }
 

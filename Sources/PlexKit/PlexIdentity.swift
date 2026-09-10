@@ -41,6 +41,20 @@ public struct PlexIdentity: Sendable {
         return PlexIdentity(clientIdentifier: minted, product: product)
     }
 
+    /// The same identity for a URL AVPlayer fetches itself, which carries
+    /// no headers. Only the transcoder needs this; every other request goes
+    /// through `PlexClient.request`. No `Accept`: it is a header, not a
+    /// parameter, and playlists are not JSON.
+    var queryItems: [URLQueryItem] {
+        [
+            .init(name: "X-Plex-Client-Identifier", value: clientIdentifier),
+            .init(name: "X-Plex-Product", value: product),
+            .init(name: "X-Plex-Version", value: version),
+            .init(name: "X-Plex-Device", value: device),
+            .init(name: "X-Plex-Platform", value: platform),
+        ]
+    }
+
     var headers: [String: String] {
         [
             "X-Plex-Client-Identifier": clientIdentifier,

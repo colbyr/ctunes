@@ -82,6 +82,18 @@ struct LiveServerTests {
 
             let artwork = try #require(library.artworkURL(album.thumb))
             #expect(artwork.absoluteString.contains("/photo/:/transcode"))
+
+            // The transcoder answers with a playlist, not JSON or an error page.
+            let transcoded = try #require(library.streamURL(
+                for: track, quality: .kbps192, sessionIdentifier: "ctunes-live-test"
+            ))
+            let (data, response) = try await URLSession.shared.data(from: transcoded)
+            let http = try #require(response as? HTTPURLResponse)
+            #expect(http.statusCode == 200)
+            #expect(http.value(forHTTPHeaderField: "Content-Type")?.contains("mpegurl") == true)
+            let playlist = String(decoding: data, as: UTF8.self)
+            #expect(playlist.hasPrefix("#EXTM3U"))
+            print("→ transcoder: \(playlist.split(separator: "\n").last ?? "")")
             checked += 1
             break
         }

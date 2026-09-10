@@ -302,6 +302,34 @@ public struct TrackSource: Sendable, Hashable {
     }
 }
 
+/// How a streamed track leaves the server: the part file as stored, or the
+/// universal transcoder's AAC at a bitrate. Per device, kept in
+/// `UserDefaults` by the player under the raw value; a new case is a new
+/// raw value, not a migration. Files on disk are never transcoded.
+public enum StreamQuality: String, CaseIterable, Sendable {
+    case original
+    case kbps320, kbps192, kbps128
+
+    /// Target bitrate in kbps; nil plays the part file untouched.
+    public var bitrate: Int? {
+        switch self {
+        case .original: nil
+        case .kbps320: 320
+        case .kbps192: 192
+        case .kbps128: 128
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .original: "Original"
+        case .kbps320: "320 kbps"
+        case .kbps192: "192 kbps"
+        case .kbps128: "128 kbps"
+        }
+    }
+}
+
 /// Everything the browse root needs with no server. Written after every
 /// successful online load, read when discovery fails. Nothing secret in it:
 /// `thumb` and `part.key` are server-relative paths.

@@ -41,6 +41,14 @@ struct TracksView: View {
         false
         #endif
     }
+    /// `skip` starts on the first track and skips to the next 8s in.
+    private static var autoSkip: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] == "skip"
+        #else
+        false
+        #endif
+    }
     private static var autoShowNowPlaying: Bool {
         #if DEBUG
         ProcessInfo.processInfo.environment["CTUNES_DEV_NOWPLAYING"] == "1"
@@ -145,6 +153,12 @@ struct TracksView: View {
                     // Let the item become ready before seeking near its end.
                     try? await Task.sleep(for: .seconds(2))
                     player.seek(to: max(0, seconds - 4))
+                }
+                if Self.autoSkip {
+                    // A skip mid-track, while the server is still serving
+                    // the first one: the transition the end hook can't reach.
+                    try? await Task.sleep(for: .seconds(8))
+                    player.next()
                 }
                 if Self.autoShowNowPlaying { nowPlaying.isShown = true }
             }
