@@ -144,7 +144,7 @@ struct SettingsSheet: View {
     }
 
     private var listenersSummary: String {
-        let names = model.roster.listeners.map(\.name)
+        let names = model.roster.others.map(\.name)
         return names.isEmpty ? "Just you" : ListenerRoster.joinNames(["You"] + names)
     }
 

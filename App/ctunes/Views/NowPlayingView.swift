@@ -2,23 +2,27 @@ import PlexKit
 import SwiftUI
 
 /// Whether Now Playing is on screen. One flag shared by every screen that
-/// can open it, so the host lives in one place (`LibraryView`): a sheet in
+/// can open it, so the host lives in one place (`LibraryView`): a cover in
 /// a narrow window, a trailing column beside the stack in a wide one.
 @MainActor @Observable
 final class NowPlayingPresentation {
     var isShown = false
     /// Set by the host from the window width, not the size class: a Mac
     /// window only turns compact a hair above its minimum width, and the
-    /// column has to give way to the sheet well before the window is
+    /// column has to give way to the cover well before the window is
     /// that narrow.
     var isColumn = false
+    /// An artist tapped in Now Playing. The host owns the navigation path,
+    /// so it pushes the page and clears this; the cover closes itself first.
+    var requestedArtist: ArtistRoute?
 }
 
 /// How Now Playing is on screen. The column and the cover pin the header
-/// and scroll only the queue; the sheet scrolls the header away with it.
+/// and scroll only the queue; the phone scrolls the header away with it.
 enum NowPlayingStyle {
-    /// A phone: the system sheet, grab handle, drag to dismiss.
-    case sheet
+    /// A phone: covers the whole screen, the header scrolling with the
+    /// queue. A chevron closes it, as does pulling the top down.
+    case phone
     /// Regular width but too narrow for the column: covers the stack, with
     /// a close button in its toolbar.
     case fullScreen
@@ -28,18 +32,24 @@ enum NowPlayingStyle {
 
 struct NowPlayingView: View {
     let model: AppModel
-    var style: NowPlayingStyle = .sheet
+    var style: NowPlayingStyle = .phone
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var presentation
 
     /// Held while dragging so the slider doesn't fight the time observer.
     @State private var scrubbing: Double?
 
+    /// The art on show, at the size the header draws it; the background
+    /// takes its color from the same file so it is never a second fetch.
+    private var artworkURL: URL? {
+        model.library?.artworkURL(player.currentTrack?.thumb, size: 900)
+    }
+
     var body: some View {
-        if style == .sheet {
+        if style == .phone {
             List {
                 // The header scrolls with the queue, Spotify-style, so Up Next
-                // gets the whole sheet rather than whatever is left under the art.
+                // gets the whole screen rather than whatever is left under the art.
                 Section {
                     header
                         .listRowInsets(EdgeInsets())
@@ -49,7 +59,14 @@ struct NowPlayingView: View {
                 queueSection
             }
             .listStyle(.plain)
-            .parchment()
+            .artworkBackground(artworkURL)
+            // A full-screen cover has no drag to dismiss of its own, so
+            // pulling the top well past its rest position stands in for it.
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top < -110
+            } action: { _, pulled in
+                if pulled { presentation.isShown = false }
+            }
         } else {
             // The header lives outside the List on purpose. A List row whose
             // height follows the width (the art is a square of the column)
@@ -66,7 +83,7 @@ struct NowPlayingView: View {
                         .listStyle(.plain)
                         .scrollContentBackground(.hidden)
                 }
-                .parchment()
+                .artworkBackground(artworkURL)
                 .navigationTitle("Now Playing")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -170,17 +187,31 @@ struct NowPlayingView: View {
 
     private var header: some View {
         VStack(spacing: 24) {
-            // Edge to edge less a margin, so the art is as big as the sheet
-            // allows rather than a fixed 300pt. Inset from the top by the same
-            // 28pt it is from the sides (16 header + 12 here). In the column
-            // the toolbar already clears the top, and the art is capped so a
-            // wide column in a short window still leaves room for the queue.
-            Artwork(url: model.library?.artworkURL(player.currentTrack?.thumb, size: 900),
-                    size: nil, corner: 14)
+            // The phone has no title bar, so the close chevron takes a row
+            // of its own at the top, where the sheet's grab handle was.
+            if style == .phone {
+                HStack {
+                    Button { presentation.isShown = false } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Hide Now Playing")
+                    Spacer()
+                }
+                .padding(.top, 4)
+            }
+            // Edge to edge less a margin, so the art is as big as the screen
+            // allows rather than a fixed 300pt. In the column the toolbar
+            // already clears the top, and the art is capped so a wide column
+            // in a short window still leaves room for the queue.
+            Artwork(url: artworkURL, size: nil, corner: 14)
                 .shadow(radius: 12, y: 6)
-                .frame(maxWidth: style == .sheet ? nil : 400)
+                .frame(maxWidth: style == .phone ? nil : 400)
                 .padding(.horizontal, 12)
-                .padding(.top, style == .sheet ? 28 : 8)
+                .padding(.top, style == .phone ? 0 : 8)
 
             HStack(alignment: .top) {
                 // Balances the heart so the text stays centred.
@@ -191,9 +222,9 @@ struct NowPlayingView: View {
                         .multilineTextAlignment(.center)
                     // The credited artist takes the artist line on a
                     // compilation or a feature; the album artist moves down
-                    // beside the album so both still show.
-                    Text(player.currentTrack?.trackArtist ?? player.currentTrack?.grandparentTitle ?? "")
-                        .foregroundStyle(.secondary)
+                    // beside the album so both still show. Tapping opens the
+                    // album artist's page, the one with a rating key.
+                    artistLine
                     Text(albumLine)
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
@@ -211,15 +242,29 @@ struct NowPlayingView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal)
         .padding(.bottom, 8)
-        // Overlaid rather than in the stack so it takes no vertical space.
-        // Only the sheet gets a grab handle: the others have a title bar.
-        .overlay(alignment: .top) {
-            if style == .sheet {
-                Capsule()
-                    .fill(.quaternary)
-                    .frame(width: 40, height: 5)
-                    .padding(.top, 8)
+    }
+
+    @ViewBuilder private var artistLine: some View {
+        let track = player.currentTrack
+        let name = track?.trackArtist ?? track?.grandparentTitle ?? ""
+        if let track, let key = track.grandparentRatingKey, let artist = track.grandparentTitle {
+            Button {
+                // The cover gets out of the way; the column stays put.
+                if !presentation.isColumn { presentation.isShown = false }
+                presentation.requestedArtist = ArtistRoute(ratingKey: key, title: artist)
+            } label: {
+                HStack(spacing: 4) {
+                    Text(name)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(artist)")
+        } else {
+            Text(name).foregroundStyle(.secondary)
         }
     }
 
@@ -345,7 +390,7 @@ struct HeartButton: View {
         } label: {
             Image(systemName: favorite ? "heart.fill" : "heart")
                 .font(.title2)
-                .foregroundStyle(favorite ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.secondary))
+                .foregroundStyle(favorite ? AnyShapeStyle(Color.heart) : AnyShapeStyle(.secondary))
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)

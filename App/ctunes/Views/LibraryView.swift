@@ -13,10 +13,9 @@ struct LibraryView: View {
     @State private var buildingMix = false
     @State private var nowPlaying = NowPlayingPresentation()
     @Environment(AudioPlayer.self) private var player
-    /// Compact is a phone, where Now Playing is a sheet; regular but too
-    /// narrow for the column (an iPad in portrait, a small Mac window) gets
-    /// it full screen instead, since a form sheet floating over the grid
-    /// reads as a dialog.
+    /// Compact is a phone, where Now Playing covers the screen with its
+    /// header scrolling; regular but too narrow for the column (an iPad in
+    /// portrait, a small Mac window) covers it with a title bar instead.
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// The window's width, measured rather than read off the size class:
     /// see `NowPlayingPresentation.isColumn`.
@@ -31,17 +30,12 @@ struct LibraryView: View {
     /// ever wider grid.
     private var columnWidth: CGFloat { min(max(width * 0.36, 360), 560) }
 
-    /// The presentation while the window is narrow. Both modifiers share
-    /// it; only the one for the current size class ever sees true.
-    private func presented(_ style: NowPlayingStyle) -> Binding<Bool> {
+    /// The cover while the window is narrow.
+    private var presented: Binding<Bool> {
         Binding(
-            get: { nowPlaying.isShown && !nowPlaying.isColumn && Self.style(for: sizeClass) == style },
+            get: { nowPlaying.isShown && !nowPlaying.isColumn },
             set: { nowPlaying.isShown = $0 }
         )
-    }
-
-    private static func style(for sizeClass: UserInterfaceSizeClass?) -> NowPlayingStyle {
-        sizeClass == .compact ? .sheet : .fullScreen
     }
 
     var body: some View {
@@ -68,21 +62,22 @@ struct LibraryView: View {
         .tint(Color.ink)
         .animation(.snappy, value: nowPlaying.isColumn)
         .environment(nowPlaying)
-        // Both presentations are handed the observables by hand. When a
-        // Mac window drags across the compact/regular boundary UIKit
-        // re-hosts the open presentation, and that pass evaluates the
-        // content without the environment it inherited from above: "No
-        // Observable object of type AudioPlayer found", a trap, at 730pt
-        // every time.
-        .sheet(isPresented: presented(.sheet)) {
-            NowPlayingView(model: model, style: .sheet)
+        // The cover is handed the observables by hand. When a Mac window
+        // drags across the compact/regular boundary UIKit re-hosts the
+        // open presentation, and that pass evaluates the content without
+        // the environment it inherited from above: "No Observable object
+        // of type AudioPlayer found", a trap, at 730pt every time.
+        .fullScreenCover(isPresented: presented) {
+            NowPlayingView(model: model, style: sizeClass == .compact ? .phone : .fullScreen)
                 .environment(player)
                 .environment(nowPlaying)
         }
-        .fullScreenCover(isPresented: presented(.fullScreen)) {
-            NowPlayingView(model: model, style: .fullScreen)
-                .environment(player)
-                .environment(nowPlaying)
+        // An artist tapped in Now Playing: the cover has closed itself (or
+        // the column stays), and the page goes onto the stack behind it.
+        .onChange(of: nowPlaying.requestedArtist) { _, route in
+            guard let route else { return }
+            path.append(route)
+            nowPlaying.requestedArtist = nil
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             self.width = width
@@ -116,6 +111,10 @@ struct LibraryView: View {
                 path.append(album)
             }
             #if DEBUG
+            if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_ARTIST"], !raw.isEmpty {
+                let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+                path.append(ArtistRoute(ratingKey: parts[0], title: parts.count > 1 ? parts[1] : "Artist"))
+            }
             if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
                let kind = MixKind(rawValue: String(raw.prefix { $0 != ":" })) {
                 path.append(kind)
@@ -147,7 +146,12 @@ struct LibraryView: View {
             }
             // Declared at the stack root so a seeded path can reach it.
             .navigationDestination(for: PlexAlbum.self) { album in
-                TracksView(model: model, album: album)
+                TracksView(model: model, album: album, path: $path)
+            }
+            .navigationDestination(for: ArtistRoute.self) { route in
+                if let section = model.selectedSection {
+                    ArtistView(model: model, section: section, route: route, path: $path)
+                }
             }
             .navigationDestination(for: MixKind.self) { kind in
                 if let section = model.selectedSection {

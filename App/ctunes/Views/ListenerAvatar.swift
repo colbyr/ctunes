@@ -24,8 +24,9 @@ enum ListenerPalette {
     }
 }
 
-/// A colored disc with the listener's initial. `struck` draws the diagonal
-/// line the album screen uses for "not for this person".
+/// A colored disc with the listener's initial; the owner's is the amber
+/// person instead. `struck` draws the diagonal line the album screen uses
+/// for "not for this person".
 struct ListenerAvatar: View {
     let listener: Listener
     var size: CGFloat = 24
@@ -33,11 +34,15 @@ struct ListenerAvatar: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(ListenerPalette.color(listener.colorIndex))
-            // Ink, never white: the fills are the same in both appearances.
-            Text(listener.initial)
-                .font(.system(size: size * 0.46, weight: .bold))
-                .foregroundStyle(Color.accentInk)
+            if listener.isOwner {
+                OwnerAvatar(size: size)
+            } else {
+                Circle().fill(ListenerPalette.color(listener.colorIndex))
+                // Ink, never white: the fills are the same in both appearances.
+                Text(listener.initial)
+                    .font(.system(size: size * 0.46, weight: .bold))
+                    .foregroundStyle(Color.accentInk)
+            }
             if struck {
                 Path { path in
                     path.move(to: CGPoint(x: size * 0.18, y: size * 0.82))

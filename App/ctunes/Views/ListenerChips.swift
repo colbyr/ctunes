@@ -1,10 +1,10 @@
 import PlexKit
 import SwiftUI
 
-/// Who's in the car. The owner is always in; each listener toggles. With
-/// nobody else on the roster a plus chip opens the Listeners sheet, so the
-/// row never reads as empty. An optional accessory sits pinned at the
-/// trailing edge, outside the scroll.
+/// Who's in the car. Every listener toggles, the owner first among them.
+/// With nobody else on the roster a plus chip opens the Listeners sheet,
+/// so the row never reads as just one chip. An optional accessory sits
+/// pinned at the trailing edge, outside the scroll.
 struct ListenerChips<Trailing: View>: View {
     let model: AppModel
     /// Every artist in the library, for the Listeners sheet's veto lists.
@@ -18,10 +18,6 @@ struct ListenerChips<Trailing: View>: View {
         HStack(spacing: 8) {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    FilterChip(active: true) {
-                        OwnerAvatar()
-                        Text("You")
-                    }
                     ForEach(model.roster.listeners) { listener in
                         let active = model.roster.isActive(listener.id)
                         Button {
@@ -35,7 +31,7 @@ struct ListenerChips<Trailing: View>: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
                     }
-                    if model.roster.listeners.isEmpty {
+                    if model.roster.others.isEmpty {
                         Button {
                             showingListeners = true
                         } label: {

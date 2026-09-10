@@ -60,18 +60,24 @@ offline. Reachability is decided by the server answering, never by
 
 The app runs on iPhone and iPad (and so on Apple silicon Macs as "Designed
 for iPad"). Now Playing has one host, in `LibraryView`, driven by the
-`NowPlayingPresentation` flag in the environment: a sheet in a window
-narrower than 960pt, a trailing column beside the stack (36% of the width,
-360–560pt) in a wider one. The host measures the window itself rather than
+`NowPlayingPresentation` flag in the environment: a full-screen cover in a
+window narrower than 960pt (on a phone the header scrolls with the queue
+and a chevron or an overscroll pull closes it; on a regular width it gets
+a title bar), a trailing column beside the stack (36% of the width,
+360–560pt) in a wider one. An artist tapped in Now Playing goes through
+`requestedArtist` on the same object, since the host owns the path. The host measures the window itself rather than
 reading the size class: a Mac window only turns compact a hair above its
 640pt minimum, so `.inspector` kept the column at every usable width. The
 column pins the header and scrolls only the queue, in its own
 `NavigationStack` so the close button is a toolbar item level with
-Settings. Screens set the flag; none presents the sheet themselves. **A
-sheet must be handed `.environment(player)` and `.environment(nowPlaying)`
+Settings. Screens set the flag; none presents the cover themselves. **The
+cover must be handed `.environment(player)` and `.environment(nowPlaying)`
 explicitly**: when a Mac window is dragged across the compact/regular
-boundary UIKit re-hosts the open sheet without the inherited environment
-and traps. **Keep width-dependent rows out of `List`** on any screen that
+boundary UIKit re-hosts the open presentation without the inherited
+environment and traps. The album, artist and Now Playing screens take
+their ground from the art (`ArtworkTint`, `artworkBackground(_:)`): the
+cover's dominant color, computed once per URL off the main actor and
+washed into the parchment at the top. **Keep width-dependent rows out of `List`** on any screen that
 reaches the Mac (grids, square artwork): a self-sizing row whose height
 follows the width recurses in `UICollectionView` during a live resize.
 The browse and mix grids are `ScrollView` + `LazyVStack` for that reason.
@@ -133,7 +139,10 @@ and the `-1005` retry: the cache is an optimisation, never the only path.
 
 Listeners (`ListenerRoster`, owned by `AppModel`) sync through
 `NSUbiquitousKeyValueStore` under one `listeners` key holding the `[Listener]`
-JSON, last writer wins. The active set is per device and never leaves
+JSON, last writer wins. The owner is an entry like the others under the
+fixed `Listener.ownerID`, always first, toggled and vetoed the same way; a
+roster or cloud list from before that entry existed gains it on decode,
+listening, with no vetoes. The active set is per device and never leaves
 `UserDefaults`, which also keeps a full copy so launch never waits on iCloud.
 The store needs the `ubiquity-kvstore-identifier` entitlement in
 `App/ctunes.entitlements` and iCloud enabled on the App ID; a build signed
@@ -255,6 +264,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 |---|---|
 | `CTUNES_DEV_TOKEN` | skips sign-in with a token from the environment |
 | `CTUNES_DEV_ALBUM` | `ratingKey\|title\|artist\|artistKey`, pushes that album onto the stack |
+| `CTUNES_DEV_ARTIST` | `ratingKey\|title`, pushes that artist's page onto the stack |
 | `CTUNES_DEV_AUTOPLAY` | `1` starts playback once tracks load; `last` starts on the final track 3s from its end, so the queue finishes at once; `end` starts on the first track 3s from its end, so the next-track transition happens at once; `skip` starts on the first track and skips 8s in, while the server is still serving it |
 | `CTUNES_DEV_NOWPLAYING` | `1` opens the Now Playing sheet |
 | `CTUNES_DEV_FAVORITES` | `1` pushes the Favorites page |

@@ -92,9 +92,9 @@ struct FavoritesView: View {
         List {
             HStack(spacing: 12) {
                 MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
-                              enabled: !playable.isEmpty, loading: false, action: play)
+                              enabled: !playable.isEmpty, loading: false, tint: .heart, action: play)
                 MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
-                              enabled: !playable.isEmpty, loading: false, action: shuffle)
+                              enabled: !playable.isEmpty, loading: false, tint: .heart, action: shuffle)
             }
             .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
             .listRowSeparator(.hidden)
@@ -277,7 +277,7 @@ struct FavoritesView: View {
                 } label: {
                     Label("Unfavorite", systemImage: "heart.slash")
                 }
-                .tint(Color.accentText)
+                .tint(Color.heart)
             }
         }
     }

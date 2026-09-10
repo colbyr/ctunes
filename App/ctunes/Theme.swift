@@ -1,26 +1,35 @@
 import SwiftUI
 
-/// The "Parchment" palette: cream ground, white glass, amber only where it
-/// acts. Every token carries its own light and dark value, so views read
-/// `Color.ink` and never branch on the color scheme.
+/// The "Parchment" palette: white ground with a breath of cream at the
+/// foot, white glass, amber only where it acts, rose for hearts and a blue
+/// and a teal for the two mixes. Every token carries its own light and dark
+/// value, so views read `Color.ink` and never branch on the color scheme.
 extension Color {
     /// Primary text, icons and filled controls.
     static let ink = dynamic(light: 0x2B211B, dark: 0xF5EAD6)
     /// Screen background gradient, top and bottom.
-    static let parchmentTop = dynamic(light: 0xF8EFDD, dark: 0x1E1814)
-    static let parchmentBottom = dynamic(light: 0xEFDFC2, dark: 0x151110)
+    static let parchmentTop = dynamic(light: 0xFFFFFF, dark: 0x1E1814)
+    static let parchmentBottom = dynamic(light: 0xF9F5EE, dark: 0x151110)
     /// Cards, circular buttons and chips.
     static let glass = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(white: 1, alpha: 0.07)
-            : UIColor(white: 1, alpha: 0.72)
+            : UIColor(white: 1, alpha: 0.85)
     })
-    /// The 1pt stroke on a glass surface.
+    /// The 1pt stroke on a glass surface. A hint of ink by day: on a white
+    /// ground a white stroke is invisible and the card is only its shadow.
     static let glassBorder = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(white: 1, alpha: 0.10)
-            : UIColor(white: 1, alpha: 0.90)
+            : UIColor(red: 0x2B / 255, green: 0x21 / 255, blue: 0x1B / 255, alpha: 0.08)
     })
+    /// Hearts: the favorites disc, the heart glyphs and the favorite swipe.
+    static let heart = dynamic(light: 0xD9486E, dark: 0xF07A96)
+    /// The glyph on top of a heart fill.
+    static let heartInk = Color.white
+    /// The artist mix, and the album mix: one accent each, neither amber.
+    static let artistMix = dynamic(light: 0x4E6FA8, dark: 0x93ADDD)
+    static let albumMix = dynamic(light: 0x2E8A7F, dark: 0x7FC9BE)
     /// The amber fill: play, progress, the favorites disc, the owner's avatar.
     static let amber = Color(hex: 0xF2B33D)
     /// Amber as text or an icon on the cream ground, darkened for contrast;
@@ -82,6 +91,14 @@ extension View {
     func parchment() -> some View {
         scrollContentBackground(.hidden)
             .background(ParchmentBackground())
+            .listRowSeparatorTint(.divider)
+    }
+
+    /// The same, washed at the top with the art's own color: the album and
+    /// Now Playing screens take their ground from the cover on show.
+    func artworkBackground(_ url: URL?) -> some View {
+        scrollContentBackground(.hidden)
+            .background(ArtworkBackground(url: url))
             .listRowSeparatorTint(.divider)
     }
 

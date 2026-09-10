@@ -12,8 +12,14 @@ enum MixKind: String, Hashable {
         }
     }
 
-    /// Amber for both: one accent, spent only where something acts.
-    var accent: Color { .accentText }
+    /// Each mix has its own color, neither of them the hearts' rose nor
+    /// the transport's amber: blue for artists, teal for albums.
+    var accent: Color {
+        switch self {
+        case .artist: .artistMix
+        case .album: .albumMix
+        }
+    }
 
     var systemImage: String {
         switch self {
@@ -483,11 +489,13 @@ private struct MixActions: View {
         HStack(spacing: 12) {
             MixActionCard(
                 systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
-                enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums
+                enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums,
+                tint: kind.accent
             ) { action(.playAlbums) }
             MixActionCard(
                 systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
-                enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks
+                enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks,
+                tint: kind.accent
             ) { action(.shuffleTracks) }
         }
     }
@@ -502,6 +510,8 @@ struct MixActionCard: View {
     let subtitle: String?
     let enabled: Bool
     let loading: Bool
+    /// The icon and its disc: the page's own color.
+    let tint: Color
     let action: () -> Void
 
     /// Title-only cards share a row, so they tighten up.
@@ -512,9 +522,9 @@ struct MixActionCard: View {
             HStack(spacing: compact ? 10 : 14) {
                 Image(systemName: systemImage)
                     .font(compact ? .body.weight(.medium) : .title3.weight(.medium))
-                    .foregroundStyle(enabled ? AnyShapeStyle(Color.chipInk) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(enabled ? AnyShapeStyle(tint) : AnyShapeStyle(.tertiary))
                     .frame(width: compact ? 36 : 44, height: compact ? 36 : 44)
-                    .background(enabled ? AnyShapeStyle(Color.chip) : AnyShapeStyle(.fill.tertiary), in: .circle)
+                    .background(enabled ? AnyShapeStyle(tint.opacity(0.16)) : AnyShapeStyle(.fill.tertiary), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.headline)

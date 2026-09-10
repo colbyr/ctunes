@@ -299,12 +299,15 @@ public enum RecencyBucket: Int, CaseIterable, Sendable {
         }
     }
 
-    public init(seconds: Int?, now: Date = .now) {
+    /// Today is the calendar day, not the last 24 hours: at 9am a play from
+    /// yesterday evening is yesterday's. The rest are plain spans.
+    public init(seconds: Int?, now: Date = .now, calendar: Calendar = .current) {
         guard let seconds else { self = .never; return }
-        let age = now.timeIntervalSince(Date(timeIntervalSince1970: TimeInterval(seconds)))
+        let played = Date(timeIntervalSince1970: TimeInterval(seconds))
+        let age = now.timeIntervalSince(played)
         let day: TimeInterval = 86_400
         switch age {
-        case ..<day: self = .today
+        case _ where calendar.isDate(played, inSameDayAs: now): self = .today
         case ..<(7 * day): self = .pastWeek
         case ..<(30 * day): self = .pastMonth
         case ..<(182 * day): self = .pastSixMonths

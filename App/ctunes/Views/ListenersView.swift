@@ -45,32 +45,21 @@ struct ListenersList: View {
     @State private var added: Listener.ID?
 
     var body: some View {
+        let others = model.roster.others
         List {
             Section("Library owner") {
-                HStack(spacing: 12) {
-                    OwnerAvatar(size: 40)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("You")
-                        Text("Hears everything · always listening")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+                NavigationLink(value: Listener.ownerID) {
+                    row(model.roster.owner)
                 }
             }
             Section {
-                ForEach(model.roster.listeners) { listener in
+                ForEach(others) { listener in
                     NavigationLink(value: listener.id) {
-                        HStack(spacing: 12) {
-                            ListenerAvatar(listener: listener, size: 40)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(listener.name)
-                                Text(Self.summary(listener))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
+                        row(listener)
                     }
                 }
                 .onDelete { offsets in
-                    for id in offsets.map({ model.roster.listeners[$0].id }) {
+                    for id in offsets.map({ others[$0].id }) {
                         model.removeListener(id)
                     }
                 }
@@ -91,6 +80,17 @@ struct ListenersList: View {
         }
         .navigationDestination(item: $added) { id in
             ListenerDetail(model: model, id: id, artists: artists)
+        }
+    }
+
+    private func row(_ listener: Listener) -> some View {
+        HStack(spacing: 12) {
+            ListenerAvatar(listener: listener, size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(listener.name)
+                Text(Self.summary(listener))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -130,35 +130,40 @@ private struct ListenerDetail: View {
             Section {
                 VStack(spacing: 10) {
                     ListenerAvatar(listener: listener, size: 72)
-                    Menu("Change Color") {
-                        ForEach(ListenerPalette.colors.indices, id: \.self) { index in
-                            Button {
-                                model.setListenerColor(id, index: index)
-                            } label: {
-                                Label {
-                                    Text(ListenerPalette.names[index])
-                                } icon: {
-                                    Image(systemName: index == listener.colorIndex ? "checkmark.circle.fill" : "circle.fill")
-                                        .foregroundStyle(ListenerPalette.color(index))
+                    // The owner is the amber person, and "You" is their name.
+                    if !listener.isOwner {
+                        Menu("Change Color") {
+                            ForEach(ListenerPalette.colors.indices, id: \.self) { index in
+                                Button {
+                                    model.setListenerColor(id, index: index)
+                                } label: {
+                                    Label {
+                                        Text(ListenerPalette.names[index])
+                                    } icon: {
+                                        Image(systemName: index == listener.colorIndex ? "checkmark.circle.fill" : "circle.fill")
+                                            .foregroundStyle(ListenerPalette.color(index))
+                                    }
                                 }
                             }
                         }
+                        .font(.footnote)
                     }
-                    .font(.footnote)
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             }
-            Section {
-                HStack {
-                    Text("Name").frame(width: 64, alignment: .leading)
-                    TextField("Name", text: name)
+            if !listener.isOwner {
+                Section {
+                    HStack {
+                        Text("Name").frame(width: 64, alignment: .leading)
+                        TextField("Name", text: name)
+                    }
                 }
             }
             Section {
                 if vetoed.isEmpty {
-                    Text("Nothing vetoed — \(listener.name) hears everything.")
+                    Text(listener.isOwner ? "Nothing vetoed — you hear everything." : "Nothing vetoed — \(listener.name) hears everything.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.center)

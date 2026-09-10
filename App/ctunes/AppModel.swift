@@ -479,7 +479,7 @@ final class AppModel {
     private func seedDevelopmentListeners() {
         #if DEBUG
         guard let value = ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS"],
-              !value.isEmpty, roster.listeners.isEmpty else { return }
+              !value.isEmpty, roster.others.isEmpty else { return }
         let laura = addListener(name: "Laura")
         _ = addListener(name: "Kids")
         toggleListening(laura.id)

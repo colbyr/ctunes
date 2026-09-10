@@ -142,10 +142,29 @@ struct MusicView: View {
                                 .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
                         } header: {
                             if !group.name.isEmpty {
-                                AlbumGroupHeader(group: group)
+                                // Under the Artists view the heading is the
+                                // artist, and opens their page.
+                                if view == .artist, let key = group.albums.first?.parentRatingKey {
+                                    Button { path.append(ArtistRoute(ratingKey: key, title: group.name)) } label: {
+                                        HStack(spacing: 6) {
+                                            AlbumGroupHeader(group: group)
+                                            Image(systemName: "chevron.right")
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .contentShape(.rect)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Open \(group.name)")
                                     .padding(.leading, Self.margin)
                                     .padding(.top, 14)
                                     .padding(.bottom, 6)
+                                } else {
+                                    AlbumGroupHeader(group: group)
+                                        .padding(.leading, Self.margin)
+                                        .padding(.top, 14)
+                                        .padding(.bottom, 6)
+                                }
                             }
                         }
                     }
@@ -222,7 +241,7 @@ struct MusicView: View {
         .alert("Nothing to shuffle", isPresented: $everyFavoriteHidden) {
             Button("OK") {}
         } message: {
-            Text("Every favorite is by an artist hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name))).")
+            Text("Every favorite is by an artist hidden for \(ListenerRoster.joinNames(model.roster.activeNames)).")
         }
         .sheet(isPresented: $showingListeners) {
             ListenersSheet(model: model, artists: artists)
@@ -235,10 +254,10 @@ struct MusicView: View {
     /// "32 tracks for you & Laura"; just the count with no listeners set up,
     /// just the listeners until the count arrives, nothing with neither.
     private var favoritesSubtitle: String? {
-        let names = model.roster.active.map(\.name)
-        let who = model.roster.listeners.isEmpty
+        let names = model.roster.activeNames
+        let who = model.roster.others.isEmpty
             ? nil
-            : "for " + (names.isEmpty ? "just you" : ListenerRoster.joinNames(["you"] + names))
+            : "for " + (names.isEmpty ? "no one" : names == ["you"] ? "just you" : ListenerRoster.joinNames(names))
         let count = favorites.map { allowed($0).count }
             .map { "\($0) track\($0 == 1 ? "" : "s")" }
         let parts = [count, who].compactMap { $0 }
@@ -280,7 +299,9 @@ struct MusicView: View {
     }
 }
 
-private struct AlbumTile: View {
+/// One cover with its title and either the artist or the year under it.
+/// Shared with the artist page, so an album reads the same on both.
+struct AlbumTile: View {
     let model: AppModel
     let album: PlexAlbum
     let showArtist: Bool
@@ -358,9 +379,9 @@ private struct ShuffleFavoritesCard: View {
                 HStack(spacing: 14) {
                     Image(systemName: "heart.fill")
                         .font(.title3)
-                        .foregroundStyle(Color.accentInk)
+                        .foregroundStyle(Color.heartInk)
                         .frame(width: 44, height: 44)
-                        .background(Color.amber, in: .circle)
+                        .background(Color.heart, in: .circle)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Shuffle Favorites").font(.headline)
                         if let subtitle {
@@ -375,7 +396,7 @@ private struct ShuffleFavoritesCard: View {
                     } else {
                         Image(systemName: "shuffle")
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(Color.accentText)
+                            .foregroundStyle(Color.heart)
                     }
                 }
                 .padding(14)
@@ -402,7 +423,8 @@ private struct ShuffleFavoritesCard: View {
     }
 }
 
-/// Half-width entry to a mix builder, sharing the hero card's chrome.
+/// Half-width entry to a mix builder, sharing the hero card's chrome, in
+/// the mix's own color so the two read apart at a glance.
 private struct MixTile: View {
     let kind: MixKind
     let action: () -> Void
@@ -412,9 +434,9 @@ private struct MixTile: View {
             HStack(spacing: 12) {
                 Image(systemName: kind.systemImage)
                     .font(.subheadline)
-                    .foregroundStyle(Color.chipInk)
+                    .foregroundStyle(kind.accent)
                     .frame(width: 36, height: 36)
-                    .background(Color.chip, in: .circle)
+                    .background(kind.accent.opacity(0.16), in: .circle)
                 Text(kind.title).font(.headline)
                 Spacer(minLength: 0)
             }

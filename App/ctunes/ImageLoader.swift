@@ -70,4 +70,18 @@ final class ImageLoader {
         guard let url, cached(url) == nil, inFlight[url] == nil else { return }
         Task { _ = await image(for: url) }
     }
+
+    /// The art's dominant color, computed once per URL. Small enough to
+    /// keep for the session: a handful of doubles per cover looked at.
+    private var tints: [URL: ArtworkTint] = [:]
+
+    func tint(for url: URL) async -> ArtworkTint? {
+        if let hit = tints[url] { return hit }
+        guard let image = await image(for: url) else { return nil }
+        // Off the main actor: 1024 pixels is quick, but not free during a
+        // sheet's presentation animation.
+        let tint = await Task.detached(priority: .userInitiated) { image.dominantTint() }.value
+        if let tint { tints[url] = tint }
+        return tint
+    }
 }

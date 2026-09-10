@@ -4,6 +4,9 @@ import SwiftUI
 struct TracksView: View {
     let model: AppModel
     let album: PlexAlbum
+    /// The stack's path, for pushing the artist page by hand: a
+    /// NavigationLink in the header row would make the whole row a link.
+    @Binding var path: NavigationPath
     @Environment(AudioPlayer.self) private var player
 
     @State private var tracks: [PlexTrack] = []
@@ -113,7 +116,7 @@ struct TracksView: View {
             }
         }
         .listStyle(.plain)
-        .parchment()
+        .artworkBackground(artworkURL)
         .overlay {
             if !loaded { ProgressView() }
         }
@@ -178,38 +181,44 @@ struct TracksView: View {
         }
     }
 
+    /// Fall back to the tracks' art: a track's thumb is its album's, so
+    /// this covers an album record with no thumb of its own (which is
+    /// also what the CTUNES_DEV_ALBUM hook produces).
+    private var artworkURL: URL? {
+        model.library?.artworkURL(album.thumb ?? tracks.first?.thumb, size: 600)
+    }
+
     private var header: some View {
         VStack(spacing: 8) {
-            // Fall back to the tracks' art: a track's thumb is its album's, so
-            // this covers an album record with no thumb of its own (which is
-            // also what the CTUNES_DEV_ALBUM hook produces).
-            Artwork(url: model.library?.artworkURL(album.thumb ?? tracks.first?.thumb, size: 600),
-                    size: 180, corner: 10)
+            Artwork(url: artworkURL, size: 180, corner: 10)
                 .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
             Text(album.title).font(.headline)
             HStack(spacing: 10) {
                 if let artist = album.parentTitle {
-                    Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                    if let key = album.parentRatingKey {
+                        Button {
+                            path.append(ArtistRoute(ratingKey: key, title: artist))
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(artist).font(.subheadline)
+                                Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                            }
+                            .foregroundStyle(.secondary)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open \(artist)")
+                    } else {
+                        Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
-                if let artistKey = album.parentRatingKey, !model.roster.listeners.isEmpty {
+                if let artistKey = album.parentRatingKey {
                     Divider().frame(height: 16)
                     ListenerVetoes(model: model, artistKey: artistKey)
                 }
             }
             if let artistKey = album.parentRatingKey {
-                let listening = model.roster.active.filter { $0.vetoedArtistKeys.contains(artistKey) }
-                if !listening.isEmpty {
-                    Label(
-                        "Hidden right now — \(ListenerRoster.joinNames(listening.map(\.name))) \(listening.count == 1 ? "is" : "are") listening",
-                        systemImage: "eye.slash"
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.fill.tertiary, in: .capsule)
-                    .transition(.opacity)
-                }
+                HiddenRightNowLabel(model: model, artistKey: artistKey)
             }
             actions
                 .padding(.top, 16)
@@ -291,7 +300,7 @@ struct TracksView: View {
                     .accessibilityHidden(!downloaded)
                 Image(systemName: "heart.fill")
                     .font(.caption)
-                    .foregroundStyle(Color.accentText)
+                    .foregroundStyle(Color.heart)
                     .opacity(favorite ? 1 : 0)
                     .accessibilityHidden(!favorite)
                 if let seconds = track.durationSeconds {
@@ -324,7 +333,7 @@ struct TracksView: View {
                     Label(favorite ? "Unfavorite" : "Favorite",
                           systemImage: favorite ? "heart.slash" : "heart.fill")
                 }
-                .tint(Color.accentText)
+                .tint(Color.heart)
             }
         }
     }
@@ -372,9 +381,10 @@ struct TracksView: View {
     }
 }
 
-/// One avatar per listener beside the artist name. Tapping strikes the
-/// listener out: "not for Laura". A veto is per artist, not per album.
-private struct ListenerVetoes: View {
+/// One avatar per listener beside the artist name, the owner included.
+/// Tapping strikes the listener out: "not for Laura". A veto is per
+/// artist, not per album. Shared by the album and artist pages.
+struct ListenerVetoes: View {
     let model: AppModel
     let artistKey: String
 
@@ -391,6 +401,32 @@ private struct ListenerVetoes: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(vetoed ? "Not for \(listener.name), tap to allow" : "\(listener.name) listens, tap to hide")
             }
+        }
+    }
+}
+
+/// "Hidden right now — Laura is listening" under the vetoes, only while a
+/// listening rider has the artist vetoed. Nothing otherwise, so the header
+/// doesn't reserve a line for it.
+struct HiddenRightNowLabel: View {
+    let model: AppModel
+    let artistKey: String
+
+    var body: some View {
+        let listening = model.roster.active.filter { $0.vetoedArtistKeys.contains(artistKey) }
+        if !listening.isEmpty {
+            let names = listening.map { $0.isOwner ? "you" : $0.name }
+            let verb = listening.count == 1 && !listening[0].isOwner ? "is" : "are"
+            Label(
+                "Hidden right now — \(ListenerRoster.joinNames(names)) \(verb) listening",
+                systemImage: "eye.slash"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.fill.tertiary, in: .capsule)
+            .transition(.opacity)
         }
     }
 }

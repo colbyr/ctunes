@@ -55,7 +55,7 @@ struct HiddenArtistsLine: View {
 
     var body: some View {
         Text(count > 0
-            ? "\(count) artist\(count == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.active.map(\.name)))"
+            ? "\(count) artist\(count == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.activeNames))"
             : "Everything")
             .font(.footnote)
             .foregroundStyle(.secondary)
