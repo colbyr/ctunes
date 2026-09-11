@@ -43,6 +43,11 @@ final class AppModel {
     private let offline: OfflineStore
     private var lastReconnectAttempt: Date = .distantPast
     private static let reconnectInterval: TimeInterval = 30
+    /// The probe in flight when a signed-in fetch fails, so every screen
+    /// that failed at once waits on the same one.
+    private var rediscovery: Task<Bool, Never>?
+    private var lastRediscovery: Date = .distantPast
+    private static let rediscoverInterval: TimeInterval = 15
 
     /// Music libraries on the server, and the one being browsed. A server can
     /// expose several (audiobooks also report type "artist"), so the choice is
@@ -263,18 +268,59 @@ final class AppModel {
         downloads.attach(server: snapshot.server, offline: true)
     }
 
-    /// Called by a browse screen when a fetch fails while signed in. A
-    /// server that has gone away mid-session flips to the snapshot in
-    /// place; with no snapshot nothing changes, as before.
-    func connectionLost(_ error: Error) async {
-        guard state == .signedIn, Self.isConnectionError(error) else { return }
-        guard let snapshot = await lastSnapshot() else { return }
+    /// Called by a browse screen, or the player, when a fetch fails while
+    /// signed in. The address that failed is not necessarily the server:
+    /// a phone that walked from Wi-Fi to cellular still holds the LAN
+    /// address discovery picked, and the remote one answers fine. So the
+    /// connections are probed again first and the library swapped onto
+    /// whichever answers, in place, under the same stack and queue. Only
+    /// when nothing answers does the snapshot take over; with no snapshot
+    /// nothing changes, as before. Returns true when signed in again on a
+    /// fresh library, so the caller can retry what failed.
+    @discardableResult
+    func connectionLost(_ error: Error) async -> Bool {
+        guard state == .signedIn, Self.isConnectionError(error) else { return false }
+        if await rediscover() { return true }
+        // Another caller may have flipped to the snapshot while this one
+        // waited on the probe.
+        guard state == .signedIn else { return false }
+        guard let snapshot = await lastSnapshot() else { return false }
         errorMessage = error.localizedDescription
         enterOffline(snapshot)
+        return false
     }
 
+    /// Runs discovery again and, when the same server answers somewhere,
+    /// opens a fresh library on that address. Coalesced: the screens that
+    /// were mid-fetch all fail together and share one probe. Not repeated
+    /// within a few seconds of the last one: a library that keeps failing
+    /// on an address that just answered is a server problem, not a route
+    /// change, and belongs to the snapshot.
+    private func rediscover() async -> Bool {
+        if let rediscovery { return await rediscovery.value }
+        guard Date().timeIntervalSince(lastRediscovery) > Self.rediscoverInterval,
+              let client, let token, let current = library as? PlexLibrary
+        else { return false }
+        let task = Task { () -> Bool in
+            guard let server = try? await PlexServerDirectory(client: client).selectServer(token: token),
+                  state == .signedIn, server.machineIdentifier == current.serverIdentifier
+            else { return false }
+            library = PlexLibrary(client: client, server: server, token: token)
+            serverName = server.name
+            libraryGeneration += 1
+            errorMessage = nil
+            return true
+        }
+        rediscovery = task
+        let recovered = await task.value
+        rediscovery = nil
+        lastRediscovery = Date()
+        return recovered
+    }
+
+    /// A cancelled fetch is the screen going away, not the server.
     private static func isConnectionError(_ error: Error) -> Bool {
-        if error is URLError { return true }
+        if let error = error as? URLError { return error.code != .cancelled }
         if case PlexError.noServerReachable = error { return true }
         return false
     }

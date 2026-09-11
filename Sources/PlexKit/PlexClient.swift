@@ -8,7 +8,19 @@ public actor PlexClient {
     private let session: URLSession
     private let decoder: JSONDecoder
 
-    public init(identity: PlexIdentity, session: URLSession = .shared) {
+    /// The session API calls run on unless one is injected. Ten seconds to
+    /// the first byte, not the shared session's sixty: a LAN address the
+    /// phone has walked away from (Wi-Fi to cellular) hangs every request,
+    /// and a minute per call kept the app stuck on it. Nothing here is a
+    /// long transfer; downloads and streams have their own sessions.
+    public static let apiSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
+    public init(identity: PlexIdentity, session: URLSession = PlexClient.apiSession) {
         self.identity = identity
         self.session = session
         self.decoder = JSONDecoder()

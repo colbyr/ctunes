@@ -91,6 +91,13 @@ final class AudioPlayer {
     /// to load. Reset whenever the cursor moves.
     private var itemLoadRetries = 0
     private let maxItemLoadRetries = 2
+    /// Asked, once a stream has failed every retry, whether the server is
+    /// somewhere else now; set by the app, which owns discovery. Returns
+    /// true when a fresh library is in place, and hands it over through
+    /// `adopt` before returning, so the item reloads from the new address.
+    var connectionLost: (@MainActor (Error) async -> Bool)?
+    /// True while `connectionLost` is out, so a second failure waits.
+    private var recovering = false
     private var commandsConfigured = false
 
     /// One id per `play` call, so the server groups a listening session's
@@ -487,10 +494,42 @@ final class AudioPlayer {
             loadItem(url: url, autoPlay: isPlaying)
             return
         }
+        // Every retry went to the same address. A phone that left the
+        // server's Wi-Fi still streams from the LAN address discovery
+        // picked; let the app probe again and reload from the one that
+        // answers, or go offline, before giving up on the track.
+        if let connectionLost, !recovering {
+            recovering = true
+            log.error("stream failed \(self.itemLoadRetries) times, asking for rediscovery")
+            Task {
+                let recovered = await connectionLost(Self.connectionError(in: item))
+                recovering = false
+                guard player.currentItem === item else { return }
+                if recovered, let track = currentTrack, let url = remoteURL(for: track) {
+                    itemLoadRetries = 0
+                    loadItem(url: url, autoPlay: isPlaying)
+                } else {
+                    advance(wrapping: false)
+                }
+            }
+            return
+        }
         log.error("giving up on track after \(self.itemLoadRetries) retries, advancing")
         // The track is unplayable: move on rather than stall the queue. No
         // wrapping, so a server that is down doesn't cycle the queue forever.
         advance(wrapping: false)
+    }
+
+    /// AVFoundation wraps the transport error; the app decides on the
+    /// `URLError` underneath. A failure with none is read as the host not
+    /// answering, which is what an item on a stale address looks like.
+    private static func connectionError(in item: AVPlayerItem) -> Error {
+        var error = item.error
+        while let current = error {
+            if current is URLError { return current }
+            error = (current as NSError).userInfo[NSUnderlyingErrorKey] as? Error
+        }
+        return URLError(.cannotConnectToHost)
     }
 
     // MARK: - Timeline

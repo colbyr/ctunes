@@ -50,6 +50,17 @@ struct ContentView: View {
         .background(ParchmentBackground())
         .environment(player)
         .task { await model.bootstrap() }
+        // The player's stream failures go through the same rediscovery as
+        // a browse fetch. The library is handed over here, before the
+        // player reloads, rather than left to `onChange` below, which runs
+        // on SwiftUI's schedule.
+        .onAppear {
+            player.connectionLost = { [model, player] error in
+                let recovered = await model.connectionLost(error)
+                player.adopt(model.library)
+                return recovered
+            }
+        }
         // Sign-out lives in the model, which doesn't know the player; stop
         // playback and drop the cached audio here when it happens.
         .onChange(of: model.state) { old, new in

@@ -55,3 +55,15 @@ struct PlexIdentityTests {
         #expect(request.httpMethod == "POST")
     }
 }
+
+@Suite("API session")
+struct PlexClientSessionTests {
+    /// A LAN address the phone has walked away from hangs every request;
+    /// the shared session's 60s kept the app stuck on it for a minute.
+    @Test("fails fast rather than waiting a minute on a dead address")
+    func shortRequestTimeout() {
+        let config = PlexClient.apiSession.configuration
+        #expect(config.timeoutIntervalForRequest <= 10)
+        #expect(config.waitsForConnectivity == false)
+    }
+}

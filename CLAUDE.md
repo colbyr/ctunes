@@ -53,8 +53,16 @@ the last server, it opens an `OfflineLibrary` over it instead and enters
 `model.library`, typed `any LibrarySource`, and fetch in
 `.task(id: model.libraryGeneration)`, which re-runs when the library is
 swapped. A fetch that throws a `URLError` while signed in reports to
-`model.connectionLost`, which flips to the snapshot in place; the banner's
-"Try again" and scene activation call `reconnect()`. Hearts are read-only
+`model.connectionLost`, which **runs discovery again first** and swaps a
+fresh `PlexLibrary` in place when the same server answers on any
+connection, since a phone that walked from Wi-Fi to cellular still holds
+the LAN address and the remote one is fine; only when nothing answers does
+it flip to the snapshot. The probe is coalesced across the screens that
+failed together and not repeated within 15s. `AudioPlayer.connectionLost`
+routes a stream that failed every retry through the same call before
+advancing. `PlexClient.apiSession` times a request out at 10s, not the
+shared session's 60s, so a dead address fails fast. The banner's "Try
+again" and scene activation call `reconnect()`. Hearts are read-only
 offline. Reachability is decided by the server answering, never by
 `NWPathMonitor`.
 

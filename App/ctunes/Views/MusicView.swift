@@ -276,13 +276,24 @@ struct MusicView: View {
     /// Spread-shuffling once at enqueue time is all this needs; the player has
     /// no shuffle mode of its own.
     private func shuffleFavorites() {
-        guard let library = model.library, !loadingFavorites else { return }
+        guard var library = model.library, !loadingFavorites else { return }
         loadingFavorites = true
         Task {
             defer { loadingFavorites = false }
             // Fetched fresh rather than reusing the count's copy: hearts may
             // have been toggled since the screen loaded.
-            let fetched = (try? await library.favoriteTracks(inSection: section.key)) ?? []
+            let fetched: [PlexTrack]
+            do {
+                fetched = try await library.favoriteTracks(inSection: section.key)
+            } catch {
+                // The address may be stale (Wi-Fi to cellular): once the
+                // model has moved the library, one more go on the new one.
+                guard await model.connectionLost(error), let current = model.library,
+                      let again = try? await current.favoriteTracks(inSection: section.key)
+                else { return }
+                library = current
+                fetched = again
+            }
             favorites = fetched
             guard !fetched.isEmpty else {
                 noFavorites = true
