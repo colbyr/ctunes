@@ -343,6 +343,19 @@ struct MixBuilderView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(isSelected ? "Remove \(item.title)" : "Add \(item.title)")
                 .accessibilityHint(item.vetoed ? "Hidden for a listener, so it won't be played" : "")
+                .contextMenu { menu(for: item) }
+            }
+        }
+    }
+
+    /// A tap picks; a long press gets the same menu the tile has elsewhere.
+    @ViewBuilder private func menu(for item: Item) -> some View {
+        switch kind {
+        case .artist:
+            ArtistMenu(model: model, ratingKey: item.id, title: item.title)
+        case .album:
+            if let album = albums.first(where: { $0.ratingKey == item.id }) {
+                AlbumMenu(model: model, album: album)
             }
         }
     }

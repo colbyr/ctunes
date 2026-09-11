@@ -60,6 +60,7 @@ struct MusicView: View {
                     AlbumTile(model: model, album: album, showArtist: showArtist)
                 }
                 .buttonStyle(.plain)
+                .contextMenu { AlbumMenu(model: model, album: album) }
             }
         }
     }
@@ -156,6 +157,7 @@ struct MusicView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityLabel("Open \(group.name)")
+                                    .contextMenu { ArtistMenu(model: model, ratingKey: key, title: group.name) }
                                     .padding(.leading, Self.margin)
                                     .padding(.top, 14)
                                     .padding(.bottom, 6)
@@ -219,7 +221,7 @@ struct MusicView: View {
         .alert("No favorites yet", isPresented: $noFavorites) {
             Button("OK") {}
         } message: {
-            Text("Swipe a track left, or tap the heart in Now Playing, to favorite it.")
+            Text("Tap ··· on a track, or the heart in Now Playing, to favorite it.")
         }
         .alert("Nothing to shuffle", isPresented: $everyFavoriteHidden) {
             Button("OK") {}

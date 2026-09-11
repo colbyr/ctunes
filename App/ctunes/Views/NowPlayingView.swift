@@ -12,9 +12,6 @@ final class NowPlayingPresentation {
     /// column has to give way to the cover well before the window is
     /// that narrow.
     var isColumn = false
-    /// An artist tapped in Now Playing. The host owns the navigation path,
-    /// so it pushes the page and clears this; the cover closes itself first.
-    var requestedArtist: ArtistRoute?
 }
 
 /// How Now Playing is on screen. The column and the cover pin the header
@@ -35,6 +32,7 @@ struct NowPlayingView: View {
     var style: NowPlayingStyle = .phone
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var presentation
+    @Environment(LibraryNavigator.self) private var navigator
 
     /// Held while dragging so the slider doesn't fight the time observer.
     @State private var scrubbing: Double?
@@ -110,30 +108,36 @@ struct NowPlayingView: View {
                 Text("Last track").foregroundStyle(.secondary)
             }
             ForEach(upcoming) { entry in
-                Button { player.jump(to: entry) } label: {
-                    HStack(spacing: 12) {
-                        Artwork(url: model.library?.artworkURL(entry.item.thumb), size: 44)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.item.title).lineLimit(1)
-                            Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                HStack(spacing: 0) {
+                    Button { player.jump(to: entry) } label: {
+                        HStack(spacing: 12) {
+                            Artwork(url: model.library?.artworkURL(entry.item.thumb), size: 44)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.item.title).lineLimit(1)
+                                Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if let seconds = entry.item.durationSeconds {
+                                Text(TracksView.duration(seconds))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        Spacer()
-                        if let seconds = entry.item.durationSeconds {
-                            Text(TracksView.duration(seconds))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
+                        .padding(.leading, 20)
+                        .padding(.trailing, 8)
+                        .padding(.vertical, 10)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
+                    .buttonStyle(.row)
+                    MoreButton { TrackMenu(model: model, track: entry.item, placement: .queued(entry)) }
+                        .padding(.trailing, 12)
                 }
-                .buttonStyle(.row)
                 // Zero insets so the press highlight reaches the row edges;
                 // the label pads itself back to the standard inset.
                 .listRowInsets(EdgeInsets())
+                .contextMenu { TrackMenu(model: model, track: entry.item, placement: .queued(entry)) }
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) { player.remove(entry) } label: {
                         Label("Remove", systemImage: "trash")
@@ -210,6 +214,13 @@ struct NowPlayingView: View {
                 .frame(maxWidth: style == .phone ? nil : 400)
                 .padding(.horizontal, 12)
                 .padding(.top, style == .phone ? 0 : 8)
+                // A long press on the art is the track's menu: the way to
+                // its album, and to who hears its artist.
+                .contextMenu {
+                    if let track = player.currentTrack {
+                        TrackMenu(model: model, track: track, placement: .playing)
+                    }
+                }
 
             HStack(alignment: .top) {
                 // Balances the heart so the text stays centred.
@@ -249,7 +260,7 @@ struct NowPlayingView: View {
             Button {
                 // The cover gets out of the way; the column stays put.
                 if !presentation.isColumn { presentation.isShown = false }
-                presentation.requestedArtist = ArtistRoute(ratingKey: key, title: artist)
+                navigator.open(.artist(ArtistRoute(ratingKey: key, title: artist)))
             } label: {
                 HStack(spacing: 4) {
                     Text(name)

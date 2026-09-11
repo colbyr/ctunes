@@ -72,15 +72,16 @@ for iPad"). Now Playing has one host, in `LibraryView`, driven by the
 window narrower than 960pt (on a phone the header scrolls with the queue
 and a chevron or an overscroll pull closes it; on a regular width it gets
 a title bar), a trailing column beside the stack (36% of the width,
-360–560pt) in a wider one. An artist tapped in Now Playing goes through
-`requestedArtist` on the same object, since the host owns the path. The host measures the window itself rather than
+360–560pt) in a wider one. An artist tapped in Now Playing, or any route from an
+item menu, goes through `LibraryNavigator.open(_:)` in the environment,
+since the host owns the path. The host measures the window itself rather than
 reading the size class: a Mac window only turns compact a hair above its
 640pt minimum, so `.inspector` kept the column at every usable width. The
 column pins the header and scrolls only the queue, in its own
 `NavigationStack` so the close button is a toolbar item level with
 Settings. Screens set the flag; none presents the cover themselves. **The
-cover must be handed `.environment(player)` and `.environment(nowPlaying)`
-explicitly**: when a Mac window is dragged across the compact/regular
+cover must be handed `.environment(player)`, `.environment(nowPlaying)`
+and `.environment(navigator)` explicitly**: when a Mac window is dragged across the compact/regular
 boundary UIKit re-hosts the open presentation without the inherited
 environment and traps. The album, artist and Now Playing screens take
 their ground from the art (`ArtworkTint`, `artworkBackground(_:)`): the
@@ -131,6 +132,24 @@ the prefetch window is empty while it is on. Every
 shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
+
+**Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu` and
+`TrackMenu` are the one place an artist, album or track's actions live.
+Every tile, row, cover and name gets one as a long-press `.contextMenu`,
+a track row also opens it from the `···` (`MoreButton`) at its trailing
+edge, and the album and artist pages put theirs behind a `···` toolbar
+item. The only swipe left is Unfavorite on the Favorites list. **In a
+`List`, a `.contextMenu` on any part of a row is the whole row's**: the
+album page is a `ScrollView` so a long press on the cover is the cover's
+alone. A menu hides what its screen already answers (`showArtist`,
+`showAlbum`) and a track's `TrackPlacement` decides the queue items: in a
+list, Play and Shuffle play the list from that track (Shuffle keeps it
+first); in Up Next, Play Next and Move to End move the entry rather than
+copy it; on the playing track there are none. Play, queue and hearts are
+hidden when there is nothing on disk offline; the Listeners submenu is
+the per-artist veto and works offline. Fetches for a tile (an artist's
+or album's tracks) run in the menu action; nothing to play is posted to
+`LibraryNavigator.notice`, which `LibraryView` alerts.
 
 `TrackCache` (PlexKit actor, `notes/track-cache.md`) keeps whole track files
 under two roots with one sequential pump: `Caches/Tracks/<server>/<partId>-<stamp>.<ext>`
@@ -281,7 +300,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the first listener's page |
 | `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load |
-| `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root there once albums load, to see the collapsed title over artwork |
+| `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load |
 | `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |

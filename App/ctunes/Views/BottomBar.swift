@@ -142,6 +142,9 @@ private struct MiniPlayerPill: View {
         // a tap in the padding lands on the list row underneath the pill.
         .contentShape(.capsule)
         .glassEffect(.regular.interactive(), in: .capsule)
+        // A long press is the playing track's menu, the same one the art
+        // in Now Playing has.
+        .contextMenu { TrackMenu(model: model, track: track, placement: .playing) }
     }
 }
 

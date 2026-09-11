@@ -58,10 +58,10 @@ struct FavoritesView: View {
     /// For the Listeners sheet's veto lists, which cover the whole library.
     @State private var albums: [PlexAlbum] = []
     @State private var loaded = false
-    @State private var confirmingUnpin = false
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
+    @State private var scrollPosition = ScrollPosition()
     @AppStorage("favoritesSort") private var sort: FavoritesSort = .recent
 
     private var offline: Bool { model.library?.isOffline ?? false }
@@ -106,39 +106,23 @@ struct FavoritesView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             ListenerChips(model: model, artists: AlbumBrowse.groups(albums, view: .artist)) {
-                HStack(spacing: 8) {
-                    Button(action: toggleOffline) {
-                        // Ink by name: a ternary with a Color turns `.primary`
-                        // into `Color.primary`, the system white, rather than
-                        // the hierarchical style that inherits the app's ink.
-                        Image(systemName: model.isFavoritesPinned ? "checkmark.circle.fill" : "arrow.down.circle")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(model.isFavoritesPinned ? Color.accentText : Color.ink)
-                            .frame(width: 34, height: 34)
-                            .background(.fill.tertiary, in: .circle)
-                            .contentShape(.circle)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(offline)
-                    .accessibilityLabel(model.isFavoritesPinned ? "Kept offline, tap to stop" : "Keep offline")
-                    Menu {
-                        Picker("Sort", selection: $sort) {
-                            ForEach(FavoritesSort.allCases) { sort in
-                                Text(sort.title).tag(sort)
-                            }
+                Menu {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(FavoritesSort.allCases) { sort in
+                            Text(sort.title).tag(sort)
                         }
-                        .pickerStyle(.inline)
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 34, height: 34)
-                            .background(.fill.tertiary, in: .circle)
-                            .contentShape(.circle)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Sorted by \(sort.title)")
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 34, height: 34)
+                        .background(.fill.tertiary, in: .circle)
+                        .contentShape(.circle)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Sorted by \(sort.title)")
             }
             .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
@@ -154,6 +138,7 @@ struct FavoritesView: View {
         }
         .listStyle(.plain)
         .parchment()
+        .scrollPosition($scrollPosition)
         .environment(\.defaultMinListRowHeight, 1)
         .listSectionSpacing(0)
         .scrollEdgeEffectStyle(.soft, for: .top)
@@ -170,13 +155,38 @@ struct FavoritesView: View {
                 ProgressView()
             } else if hearted.isEmpty {
                 ContentUnavailableView("No favorites yet", systemImage: "heart",
-                                       description: Text("Swipe a track left, or tap the heart in Now Playing, to favorite it."))
+                                       description: Text("Tap ··· on a track, or the heart in Now Playing, to favorite it."))
             }
         }
         .navigationTitle("Favorites")
         .navigationSubtitle(subtitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // The page's own menu, like the album and artist pages: the
+            // offline pin lives here. Read-only offline, so nothing then.
+            // Declared first so it sits leftmost, ahead of the icons.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if !offline {
+                        if model.isFavoritesPinned {
+                            Button(role: .destructive) {
+                                Task { await model.setFavoritesPinned(false) }
+                            } label: {
+                                Label("Remove Download", systemImage: "trash")
+                            }
+                        } else {
+                            Button {
+                                Task { await model.setFavoritesPinned(true) }
+                            } label: {
+                                Label("Keep Offline", systemImage: "arrow.down.circle")
+                            }
+                        }
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                }
+                .disabled(offline)
+            }
             // The cards' actions follow you down the list as icons.
             if !actionsVisible {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -191,15 +201,14 @@ struct FavoritesView: View {
         // from whichever library is current.
         .task(id: model.libraryGeneration) {
             await load()
+            #if DEBUG
+            if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
+                try? await Task.sleep(for: .seconds(1))
+                scrollPosition.scrollTo(y: y)
+            }
+            #endif
         }
         .refreshable { await load() }
-        .confirmationDialog("Stop keeping favorites offline?", isPresented: $confirmingUnpin, titleVisibility: .visible) {
-            Button("Remove Download", role: .destructive) {
-                Task { await model.setFavoritesPinned(false) }
-            }
-        } message: {
-            Text("Your favorites stay favorited and will stream again. Albums you downloaded on their own are kept.")
-        }
     }
 
     /// The fetch: on appear, on a library swap, and on pull to refresh.
@@ -230,53 +239,50 @@ struct FavoritesView: View {
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
-        return Button {
-            guard let library = model.library, playable else { return }
-            player.play(rows, startingAt: index, library: library)
-            nowPlaying.isShown = true
-        } label: {
-            HStack(spacing: 12) {
-                Artwork(url: model.library?.artworkURL(track.thumb), size: 44, corner: 6)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title)
-                        .lineLimit(1)
-                    Text([track.trackArtist ?? track.grandparentTitle, track.parentTitle].compactMap { $0 }.joined(separator: " — "))
-                        .font(.footnote)
+        // The ··· sits beside the tappable part rather than inside it, so
+        // its tap is never also a tap on the row.
+        return HStack(spacing: 4) {
+            Button {
+                guard let library = model.library, playable else { return }
+                player.play(rows, startingAt: index, library: library)
+                nowPlaying.isShown = true
+            } label: {
+                HStack(spacing: 12) {
+                    Artwork(url: model.library?.artworkURL(track.thumb), size: 44, corner: 6)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.title)
+                            .lineLimit(1)
+                        Text([track.trackArtist ?? track.grandparentTitle, track.parentTitle].compactMap { $0 }.joined(separator: " — "))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    // Keeps its slot when off, so the duration column doesn't
+                    // shift as files come and go.
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .opacity(downloaded ? 1 : 0)
+                        .accessibilityHidden(!downloaded)
+                    if let seconds = track.durationSeconds {
+                        Text(TracksView.duration(seconds))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                Spacer()
-                // Keeps its slot when off, so the duration column doesn't
-                // shift as files come and go.
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .opacity(downloaded ? 1 : 0)
-                    .accessibilityHidden(!downloaded)
-                if let seconds = track.durationSeconds {
-                    Text(TracksView.duration(seconds))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                .contentShape(.rect)
             }
-            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .opacity(playable ? 1 : 0.35)
+            .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.primary))
+            MoreButton { TrackMenu(model: model, track: track, placement: .list(siblings: rows)) }
         }
-        .buttonStyle(.plain)
-        .opacity(playable ? 1 : 0.35)
-        .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.primary))
         .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button { enqueue([track], next: true) } label: {
-                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-            }
-            .tint(ListenerPalette.clay)
-            Button { enqueue([track], next: false) } label: {
-                Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
-            }
-            .tint(ListenerPalette.slate)
-        }
+        .contextMenu { TrackMenu(model: model, track: track, placement: .list(siblings: rows)) }
+        // The one swipe left in the app: this list is the hearts, so
+        // pruning it deserves the shortcut. Hearts are read-only offline.
         .swipeActions(edge: .trailing) {
-            // Hearts are read-only offline.
             if !offline {
                 Button {
                     Task { await model.toggleFavorite(track) }
@@ -285,15 +291,6 @@ struct FavoritesView: View {
                 }
                 .tint(Color.heart)
             }
-        }
-    }
-
-    private func toggleOffline() {
-        guard !offline else { return }
-        if model.isFavoritesPinned {
-            confirmingUnpin = true
-        } else {
-            Task { await model.setFavoritesPinned(true) }
         }
     }
 
@@ -310,11 +307,4 @@ struct FavoritesView: View {
         nowPlaying.isShown = true
     }
 
-    private func enqueue(_ tracks: [PlexTrack], next: Bool) {
-        guard let library = model.library else { return }
-        let tracks = offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
-        guard !tracks.isEmpty else { return }
-        next ? player.playNext(tracks, library: library)
-             : player.addToQueue(tracks, library: library)
-    }
 }

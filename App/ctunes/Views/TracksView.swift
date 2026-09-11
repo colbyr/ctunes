@@ -11,9 +11,11 @@ struct TracksView: View {
 
     @State private var tracks: [PlexTrack] = []
     @State private var loaded = false
+    /// Whether the action cards are on screen; once they scroll away the
+    /// toolbar takes over with icon-only copies.
+    @State private var actionsVisible = true
+    @State private var scrollPosition = ScrollPosition()
     @Environment(NowPlayingPresentation.self) private var nowPlaying
-    @State private var confirmingRemoval = false
-    @State private var confirmingRetry = false
 
     private var offline: Bool { model.library?.isOffline ?? false }
 
@@ -94,29 +96,36 @@ struct TracksView: View {
 
     var body: some View {
         let discs = discs
-        List {
-            Section {
+        // A ScrollView, not a List: in a List a context menu on any part
+        // of a row is the row's, so a long press on the cover lit up the
+        // whole header, controls and all. Favorites keeps its List for the
+        // swipe.
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 header
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-                    .listRowBackground(Color.clear)
-            }
-
-            ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
-                Section {
-                    ForEach(disc.rows, id: \.track.id) { offset, track in
-                        row(track, at: offset)
-                    }
-                } header: {
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
+                ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
                     if discs.count > 1, let number = disc.number {
                         Text(verbatim: "Disc \(number)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.init(top: 20, leading: Self.margin, bottom: 4, trailing: Self.margin))
+                    }
+                    ForEach(disc.rows, id: \.track.id) { offset, track in
+                        row(track, at: offset)
+                        Divider().padding(.leading, Self.margin + 36)
                     }
                 }
-                .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.plain)
         .artworkBackground(artworkURL)
+        .scrollPosition($scrollPosition)
+        // Past the cover, the avatars and the cards.
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top > 320
+        } action: { _, scrolledPast in
+            withAnimation(.snappy) { actionsVisible = !scrolledPast }
+        }
         .overlay {
             if !loaded { ProgressView() }
         }
@@ -126,6 +135,33 @@ struct TracksView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // The title bar carries the artist under the title, and opens
+            // their page: the native subtitle is plain text, so this is a
+            // principal item drawn to match it, without the glass.
+            if let artist = album.parentTitle {
+                ToolbarItem(placement: .principal) {
+                    titleBlock(artist: artist)
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false)
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                }
+            }
+            // The cards' actions follow you down the list as icons.
+            if !actionsVisible {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Play", systemImage: "play.fill", action: play)
+                        .disabled(playableTracks.isEmpty)
+                    Button("Shuffle", systemImage: "shuffle", action: shuffle)
+                        .disabled(playableTracks.isEmpty)
+                }
+            }
+        }
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
         .task(id: model.libraryGeneration) {
@@ -150,22 +186,18 @@ struct TracksView: View {
             if Self.autoEnqueue, !tracks.isEmpty {
                 player.addToQueue(tracks, library: library)
             }
+            #if DEBUG
+            if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
+                try? await Task.sleep(for: .seconds(1))
+                scrollPosition.scrollTo(y: y)
+            }
+            #endif
         }
         .refreshable { await load() }
-        .confirmationDialog("Remove download?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
-            Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
-        } message: {
-            Text("The album stays in your library and can be downloaded again.")
-        }
-        .confirmationDialog("Download failed", isPresented: $confirmingRetry, titleVisibility: .visible) {
-            Button("Retry") { model.downloads.retry { await model.resumeDownloads() } }
-            Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
-        } message: {
-            Text("Some tracks couldn't be downloaded from the server.")
-        }
     }
 
-    /// The fetch: on appear, on a library swap, and on pull to refresh.
+    private static let margin: CGFloat = 16
+
     private func load() async {
         guard let library = model.library else { return }
         do {
@@ -195,39 +227,60 @@ struct TracksView: View {
         model.library?.artworkURL(album.thumb ?? tracks.first?.thumb, size: 600)
     }
 
-    private var header: some View {
-        VStack(spacing: 8) {
-            Artwork(url: artworkURL, size: 180, corner: 10)
-                .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
-            HStack(spacing: 10) {
-                if let artist = album.parentTitle {
-                    if let key = album.parentRatingKey {
-                        Button {
-                            path.append(ArtistRoute(ratingKey: key, title: artist))
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(artist).font(.subheadline)
-                                Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
-                            }
-                            .foregroundStyle(.secondary)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Open \(artist)")
-                    } else {
-                        Text(artist).font(.subheadline).foregroundStyle(.secondary)
+
+    /// Title over the artist, the artist tappable. Sized like the bar's own
+    /// title and subtitle so it reads as the native pair.
+    private func titleBlock(artist: String) -> some View {
+        Button {
+            if let key = album.parentRatingKey {
+                path.append(ArtistRoute(ratingKey: key, title: artist))
+            }
+        } label: {
+            VStack(spacing: 1) {
+                Text(album.title)
+                    .font(.headline)
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
+                HStack(spacing: 3) {
+                    Text(artist).font(.caption)
+                    if album.parentRatingKey != nil {
+                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
                     }
                 }
-                if let artistKey = album.parentRatingKey {
-                    Divider().frame(height: 16)
-                    ListenerVetoes(model: model, artistKey: artistKey)
-                }
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(album.parentRatingKey == nil)
+        .accessibilityLabel("\(album.title), open \(artist)")
+    }
+
+    private var header: some View {
+        let downloaded = model.downloads.isDownloaded(album)
+        let downloading = !downloaded && model.downloads.isPinned(album)
+        return VStack(spacing: 12) {
+            // The cover carries the download mark the grid tiles do; the
+            // download itself lives in the menu, a long press away.
+            Artwork(url: artworkURL, size: 240, corner: 12)
+                .artworkShadow()
+                .overlay(alignment: .bottomTrailing) {
+                    if downloaded || downloading { DownloadedBadge(downloading: downloading, large: true) }
+                }
+                .contextMenu { AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false) }
+                .padding(.bottom, 8)
             if let artistKey = album.parentRatingKey {
+                ListenerVetoes(model: model, artistKey: artistKey)
                 HiddenRightNowLabel(model: model, artistKey: artistKey)
             }
-            actions
-                .padding(.top, 16)
+            HStack(spacing: 12) {
+                MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
+                              enabled: !playableTracks.isEmpty, loading: false, tint: .accentText, action: play)
+                MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
+                              enabled: !playableTracks.isEmpty, loading: false, tint: .accentText, action: shuffle)
+            }
+            .padding(.top, 8)
             if case .partial(let count)? = model.downloads.status(album) {
                 Text("\(count) track\(count == 1 ? "" : "s") can't be downloaded")
                     .font(.footnote)
@@ -237,125 +290,66 @@ struct TracksView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Play, shuffle and the two queue actions as a centered row of icon
-    /// buttons, so nothing hides behind a menu.
-    private var actions: some View {
-        HStack(spacing: 12) {
-            DownloadButton(status: model.downloads.status(album)) { toggleDownload() }
-                .disabled(offline)
-            Button { enqueue(tracks, next: true) } label: {
-                Image(systemName: "text.line.first.and.arrowtriangle.forward")
-            }
-            .accessibilityLabel("Play Next")
-            Button { enqueue(tracks, next: false) } label: {
-                Image(systemName: "text.line.last.and.arrowtriangle.forward")
-            }
-            .accessibilityLabel("Add to Queue")
-            Button(action: shuffle) {
-                Image(systemName: "shuffle")
-            }
-            .accessibilityLabel("Shuffle")
-            // The one saturated element on the screen.
-            Button(action: play) {
-                Image(systemName: "play.fill")
-                    .foregroundStyle(Color.accentInk)
-            }
-            .accessibilityLabel("Play")
-            .buttonStyle(.glassProminent)
-            .tint(Color.amber)
-        }
-        .buttonStyle(.glass)
-        .foregroundStyle(Color.accentText)
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .disabled(tracks.isEmpty)
-    }
-
     private func row(_ track: PlexTrack, at index: Int) -> some View {
         let favorite = model.isFavorite(track)
         let downloaded = model.downloads.isPinned(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
-        return Button {
-            guard let library = model.library, playable else { return }
-            player.play(tracks, startingAt: index, library: library)
-            nowPlaying.isShown = true
-        } label: {
-            HStack(spacing: 12) {
-                Text(track.index.map(String.init) ?? "–")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, alignment: .trailing)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title)
-                    if let artist = track.trackArtist {
-                        Text(artist)
-                            .font(.footnote)
+        // The ··· sits beside the tappable part rather than inside it, so
+        // its tap is never also a tap on the row. The menu it opens is the
+        // long press's, minus Go to Album: this is the album.
+        return HStack(spacing: 4) {
+            Button {
+                guard let library = model.library, playable else { return }
+                player.play(tracks, startingAt: index, library: library)
+                nowPlaying.isShown = true
+            } label: {
+                HStack(spacing: 12) {
+                    Text(track.index.map(String.init) ?? "–")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, alignment: .trailing)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.title)
+                        if let artist = track.trackArtist {
+                            Text(artist)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer()
+                    // Both marks keep their slot when off, so the duration column
+                    // doesn't shift as hearts and files come and go.
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .opacity(downloaded ? 1 : 0)
+                        .accessibilityHidden(!downloaded)
+                    Image(systemName: "heart.fill")
+                        .font(.caption)
+                        .foregroundStyle(Color.heart)
+                        .opacity(favorite ? 1 : 0)
+                        .accessibilityHidden(!favorite)
+                    if let seconds = track.durationSeconds {
+                        Text(Self.duration(seconds))
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
                     }
                 }
-                Spacer()
-                // Both marks keep their slot when off, so the duration column
-                // doesn't shift as hearts and files come and go.
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .opacity(downloaded ? 1 : 0)
-                    .accessibilityHidden(!downloaded)
-                Image(systemName: "heart.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.heart)
-                    .opacity(favorite ? 1 : 0)
-                    .accessibilityHidden(!favorite)
-                if let seconds = track.durationSeconds {
-                    Text(Self.duration(seconds))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                .contentShape(.rect)
             }
-            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .opacity(playable ? 1 : 0.35)
+            .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.primary))
+            MoreButton { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
         }
-        .buttonStyle(.plain)
-        .opacity(playable ? 1 : 0.35)
-        .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.primary))
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button { enqueue([track], next: true) } label: {
-                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-            }
-            .tint(ListenerPalette.clay)
-            Button { enqueue([track], next: false) } label: {
-                Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
-            }
-            .tint(ListenerPalette.slate)
-        }
-        .swipeActions(edge: .trailing) {
-            // Hearts are read-only offline.
-            if !offline {
-                Button {
-                    Task { await model.toggleFavorite(track) }
-                } label: {
-                    Label(favorite ? "Unfavorite" : "Favorite",
-                          systemImage: favorite ? "heart.slash" : "heart.fill")
-                }
-                .tint(Color.heart)
-            }
-        }
+        .padding(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin - 4))
+        .contextMenu { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
     }
 
-    private func toggleDownload() {
-        guard let library = model.library, !library.isOffline else { return }
-        if model.downloads.status(album)?.isStalled == true {
-            confirmingRetry = true
-        } else if model.downloads.isPinned(album) {
-            confirmingRemoval = true
-        } else {
-            model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
-        }
-    }
 
-    /// Offline, only tracks with a file are worth queueing.
     private var playableTracks: [PlexTrack] {
         offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
     }
@@ -371,14 +365,6 @@ struct TracksView: View {
         guard let library = model.library, !playableTracks.isEmpty else { return }
         player.play(playableTracks.spreadShuffled(), startingAt: 0, library: library)
         nowPlaying.isShown = true
-    }
-
-    private func enqueue(_ tracks: [PlexTrack], next: Bool) {
-        guard let library = model.library else { return }
-        let tracks = offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
-        guard !tracks.isEmpty else { return }
-        next ? player.playNext(tracks, library: library)
-             : player.addToQueue(tracks, library: library)
     }
 
     static func duration(_ seconds: Double) -> String {
@@ -440,44 +426,3 @@ struct HiddenRightNowLabel: View {
 /// The album's download state as one circular button: an arrow to pin, a
 /// ring filling as tracks land, a check when every file is down. Tapping a
 /// pinned album asks before removing it.
-struct DownloadButton: View {
-    let status: OfflineStore.AlbumStatus?
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            switch status {
-            case nil:
-                Image(systemName: "arrow.down.circle")
-            case .complete?:
-                Image(systemName: "checkmark.circle.fill")
-            case .partial?:
-                Image(systemName: "checkmark.circle.badge.questionmark")
-            case let status? where status.isStalled:
-                Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
-            case .pending(let done, let total, _)?:
-                let fraction = total > 0 ? Double(done) / Double(total) : 0
-                ZStack {
-                    Circle().stroke(.tertiary, lineWidth: 2.5)
-                    Circle()
-                        .trim(from: 0, to: fraction)
-                        .stroke(Color.accentText, style: .init(lineWidth: 2.5, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Image(systemName: "stop.fill").font(.caption2)
-                }
-                .frame(width: 20, height: 20)
-                .animation(.snappy, value: fraction)
-            }
-        }
-        .accessibilityLabel(label)
-    }
-
-    private var label: String {
-        switch status {
-        case nil: "Download"
-        case .complete?, .partial?: "Downloaded, tap to remove"
-        case let status? where status.isStalled: "Download failed, tap to retry"
-        case .pending(let done, let total, _)?: "Downloading, \(done) of \(total)"
-        }
-    }
-}

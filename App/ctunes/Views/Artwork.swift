@@ -45,12 +45,14 @@ struct Artwork: View {
 /// A dotted ring while the album is pinned but still coming down.
 struct DownloadedBadge: View {
     var downloading = false
+    /// For the full-size cover on an album page.
+    var large = false
 
     var body: some View {
         Image(systemName: downloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
-            .font(.caption)
+            .font(large ? .title2 : .caption)
             .foregroundStyle(.white, .black.opacity(0.55))
-            .padding(5)
+            .padding(large ? 10 : 5)
     }
 }
 

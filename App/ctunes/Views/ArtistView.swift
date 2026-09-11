@@ -27,6 +27,10 @@ struct ArtistView: View {
     @State private var portrait: String?
     @State private var loaded = false
     @State private var loading: MixMode?
+    /// Whether the action cards are on screen; once they scroll away the
+    /// toolbar takes over with icon-only copies.
+    @State private var actionsVisible = true
+    @State private var scrollPosition = ScrollPosition()
     @State private var nothingToPlay = false
 
     private var offline: Bool { model.library?.isOffline ?? false }
@@ -51,13 +55,22 @@ struct ArtistView: View {
                             AlbumTile(model: model, album: album, showArtist: false)
                         }
                         .buttonStyle(.plain)
+                        // Every tile here is theirs, so no Go to Artist.
+                        .contextMenu { AlbumMenu(model: model, album: album, showArtist: false) }
                     }
                 }
                 .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
             }
         }
         .artworkBackground(artworkURL)
+        .scrollPosition($scrollPosition)
         .scrollEdgeEffectStyle(.soft, for: .top)
+        // Past the portrait, the avatars and the cards.
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top > 280
+        } action: { _, scrolledPast in
+            withAnimation(.snappy) { actionsVisible = !scrolledPast }
+        }
         .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
             if !loaded {
@@ -69,10 +82,34 @@ struct ArtistView: View {
         .navigationTitle(route.title)
         .navigationSubtitle(loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false)
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                }
+            }
+            // The cards' actions follow you down the grid as icons.
+            if !actionsVisible {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Mix Albums", systemImage: "square.on.square") { play(.playAlbums) }
+                        .disabled(albums.isEmpty || loading != nil)
+                    Button("Shuffle", systemImage: "shuffle") { play(.shuffleTracks) }
+                        .disabled(albums.isEmpty || loading != nil)
+                }
+            }
+        }
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
         .task(id: model.libraryGeneration) {
             await load()
+            #if DEBUG
+            if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
+                try? await Task.sleep(for: .seconds(1))
+                scrollPosition.scrollTo(y: y)
+            }
+            #endif
         }
         .refreshable { await load() }
         .alert("Nothing to play", isPresented: $nothingToPlay) {
@@ -100,9 +137,11 @@ struct ArtistView: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            Artwork(url: artworkURL, size: 160, corner: 80)
+            Artwork(url: artworkURL, size: 200, corner: 100)
                 .clipShape(.circle)
                 .artworkShadow()
+                .contextMenu { ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false) }
+                .padding(.bottom, 8)
             ListenerVetoes(model: model, artistKey: route.ratingKey)
             HiddenRightNowLabel(model: model, artistKey: route.ratingKey)
             HStack(spacing: 12) {

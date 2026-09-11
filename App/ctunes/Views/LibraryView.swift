@@ -12,6 +12,9 @@ struct LibraryView: View {
     /// filters the builder's pool instead of popping back to the root.
     @State private var buildingMix = false
     @State private var nowPlaying = NowPlayingPresentation()
+    /// Routes and notices posted by the item menus, which sit on screens
+    /// with no path of their own.
+    @State private var navigator = LibraryNavigator()
     @Environment(AudioPlayer.self) private var player
     /// Compact is a phone, where Now Playing covers the screen with its
     /// header scrolling; regular but too narrow for the column (an iPad in
@@ -62,6 +65,7 @@ struct LibraryView: View {
         .tint(Color.ink)
         .animation(.snappy, value: nowPlaying.isColumn)
         .environment(nowPlaying)
+        .environment(navigator)
         // The cover is handed the observables by hand. When a Mac window
         // drags across the compact/regular boundary UIKit re-hosts the
         // open presentation, and that pass evaluates the content without
@@ -71,13 +75,24 @@ struct LibraryView: View {
             NowPlayingView(model: model, style: sizeClass == .compact ? .phone : .fullScreen)
                 .environment(player)
                 .environment(nowPlaying)
+                .environment(navigator)
         }
-        // An artist tapped in Now Playing: the cover has closed itself (or
-        // the column stays), and the page goes onto the stack behind it.
-        .onChange(of: nowPlaying.requestedArtist) { _, route in
+        // A route from a menu, or the artist tapped in Now Playing: the
+        // cover has closed itself (or the column stays), and the page goes
+        // onto the stack behind it.
+        .onChange(of: navigator.requested) { _, route in
             guard let route else { return }
-            path.append(route)
-            nowPlaying.requestedArtist = nil
+            switch route {
+            case .artist(let artist): path.append(artist)
+            case .album(let album): path.append(album)
+            }
+            navigator.requested = nil
+        }
+        .alert(navigator.notice ?? "", isPresented: Binding(
+            get: { navigator.notice != nil },
+            set: { if !$0 { navigator.notice = nil } }
+        )) {
+            Button("OK") {}
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             self.width = width
