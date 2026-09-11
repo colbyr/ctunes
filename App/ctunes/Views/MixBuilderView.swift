@@ -7,8 +7,8 @@ enum MixKind: String, Hashable {
 
     var title: String {
         switch self {
-        case .artist: "Artist Mix"
-        case .album: "Album Mix"
+        case .artist: "Mix Artists"
+        case .album: "Mix Albums"
         }
     }
 
@@ -275,7 +275,7 @@ struct MixBuilderView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Mix Albums", systemImage: "square.on.square") { play(.playAlbums) }
                         .disabled(loadingMix != nil)
-                    Button("Mix Tracks", systemImage: "shuffle") { play(.shuffleTracks) }
+                    Button("Shuffle", systemImage: "shuffle") { play(.shuffleTracks) }
                         .disabled(loadingMix != nil)
                 }
             }
@@ -290,26 +290,32 @@ struct MixBuilderView: View {
         .onDisappear { building = false }
         .onChange(of: selected) { savedSelection = selected.joined(separator: ",") }
         .task(id: model.libraryGeneration) {
-            guard let library = model.library else { return }
-            async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
-            if kind == .artist {
-                artists = (try? await library.artists(inSection: section.key)) ?? []
-            }
-            albums = (try? await library.albums(inSection: section.key)) ?? []
-            loaded = true
-            let history = (try? await plays) ?? []
-            rotation = Rotation(history: history, albums: albums)
+            await load()
             #if DEBUG
             if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {
                 play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .playAlbums : .shuffleTracks)
             }
             #endif
         }
+        .refreshable { await load() }
         .alert("Nothing to play", isPresented: $nothingToPlay) {
             Button("OK") {}
         } message: {
             Text("None of the selected \(kind.noun) have any tracks to play right now.")
         }
+    }
+
+    /// The fetch: on appear, on a library swap, and on pull to refresh.
+    private func load() async {
+        guard let library = model.library else { return }
+        async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
+        if kind == .artist {
+            artists = (try? await library.artists(inSection: section.key)) ?? []
+        }
+        albums = (try? await library.albums(inSection: section.key)) ?? []
+        loaded = true
+        let history = (try? await plays) ?? []
+        rotation = Rotation(history: history, albums: albums)
     }
 
     /// Stands in for the selected grid, sized by an invisible tile in the
@@ -493,7 +499,7 @@ private struct MixActions: View {
                 tint: kind.accent
             ) { action(.playAlbums) }
             MixActionCard(
-                systemImage: "shuffle", title: "Mix Tracks", subtitle: nil,
+                systemImage: "shuffle", title: "Shuffle", subtitle: nil,
                 enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks,
                 tint: kind.accent
             ) { action(.shuffleTracks) }

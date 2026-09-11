@@ -63,7 +63,7 @@ struct NowPlayingView: View {
             // A full-screen cover has no drag to dismiss of its own, so
             // pulling the top well past its rest position stands in for it.
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top < -110
+                geometry.contentOffset.y + geometry.contentInsets.top < -70
             } action: { _, pulled in
                 if pulled { presentation.isShown = false }
             }
@@ -187,21 +187,19 @@ struct NowPlayingView: View {
 
     private var header: some View {
         VStack(spacing: 24) {
-            // The phone has no title bar, so the close chevron takes a row
-            // of its own at the top, where the sheet's grab handle was.
+            // The phone has no title bar, so a grab bar sits centered at
+            // the top, the way a sheet's handle does; tapping it closes too.
             if style == .phone {
-                HStack {
-                    Button { presentation.isShown = false } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Hide Now Playing")
-                    Spacer()
+                Button { presentation.isShown = false } label: {
+                    Capsule()
+                        .fill(.tertiary)
+                        .frame(width: 36, height: 5)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                        .contentShape(.rect)
                 }
-                .padding(.top, 4)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide Now Playing")
             }
             // Edge to edge less a margin, so the art is as big as the screen
             // allows rather than a fixed 300pt. In the column the toolbar

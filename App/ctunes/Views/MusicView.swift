@@ -102,18 +102,18 @@ struct MusicView: View {
                     Group {
                         if width >= Self.heroRowMinimum {
                             HStack(spacing: 12) {
-                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                                 MixTile(kind: .artist) { path.append(MixKind.artist) }
                                 MixTile(kind: .album) { path.append(MixKind.album) }
+                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                             }
                             .fixedSize(horizontal: false, vertical: true)
                         } else {
                             VStack(spacing: 12) {
-                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                                 HStack(spacing: 12) {
                                     MixTile(kind: .artist) { path.append(MixKind.artist) }
                                     MixTile(kind: .album) { path.append(MixKind.album) }
                                 }
+                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                             }
                         }
                     }
@@ -199,22 +199,7 @@ struct MusicView: View {
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
         .task(id: model.libraryGeneration) {
-            guard let library = model.library else { return }
-            var history: [PlayHistoryEntry] = []
-            do {
-                async let favoriteTracks = library.favoriteTracks(inSection: section.key)
-                // Optional: the grid falls back to play counts without it.
-                async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
-                albums = try await library.albums(inSection: section.key)
-                loaded = true
-                history = (try? await plays) ?? []
-                rotation = Rotation(history: history, albums: albums)
-                favorites = try? await favoriteTracks
-            } catch {
-                await model.connectionLost(error)
-                loaded = true
-                return
-            }
+            await load()
             #if DEBUG
             if ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS_SHEET"] != nil {
                 showingListeners = true
@@ -229,10 +214,8 @@ struct MusicView: View {
                 scrollPosition.scrollTo(y: y)
             }
             #endif
-            if !library.isOffline {
-                await model.snapshot(albums: albums, favorites: favorites ?? [], history: history)
-            }
         }
+        .refreshable { await load() }
         .alert("No favorites yet", isPresented: $noFavorites) {
             Button("OK") {}
         } message: {
@@ -253,6 +236,29 @@ struct MusicView: View {
 
     /// "32 tracks for you & Laura"; just the count with no listeners set up,
     /// just the listeners until the count arrives, nothing with neither.
+    /// The fetch: on appear, on a library swap, and on pull to refresh.
+    private func load() async {
+        guard let library = model.library else { return }
+        var history: [PlayHistoryEntry] = []
+        do {
+            async let favoriteTracks = library.favoriteTracks(inSection: section.key)
+            // Optional: the grid falls back to play counts without it.
+            async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
+            albums = try await library.albums(inSection: section.key)
+            loaded = true
+            history = (try? await plays) ?? []
+            rotation = Rotation(history: history, albums: albums)
+            favorites = try? await favoriteTracks
+        } catch {
+            await model.connectionLost(error)
+            loaded = true
+            return
+        }
+        if !library.isOffline {
+            await model.snapshot(albums: albums, favorites: favorites ?? [], history: history)
+        }
+    }
+
     private var favoritesSubtitle: String? {
         let names = model.roster.activeNames
         let who = model.roster.others.isEmpty
@@ -442,16 +448,19 @@ private struct MixTile: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: kind.systemImage)
                     .font(.subheadline)
                     .foregroundStyle(kind.accent)
                     .frame(width: 36, height: 36)
                     .background(kind.accent.opacity(0.16), in: .circle)
-                Text(kind.title).font(.headline)
+                // Half a phone's width is tight for "Mix Albums": one line,
+                // shrunk a touch before it would wrap.
+                Text(kind.title).font(.headline).lineLimit(1).minimumScaleFactor(0.85)
                 Spacer(minLength: 0)
             }
-            .padding(14)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .glassCard()
             .contentShape(.rect(cornerRadius: 22))

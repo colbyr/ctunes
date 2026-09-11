@@ -190,27 +190,33 @@ struct FavoritesView: View {
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
         .task(id: model.libraryGeneration) {
-            guard let library = model.library else { return }
-            do {
-                async let all = library.albums(inSection: section.key)
-                tracks = try await library.favoriteTracks(inSection: section.key)
-                albums = (try? await all) ?? []
-            } catch {
-                await model.connectionLost(error)
-                if model.library?.isOffline != true { tracks = [] }
-                return
-            }
-            loaded = true
-            for thumb in Set(tracks.compactMap(\.thumb)) {
-                ImageLoader.shared.prewarm(library.artworkURL(thumb))
-            }
+            await load()
         }
+        .refreshable { await load() }
         .confirmationDialog("Stop keeping favorites offline?", isPresented: $confirmingUnpin, titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) {
                 Task { await model.setFavoritesPinned(false) }
             }
         } message: {
             Text("Your favorites stay favorited and will stream again. Albums you downloaded on their own are kept.")
+        }
+    }
+
+    /// The fetch: on appear, on a library swap, and on pull to refresh.
+    private func load() async {
+        guard let library = model.library else { return }
+        do {
+            async let all = library.albums(inSection: section.key)
+            tracks = try await library.favoriteTracks(inSection: section.key)
+            albums = (try? await all) ?? []
+        } catch {
+            await model.connectionLost(error)
+            if model.library?.isOffline != true { tracks = [] }
+            return
+        }
+        loaded = true
+        for thumb in Set(tracks.compactMap(\.thumb)) {
+            ImageLoader.shared.prewarm(library.artworkURL(thumb))
         }
     }
 

@@ -17,10 +17,10 @@ struct ArtworkTint: Equatable, Sendable {
         Color(uiColor: UIColor { traits in
             let dark = traits.userInterfaceStyle == .dark
             let ground: (Double, Double, Double) = dark ? (0x1E / 255, 0x18 / 255, 0x14 / 255) : (1, 1, 1)
-            let amount = dark ? 0.38 : 0.34
+            let amount = dark ? 0.52 : 0.48
             let grey = (red + green + blue) / 3
             func mix(_ channel: Double, _ groundChannel: Double) -> CGFloat {
-                let desaturated = channel * 0.85 + grey * 0.15
+                let desaturated = channel * 0.9 + grey * 0.1
                 return CGFloat(desaturated * amount + groundChannel * (1 - amount))
             }
             return UIColor(red: mix(red, ground.0), green: mix(green, ground.1), blue: mix(blue, ground.2), alpha: 1)
@@ -90,7 +90,7 @@ struct ArtworkBackground: View {
                 LinearGradient(
                     stops: [
                         .init(color: tint.wash, location: 0),
-                        .init(color: tint.wash.opacity(0.55), location: 0.45),
+                        .init(color: tint.wash.opacity(0.6), location: 0.5),
                         .init(color: .clear, location: 1),
                     ],
                     startPoint: .top, endPoint: .bottom

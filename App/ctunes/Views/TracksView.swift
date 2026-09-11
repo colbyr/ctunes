@@ -129,25 +129,8 @@ struct TracksView: View {
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
         .task(id: model.libraryGeneration) {
+            await load()
             guard let library = model.library else { return }
-            do {
-                tracks = try await library.tracks(inAlbum: album.ratingKey)
-            } catch {
-                await model.connectionLost(error)
-                if model.library?.isOffline != true { tracks = [] }
-                return
-            }
-            loaded = true
-            await model.rememberTracks(tracks, inAlbum: album)
-            if Self.autoPin, !library.isOffline, !tracks.isEmpty, !model.downloads.isPinned(album) {
-                model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
-            }
-            // The header already fetches the album cover at 600; warm the
-            // same size for any track that carries its own art so Now
-            // Playing and the lock screen open without a network round trip.
-            for thumb in Set(tracks.compactMap(\.thumb)) where thumb != album.thumb {
-                ImageLoader.shared.prewarm(library.artworkURL(thumb, size: 600))
-            }
             if Self.autoPlay, !tracks.isEmpty {
                 let start = Self.autoPlayLast ? tracks.count - 1 : 0
                 player.play(tracks, startingAt: start, library: library)
@@ -168,6 +151,7 @@ struct TracksView: View {
                 player.addToQueue(tracks, library: library)
             }
         }
+        .refreshable { await load() }
         .confirmationDialog("Remove download?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
         } message: {
@@ -178,6 +162,29 @@ struct TracksView: View {
             Button("Remove Download", role: .destructive) { model.downloads.unpin(album) }
         } message: {
             Text("Some tracks couldn't be downloaded from the server.")
+        }
+    }
+
+    /// The fetch: on appear, on a library swap, and on pull to refresh.
+    private func load() async {
+        guard let library = model.library else { return }
+        do {
+            tracks = try await library.tracks(inAlbum: album.ratingKey)
+        } catch {
+            await model.connectionLost(error)
+            if model.library?.isOffline != true { tracks = [] }
+            return
+        }
+        loaded = true
+        await model.rememberTracks(tracks, inAlbum: album)
+        if Self.autoPin, !library.isOffline, !tracks.isEmpty, !model.downloads.isPinned(album) {
+            model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+        }
+        // The header already fetches the album cover at 600; warm the
+        // same size for any track that carries its own art so Now
+        // Playing and the lock screen open without a network round trip.
+        for thumb in Set(tracks.compactMap(\.thumb)) where thumb != album.thumb {
+            ImageLoader.shared.prewarm(library.artworkURL(thumb, size: 600))
         }
     }
 
@@ -192,7 +199,6 @@ struct TracksView: View {
         VStack(spacing: 8) {
             Artwork(url: artworkURL, size: 180, corner: 10)
                 .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
-            Text(album.title).font(.headline)
             HStack(spacing: 10) {
                 if let artist = album.parentTitle {
                     if let key = album.parentRatingKey {
