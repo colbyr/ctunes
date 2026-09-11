@@ -235,7 +235,8 @@ struct FavoritesView: View {
     }
 
     private func row(_ track: PlexTrack, at index: Int) -> some View {
-        let downloaded = model.downloads.isPinned(track)
+        let downloaded = model.downloads.isDownloaded(track)
+        let downloading = !downloaded && model.downloads.isDownloading(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
@@ -259,12 +260,13 @@ struct FavoritesView: View {
                     }
                     Spacer()
                     // Keeps its slot when off, so the duration column doesn't
-                    // shift as files come and go.
-                    Image(systemName: "arrow.down.circle.fill")
+                    // shift as files come and go. Dotted while a pin is
+                    // still fetching the file.
+                    Image(systemName: downloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .opacity(downloaded ? 1 : 0)
-                        .accessibilityHidden(!downloaded)
+                        .opacity(downloaded || downloading ? 1 : 0)
+                        .accessibilityHidden(!(downloaded || downloading))
                     if let seconds = track.durationSeconds {
                         Text(TracksView.duration(seconds))
                             .font(.caption.monospacedDigit())

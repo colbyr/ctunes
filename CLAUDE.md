@@ -145,9 +145,11 @@ alone. A menu hides what its screen already answers (`showArtist`,
 `showAlbum`) and a track's `TrackPlacement` decides the queue items: in a
 list, Play and Shuffle play the list from that track (Shuffle keeps it
 first); in Up Next, Play Next and Move to End move the entry rather than
-copy it; on the playing track there are none. Play, queue and hearts are
-hidden when there is nothing on disk offline; the Listeners submenu is
-the per-artist veto and works offline. Fetches for a tile (an artist's
+copy it; on the playing track there are none. Every menu has a Download
+item, or Stop/Retry/Remove Download once pinned; an item under a wider pin
+reads as pinned and Remove narrows that pin. Play, queue, hearts and
+downloads are hidden offline; the Listeners submenu is the per-artist veto
+and works offline. Fetches for a tile (an artist's
 or album's tracks) run in the menu action; nothing to play is posted to
 `LibraryNavigator.notice`, which `LibraryView` alerts.
 
@@ -175,15 +177,30 @@ The store needs the `ubiquity-kvstore-identifier` entitlement in
 `App/ctunes.entitlements` and iCloud enabled on the App ID; a build signed
 without it silently stores locally and nothing syncs.
 
-`OfflineStore` (PlexKit actor, `notes/offline.md`) owns the manifest of pinned
-albums and the favorites pin, the track list of every album browsed, the
-library snapshot and album covers under
-`Application Support/ctunes/Offline/<server>/`. It hands `TrackSource`s to
-the cache and reads the file system for status; per-track download state is
-never persisted. Offline, a file in either root is playable, so an album
-half-played before the server went away still lists and plays those tracks;
-artwork falls back to the online URL so `ImageLoader`'s disk cache can answer. `Downloads` (app target) mirrors it onto
-the main actor from `cache.events`.
+`OfflineStore` (PlexKit actor, `notes/offline.md`, `notes/downloads.md`)
+owns the pins (artists, albums, tracks, and the favorites toggle), the
+track list of every album browsed, the library snapshot and the covers and
+portraits under `Application Support/ctunes/Offline/<server>/`. It hands
+`TrackSource`s to the cache and reads the file system for status; per-track
+download state is never persisted. **The three pin kinds form a tree and
+stay disjoint**: pinning an artist absorbs their album and track pins, and
+removing an album or track under a wider pin narrows that pin to what is
+left (an artist becomes album pins on the other albums, an album becomes
+track pins on the other tracks) rather than dropping it. A file is wanted
+while any pin or the favorites group lists it. `inventory(server:)` is the
+one read: every pin, every file's size from one walk of the pinned root,
+and an `AlbumDownloadStatus` per album that `DownloadState` turns into
+`.none`, `.downloading`, `.partial` or `.complete`; an artist's state is
+the rollup over the section's album list, so an album never browsed still
+counts by `leafCount`. Offline, a file in either root is playable, so an
+album half-played before the server went away still lists and plays those
+tracks; artwork falls back to the online URL so `ImageLoader`'s disk cache
+can answer. `Downloads` (app target) mirrors the inventory onto the main
+actor from `cache.events`, coalescing refreshes. `DownloadBadge` is the one
+mark on art: a solid disc for complete, a dotted ring while downloading (an
+exclamation mark once stalled), a half ring for partial. The manager is a
+page of Settings (`DownloadsView.swift`), artist → album → track, each
+level removable by swipe.
 
 ## Plex API constraints
 
@@ -299,10 +316,10 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
 | `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the first listener's page |
-| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load |
+| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `downloads` opens it on the download manager |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
-| `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load |
+| `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track |
 | `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on

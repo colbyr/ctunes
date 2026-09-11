@@ -317,6 +317,12 @@ public actor TrackCache {
         files(in: pinnedDirectory).reduce(0) { $0 + $1.size }
     }
 
+    /// Every file in the pinned root with its size, by cache path: one
+    /// walk, so an inventory over hundreds of tracks stats nothing per track.
+    public func pinnedFiles() -> [String: Int] {
+        Dictionary(files(in: pinnedDirectory).map { ($0.path, $0.size) }, uniquingKeysWith: { first, _ in first })
+    }
+
     /// Removes everything in the cache root, cancelling its downloads first.
     /// Pins are untouched. `keeping` is the current track: unlinking a file
     /// under a playing item is not something to find out about on the lock

@@ -70,13 +70,14 @@ struct TracksView: View {
         false
         #endif
     }
-    /// Pins the album once its tracks load, so the download ring and the
-    /// files under Application Support can be checked in a simulator.
-    private static var autoPin: Bool {
+    /// Pins the album once its tracks load, so the download badge and the
+    /// files under Application Support can be checked in a simulator:
+    /// `1` the album, `artist` its artist, `track` its first track.
+    private static var autoPin: String? {
         #if DEBUG
-        ProcessInfo.processInfo.environment["CTUNES_DEV_PIN"] == "1"
+        ProcessInfo.processInfo.environment["CTUNES_DEV_PIN"]
         #else
-        false
+        nil
         #endif
     }
 
@@ -209,8 +210,17 @@ struct TracksView: View {
         }
         loaded = true
         await model.rememberTracks(tracks, inAlbum: album)
-        if Self.autoPin, !library.isOffline, !tracks.isEmpty, !model.downloads.isPinned(album) {
-            model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+        if let pin = Self.autoPin, !library.isOffline, !tracks.isEmpty, !model.downloads.isPinned(album) {
+            switch pin {
+            case "artist":
+                if let key = album.parentRatingKey {
+                    await model.downloadArtist(key: key, title: album.parentTitle ?? "")
+                }
+            case "track":
+                model.downloads.pin([tracks[0]], library: library)
+            default:
+                model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+            }
         }
         // The header already fetches the album cover at 600; warm the
         // same size for any track that carries its own art so Now
@@ -258,16 +268,13 @@ struct TracksView: View {
     }
 
     private var header: some View {
-        let downloaded = model.downloads.isDownloaded(album)
-        let downloading = !downloaded && model.downloads.isPinned(album)
+        let state = model.downloads.state(album)
         return VStack(spacing: 12) {
             // The cover carries the download mark the grid tiles do; the
             // download itself lives in the menu, a long press away.
             Artwork(url: artworkURL, size: 240, corner: 12)
                 .artworkShadow()
-                .overlay(alignment: .bottomTrailing) {
-                    if downloaded || downloading { DownloadedBadge(downloading: downloading, large: true) }
-                }
+                .overlay(alignment: .bottomTrailing) { DownloadBadge(state: state, large: true) }
                 .contextMenu { AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false) }
                 .padding(.bottom, 8)
             if let artistKey = album.parentRatingKey {
@@ -281,7 +288,7 @@ struct TracksView: View {
                               enabled: !playableTracks.isEmpty, loading: false, tint: .accentText, action: shuffle)
             }
             .padding(.top, 8)
-            if case .partial(let count)? = model.downloads.status(album) {
+            if case .complete(let count) = state, count > 0 {
                 Text("\(count) track\(count == 1 ? "" : "s") can't be downloaded")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -292,7 +299,8 @@ struct TracksView: View {
 
     private func row(_ track: PlexTrack, at index: Int) -> some View {
         let favorite = model.isFavorite(track)
-        let downloaded = model.downloads.isPinned(track)
+        let downloaded = model.downloads.isDownloaded(track)
+        let downloading = !downloaded && model.downloads.isDownloading(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
@@ -321,12 +329,13 @@ struct TracksView: View {
                     }
                     Spacer()
                     // Both marks keep their slot when off, so the duration column
-                    // doesn't shift as hearts and files come and go.
-                    Image(systemName: "arrow.down.circle.fill")
+                    // doesn't shift as hearts and files come and go. Dotted
+                    // while a pin is still fetching the file.
+                    Image(systemName: downloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .opacity(downloaded ? 1 : 0)
-                        .accessibilityHidden(!downloaded)
+                        .opacity(downloaded || downloading ? 1 : 0)
+                        .accessibilityHidden(!(downloaded || downloading))
                     Image(systemName: "heart.fill")
                         .font(.caption)
                         .foregroundStyle(Color.heart)

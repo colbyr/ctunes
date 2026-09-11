@@ -38,7 +38,7 @@ struct OfflineStoreTests {
     private func path(_ id: Int) -> String { "M/\(id)-1746246593.flac" }
 
     private func pin(_ store: OfflineStore, _ album: PlexAlbum, _ tracks: [PlexTrack]) async {
-        await store.pinAlbum(album, tracks: tracks, server: Self.server, section: "1", art: nil, sources: sources)
+        await store.pinAlbum(album, tracks: tracks, server: Self.server, section: "1", art: { _ in nil }, sources: sources)
     }
 
     // MARK: - Snapshot
@@ -202,7 +202,9 @@ struct OfflineStoreTests {
 
         try await cache.download(sources(tracks[1])!)
         #expect(await store.availableAlbums(server: Self.server) == ["9"])
-        #expect(await store.statuses(server: Self.server).isEmpty, "browsed, not pinned")
+        let inventory = await store.inventory(server: Self.server)
+        #expect(inventory.state(of: album("9")) == .none, "browsed, not pinned: the file is in the cache root")
+        #expect(inventory.statuses["9"] == .init(artistKey: "A", known: 2), "but the list counts toward the artist")
     }
 
     @Test("offline artwork falls back to the server URL the image cache saw")
@@ -262,13 +264,15 @@ struct OfflineStoreTests {
         await pin(store, album("8"), mixed)
         try await cache.drain()
 
-        var statuses = await store.statuses(server: Self.server)
-        #expect(statuses["9"] == .complete)
-        #expect(statuses["8"] == .partial(undownloadable: 1))
+        var inventory = await store.inventory(server: Self.server)
+        #expect(inventory.state(of: album("9")) == .complete(undownloadable: 0))
+        #expect(inventory.state(of: album("8")) == .complete(undownloadable: 1))
+        #expect(inventory.statuses["9"] == .init(artistKey: "A", done: 2, known: 2, bytes: 2048, pinned: true))
 
         await cache.evict(server: Self.server, part: whole[0].part!)
-        statuses = await store.statuses(server: Self.server)
-        #expect(statuses["9"] == .pending(done: 1, total: 2))
+        inventory = await store.inventory(server: Self.server)
+        #expect(inventory.state(of: album("9")) == .downloading(done: 1, total: 2, stalled: false))
+        #expect(inventory.state(ofArtist: "A", albums: [album("9"), album("8")]) == .downloading(done: 2, total: 4, stalled: false))
     }
 
     @Test("a failed track leaves the album pending and resume retries it after the backoff")
@@ -280,9 +284,9 @@ struct OfflineStoreTests {
         await pin(store, album("9"), tracks)
         try await cache.drain()
         #expect(counter.count == 3)
-        let stalled = await store.statuses(server: Self.server)["9"]
-        #expect(stalled == .pending(done: 2, total: 3, failed: 1))
-        #expect(stalled?.isStalled == true)
+        let stalled = await store.inventory(server: Self.server).state(of: album("9"))
+        #expect(stalled == .downloading(done: 2, total: 3, stalled: true))
+        #expect(stalled.isStalled)
 
         await store.resume(server: Self.server, sources: sources)
         try await cache.drain()
@@ -318,10 +322,13 @@ struct OfflineStoreTests {
         await store.setFavorites([favorite], server: Self.server, sources: sources)
         try await cache.drain()
 
-        #expect(await store.favoriteAlbums(server: Self.server) == ["9"])
         #expect(await store.availableAlbums(server: Self.server) == ["9"], "never browsed, still playable")
         #expect(await store.tracks(inAlbum: "9", server: Self.server) == [favorite])
-        #expect(await store.statuses(server: Self.server).isEmpty, "favorites are not an album pin")
+        let inventory = await store.inventory(server: Self.server)
+        #expect(inventory.statuses["9"] == .init(artistKey: "A", done: 1, known: 0, bytes: 1024, pinned: false), "favorites are not an album pin")
+        #expect(inventory.state(of: album("9")) == .complete(undownloadable: 0), "no track count known")
+        #expect(inventory.state(of: PlexAlbum(ratingKey: "9", title: "", parentTitle: nil, year: nil, thumb: nil, leafCount: 10)) == .partial(done: 1, total: 10))
+        #expect(!inventory.isTrackPinned(favorite), "a heart is not a pin")
     }
 
     @Test("resume rebuilds pins from disk on a fresh store")
@@ -336,7 +343,7 @@ struct OfflineStoreTests {
         try await cache.drain()
 
         #expect(counter.count == 3)
-        #expect(await relaunched.statuses(server: Self.server)["9"] == .complete)
+        #expect(await relaunched.inventory(server: Self.server).state(of: album("9")) == .complete(undownloadable: 0))
     }
 
     // MARK: - Offline library
@@ -377,7 +384,7 @@ struct OfflineStoreTests {
         #expect(store.artURL(thumb, server: Self.server) == nil)
         await store.pinAlbum(
             album("9", thumb: thumb), tracks: tracks([1], album: "9"), server: Self.server, section: "1",
-            art: Support.base.appending(path: "/photo/:/transcode"), sources: sources
+            art: { _ in Support.base.appending(path: "/photo/:/transcode") }, sources: sources
         )
         try await cache.drain()
         let url = try #require(store.artURL(thumb, server: Self.server))
@@ -401,5 +408,191 @@ struct OfflineStoreTests {
         #expect(await store.snapshot(server: Self.server, section: nil) == nil)
         let leftover = (try? FileManager.default.contentsOfDirectory(atPath: store.directory.path)) ?? []
         #expect(leftover.isEmpty, "\(leftover)")
+    }
+
+    // MARK: - Artist and track pins
+
+    private func pinArtist(_ store: OfflineStore, key: String = "A", albums: [PlexAlbum], tracks: [PlexTrack]) async {
+        await store.pinArtist(key: key, title: "Artist", thumb: nil, albums: albums, tracks: tracks,
+                              server: Self.server, section: "1", art: { _ in nil }, sources: sources)
+    }
+
+    @Test("pinning an artist downloads every album in order and absorbs the pins under it")
+    func pinArtistAbsorbs() async throws {
+        let (store, cache, counter) = try makeStore()
+        let first = tracks([1, 2], album: "9")
+        let second = tracks([3, 4], album: "8")
+        await pin(store, album("8"), second)
+        await store.pinTracks([first[1]], server: Self.server, art: { _ in nil }, sources: sources)
+        try await cache.drain()
+        #expect(counter.count == 3)
+
+        // The artist's list arrives in one fetch, in no particular order.
+        await pinArtist(store, albums: [album("9"), album("8")], tracks: second + first.reversed())
+        try await cache.drain()
+
+        #expect(counter.count == 4, "only the one missing file")
+        #expect(counter.requests.last == first[0].part!.key)
+        let inventory = await store.inventory(server: Self.server)
+        #expect(inventory.artists.map(\.key) == ["A"])
+        #expect(inventory.artists[0].albums == [album("9"), album("8")])
+        #expect(inventory.albums.isEmpty, "the album pin folded into the artist")
+        #expect(inventory.tracks.isEmpty, "so did the track pin")
+        #expect(inventory.isAlbumPinned("9") && inventory.isAlbumPinned("8"))
+        #expect(inventory.isTrackPinned(first[0]))
+        #expect(await store.tracks(inAlbum: "9", server: Self.server) == first, "filed in track order")
+        #expect(inventory.state(ofArtist: "A", albums: [album("9"), album("8")]) == .complete(undownloadable: 0))
+        #expect(await store.pinnedAlbumKeys(server: Self.server) == ["9", "8"])
+    }
+
+    @Test("removing an album under an artist pin narrows the pin to the other albums")
+    func unpinAlbumNarrowsArtist() async throws {
+        let (store, cache, _) = try makeStore()
+        let first = tracks([1], album: "9")
+        let second = tracks([2], album: "8")
+        let third = tracks([3], album: "7")
+        await pinArtist(store, albums: [album("9"), album("8"), album("7")], tracks: first + second + third)
+        try await cache.drain()
+
+        await store.unpinAlbum("8", server: Self.server)
+
+        let inventory = await store.inventory(server: Self.server)
+        #expect(inventory.artists.isEmpty)
+        #expect(inventory.albums.map(\.id) == ["9", "7"])
+        #expect(inventory.albums.map(\.album) == [album("9"), album("7")])
+        #expect(!cache.isPinned(server: Self.server, part: second[0].part!))
+        #expect(cache.localURL(server: Self.server, part: second[0].part!) != nil, "back in the cache root")
+        #expect(cache.isPinned(server: Self.server, part: first[0].part!))
+        #expect(cache.isPinned(server: Self.server, part: third[0].part!))
+        #expect(inventory.state(ofArtist: "A", albums: [album("9"), album("8"), album("7")]) == .partial(done: 2, total: 3))
+        #expect(inventory.state(of: album("8")) == .none)
+
+        await store.unpinArtist("A", server: Self.server)
+        #expect(await store.inventory(server: Self.server).albums.count == 2, "nothing left to narrow")
+    }
+
+    @Test("removing a track narrows the album pin to its other tracks, and the artist pin above it first")
+    func unpinTrackNarrows() async throws {
+        let (store, cache, _) = try makeStore()
+        let first = tracks([1, 2, 3], album: "9")
+        let second = tracks([4], album: "8")
+        await pinArtist(store, albums: [album("9"), album("8")], tracks: first + second)
+        try await cache.drain()
+
+        await store.unpinTrack(first[1], server: Self.server)
+
+        var inventory = await store.inventory(server: Self.server)
+        #expect(inventory.artists.isEmpty)
+        #expect(inventory.albums.map(\.id) == ["8"])
+        #expect(inventory.tracks == [first[0], first[2]])
+        #expect(!cache.isPinned(server: Self.server, part: first[1].part!))
+        #expect(cache.isPinned(server: Self.server, part: first[0].part!))
+        #expect(cache.isPinned(server: Self.server, part: second[0].part!))
+        #expect(inventory.state(of: album("9")) == .partial(done: 2, total: 3))
+        #expect(!inventory.isAlbumPinned("9"))
+        #expect(inventory.isTrackPinned(first[0]) && !inventory.isTrackPinned(first[1]))
+
+        await store.unpinTrack(first[0], server: Self.server)
+        inventory = await store.inventory(server: Self.server)
+        #expect(inventory.tracks == [first[2]])
+        #expect(inventory.state(of: album("9")) == .partial(done: 1, total: 3))
+    }
+
+    @Test("a track pin is skipped under an album pin, and an album pin absorbs the track pins on it")
+    func trackPins() async throws {
+        let (store, cache, counter) = try makeStore()
+        let tracks = tracks([1, 2, 3], album: "9")
+        await store.pinTracks([tracks[0], tracks[0]], server: Self.server, art: { _ in nil }, sources: sources)
+        try await cache.drain()
+        #expect(counter.count == 1)
+        var inventory = await store.inventory(server: Self.server)
+        #expect(inventory.tracks == [tracks[0]], "once")
+        #expect(inventory.isTrackPinned(tracks[0]) && !inventory.isTrackPinned(tracks[1]))
+        #expect(inventory.bytes(for: tracks[0], server: Self.server) == 1024)
+        #expect(await store.tracks(inAlbum: "9", server: Self.server) == [tracks[0]], "a page from the pin alone")
+
+        await pin(store, album("9"), tracks)
+        try await cache.drain()
+        inventory = await store.inventory(server: Self.server)
+        #expect(inventory.tracks.isEmpty)
+        #expect(inventory.albums.map(\.id) == ["9"])
+
+        await store.pinTracks([tracks[1]], server: Self.server, art: { _ in nil }, sources: sources)
+        #expect(await store.inventory(server: Self.server).tracks.isEmpty, "covered already")
+        #expect(counter.count == 3)
+    }
+
+    @Test("a manifest from before artist pins still reads, and its pins gain an album record")
+    func manifestMigration() async throws {
+        let (store, cache, _) = try makeStore()
+        let tracks = tracks([1], album: "9")
+        await store.saveTracks(tracks, inAlbum: "9", server: Self.server)
+        let old = """
+        {"albums":{"9":{"title":"Album 9","section":"1","pinnedAt":"2025-01-01T00:00:00Z"}},"favoritesPinned":true}
+        """
+        try Data(old.utf8).write(to: store.directory.appending(path: "M/manifest.json"))
+
+        let fresh = OfflineStore(directory: store.directory, cache: cache)
+        await fresh.resume(server: Self.server, sources: sources)
+        try await cache.drain()
+
+        let inventory = await fresh.inventory(server: Self.server)
+        #expect(inventory.artists.isEmpty)
+        #expect(inventory.favoritesPinned)
+        #expect(inventory.albums.count == 1)
+        #expect(inventory.albums[0].album.ratingKey == "9")
+        #expect(inventory.albums[0].album.parentRatingKey == "A")
+        #expect(inventory.albums[0].album.leafCount == 1)
+        #expect(inventory.state(of: inventory.albums[0].album) == .complete(undownloadable: 0))
+    }
+
+    @Test("the inventory tells a download in flight from one that stalled, per track")
+    func inventoryProgress() async throws {
+        let (store, cache, _) = try makeStore { request in
+            request.url!.path.contains("/2/") ? .init(status: 500, body: Data()) : .init(body: Data(count: 1024))
+        }
+        let tracks = tracks([1, 2], album: "9")
+        await pin(store, album("9"), tracks)
+        try await cache.drain()
+
+        let inventory = await store.inventory(server: Self.server)
+        #expect(inventory.isDownloaded(tracks[0], server: Self.server))
+        #expect(!inventory.isDownloaded(tracks[1], server: Self.server))
+        #expect(inventory.isDownloading(tracks[1], server: Self.server))
+        #expect(inventory.isFailed(tracks[1], server: Self.server))
+        #expect(inventory.usage(of: tracks, server: Self.server) == (1024, 1))
+        #expect(inventory.totalBytes == 1024)
+        #expect(inventory.state(of: album("9")) == .downloading(done: 1, total: 2, stalled: true))
+    }
+
+    @Test("download states roll up from counts")
+    func states() {
+        typealias R = DownloadState.Rollup
+        #expect(DownloadState(R()) == .none)
+        #expect(DownloadState(R(done: 0, total: 3, missing: 3)) == .downloading(done: 0, total: 3, stalled: false))
+        #expect(DownloadState(R(done: 2, total: 3, missing: 1, failed: 1)) == .downloading(done: 2, total: 3, stalled: true))
+        #expect(DownloadState(R(done: 1, total: 3)) == .partial(done: 1, total: 3))
+        #expect(DownloadState(R(done: 3, total: 3)) == .complete(undownloadable: 0))
+        #expect(DownloadState(R(done: 2, total: 3, undownloadable: 1)) == .complete(undownloadable: 1))
+        #expect(DownloadState(R(done: 0, total: 3, missing: 1)).hasFiles == false)
+        #expect(DownloadState(R(done: 1, total: 3, missing: 1)).hasFiles)
+
+        // An album never browsed: leafCount fills in the total.
+        let status = AlbumDownloadStatus(done: 2, known: 0)
+        #expect(DownloadState(status.rollup(trackCount: nil)) == .complete(undownloadable: 0))
+        #expect(DownloadState(status.rollup(trackCount: 12)) == .partial(done: 2, total: 12))
+
+        // An artist: the section's list gives every album a total.
+        let statuses = ["9": AlbumDownloadStatus(artistKey: "A", done: 2, known: 2, pinned: true)]
+        let albums = [
+            PlexAlbum(ratingKey: "9", title: "", parentRatingKey: "A", parentTitle: nil, year: nil, thumb: nil, leafCount: 2),
+            PlexAlbum(ratingKey: "8", title: "", parentRatingKey: "A", parentTitle: nil, year: nil, thumb: nil, leafCount: 5),
+            PlexAlbum(ratingKey: "7", title: "", parentRatingKey: "B", parentTitle: nil, year: nil, thumb: nil, leafCount: 5),
+        ]
+        var inventory = DownloadInventory()
+        inventory.statuses = statuses
+        #expect(inventory.state(ofArtist: "A", albums: albums) == .partial(done: 2, total: 7))
+        #expect(inventory.state(ofArtist: "A", albums: []) == .complete(undownloadable: 0), "before the list loads")
+        #expect(inventory.state(ofArtist: "B", albums: albums) == .none)
     }
 }

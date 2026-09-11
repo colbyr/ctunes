@@ -140,6 +140,11 @@ struct ArtistView: View {
             Artwork(url: artworkURL, size: 200, corner: 100)
                 .clipShape(.circle)
                 .artworkShadow()
+                // The badge the tiles carry, pulled in toward the rim where
+                // a circle has room for it.
+                .overlay(alignment: .bottomTrailing) {
+                    DownloadBadge(state: model.downloads.state(artist: route.ratingKey), large: true).padding(8)
+                }
                 .contextMenu { ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false) }
                 .padding(.bottom, 8)
             ListenerVetoes(model: model, artistKey: route.ratingKey)

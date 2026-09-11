@@ -266,6 +266,7 @@ final class AppModel {
         libraryGeneration += 1
         self.state = state
         downloads.attach(server: snapshot.server, offline: true)
+        downloads.setAlbums(snapshot.albums)
     }
 
     /// Called by a browse screen, or the player, when a fetch fails while
@@ -357,6 +358,7 @@ final class AppModel {
             baseURL: (library as? PlexLibrary)?.baseURL
         )
         try? await offline.save(snapshot)
+        downloads.setAlbums(albums)
         await offline.setFavorites(favorites, server: library.serverIdentifier, sources: library.trackSource)
         downloads.refresh()
     }
@@ -376,6 +378,30 @@ final class AppModel {
         guard let library, !library.isOffline else { return }
         await offline.resume(server: library.serverIdentifier, sources: library.trackSource)
         downloads.refresh()
+    }
+
+    /// Pins every album of the artist: their album list and every track of
+    /// theirs in one fetch each, so the store can file the tracks under
+    /// the albums. A fetch failure runs the usual rediscovery and pins
+    /// nothing. Returns whether the pin was made.
+    @discardableResult
+    func downloadArtist(key: String, title: String) async -> Bool {
+        guard let library, !library.isOffline, let section = selectedSection else { return false }
+        do {
+            async let albums = library.albums(forArtist: key, inSection: section.key)
+            async let tracks = library.tracks(forArtist: key, inSection: section.key)
+            async let artists = library.artists(inSection: section.key)
+            let sorted = AlbumView.artist.sorted(try await albums)
+            let list = try await tracks
+            guard !sorted.isEmpty, !list.isEmpty else { return false }
+            let thumb = (try? await artists)?.first { $0.ratingKey == key }?.thumb
+            downloads.pinArtist(key: key, title: title, thumb: thumb, albums: sorted, tracks: list,
+                                section: section.key, library: library)
+            return true
+        } catch {
+            await connectionLost(error)
+            return false
+        }
     }
 
     var isFavoritesPinned: Bool { downloads.favoritesPinned }

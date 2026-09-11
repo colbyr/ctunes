@@ -116,10 +116,8 @@ struct MixBuilderView: View {
         let vetoed: Bool
         /// Offline with nothing downloaded: still in the pool, dimmed.
         var unavailable = false
-        /// Every track on disk: the same badge as the browse root.
-        var downloaded = false
-        /// Pinned but still coming down: the dotted badge.
-        var downloading = false
+        /// What's on disk: the same badge as the browse root.
+        var download: DownloadState = .none
     }
 
     private var hidden: Set<String> { model.roster.hiddenArtistKeys }
@@ -135,7 +133,8 @@ struct MixBuilderView: View {
         switch kind {
         case .artist:
             return view.sorted(artists, rotation: rotation).map {
-                Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb, vetoed: hidden.contains($0.ratingKey))
+                Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb,
+                     vetoed: hidden.contains($0.ratingKey), download: model.downloads.state(artist: $0.ratingKey))
             }
         case .album:
             let list = view.sorted(albums, rotation: rotation)
@@ -153,8 +152,7 @@ struct MixBuilderView: View {
             thumb: album.thumb,
             vetoed: hidden.contains(album.artistKey),
             unavailable: model.state == .offline && !model.downloads.hasDownloads(album),
-            downloaded: model.downloads.isDownloaded(album),
-            downloading: !model.downloads.isDownloaded(album) && model.downloads.isPinned(album)
+            download: model.downloads.state(album)
         )
     }
 
@@ -475,6 +473,10 @@ struct MixBuilderView: View {
                 Artwork(url: url, size: nil, corner: 8)
                     .clipShape(.circle)
                     .artworkShadow()
+                    .overlay(alignment: .bottomTrailing) {
+                        // Pulled in toward the rim, where a circle has room.
+                        DownloadBadge(state: item.download).padding(4)
+                    }
                     .overlay {
                         if selected {
                             Circle().stroke(ring, lineWidth: 2)
@@ -483,9 +485,7 @@ struct MixBuilderView: View {
             case .album:
                 Artwork(url: url, size: nil, corner: 8)
                     .artworkShadow()
-                    .overlay(alignment: .bottomTrailing) {
-                        if item.downloaded || item.downloading { DownloadedBadge(downloading: item.downloading) }
-                    }
+                    .overlay(alignment: .bottomTrailing) { DownloadBadge(state: item.download) }
                     .overlay {
                         if selected {
                             RoundedRectangle(cornerRadius: 8).stroke(ring, lineWidth: 2)

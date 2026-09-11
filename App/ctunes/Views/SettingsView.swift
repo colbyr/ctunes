@@ -15,11 +15,11 @@ struct SettingsSheet: View {
     @State private var path = NavigationPath()
     /// Bytes of cached audio, for the clear row; nil until read.
     @State private var cacheUsage: Int?
-    @State private var confirmingRemoveDownloads = false
     @State private var confirmingSignOut = false
 
     private enum Page: Hashable {
         case listeners
+        case downloads
     }
 
     private var offline: Bool { model.state == .offline }
@@ -46,16 +46,27 @@ struct SettingsSheet: View {
                 case .listeners:
                     ListenersList(model: model, artists: artists)
                         .navigationTitle("Listeners")
+                case .downloads:
+                    DownloadsList(model: model)
+                }
+            }
+            .navigationDestination(for: DownloadRoute.self) { route in
+                switch route {
+                case .artist(let key): DownloadedArtistPage(model: model, key: key)
+                case .album(let album): DownloadedAlbumPage(model: model, album: album)
                 }
             }
         }
         .task(id: player.currentTrack?.id) {
             cacheUsage = await player.cacheUsage()
         }
-        .confirmationDialog("Remove all downloads?", isPresented: $confirmingRemoveDownloads, titleVisibility: .visible) {
-            Button("Remove All Downloads", role: .destructive) { model.downloads.removeAll() }
-        } message: {
-            Text("Pinned albums and favorites will stream again. Nothing is removed from your library.")
+        .task {
+            #if DEBUG
+            // `downloads` lands on the manager, for simulator checks.
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_SETTINGS"] == "downloads" {
+                path.append(Page.downloads)
+            }
+            #endif
         }
         .confirmationDialog("Sign out of Plex?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) {
@@ -150,17 +161,17 @@ struct SettingsSheet: View {
 
     @ViewBuilder private var storageSection: some View {
         Section {
-            Toggle("Keep Favorites Offline", isOn: Binding(
-                get: { model.isFavoritesPinned },
-                set: { on in Task { await model.setFavoritesPinned(on) } }
-            ))
-            .disabled(offline)
-            LabeledContent("Downloads", value: Self.bytes(model.downloads.usage))
-            if model.downloads.usage > 0 {
-                Button("Remove All Downloads", role: .destructive) {
-                    confirmingRemoveDownloads = true
+            NavigationLink(value: Page.downloads) {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Downloads")
+                        Text(downloadsSummary)
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                .foregroundStyle(.red)
             }
             LabeledContent("Cached Tracks", value: Self.bytes(cacheUsage ?? 0))
             if let cacheUsage, cacheUsage > 0 {
@@ -174,8 +185,20 @@ struct SettingsSheet: View {
         } header: {
             Text("Storage")
         } footer: {
-            Text("Downloads are albums and favorites you keep offline. Cached tracks are recently played and upcoming tracks kept so they don't stream twice; they clear themselves at 2 GB.")
+            Text("Downloads are the artists, albums, tracks and favorites you keep offline. Cached tracks are recently played and upcoming tracks kept so they don't stream twice; they clear themselves at 2 GB.")
         }
+    }
+
+    /// "1.2 GB · 2 artists, 5 albums" under the Downloads row.
+    private var downloadsSummary: String {
+        let inventory = model.downloads.inventory
+        var parts: [String] = []
+        if !inventory.artists.isEmpty { parts.append(DownloadText.count(inventory.artists.count, "artist")) }
+        if !inventory.albums.isEmpty { parts.append(DownloadText.count(inventory.albums.count, "album")) }
+        if !inventory.tracks.isEmpty { parts.append(DownloadText.count(inventory.tracks.count, "track")) }
+        if inventory.favoritesPinned { parts.append("favorites") }
+        let size = Self.bytes(model.downloads.usage)
+        return parts.isEmpty ? size : "\(size) · \(parts.joined(separator: ", "))"
     }
 
     @ViewBuilder private var accountSection: some View {

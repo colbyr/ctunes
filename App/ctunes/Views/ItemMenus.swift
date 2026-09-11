@@ -111,6 +111,47 @@ private struct LibraryActions {
         model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
     }
 
+    func download(_ track: PlexTrack) {
+        guard let library = model.library, !library.isOffline else { return }
+        model.downloads.pin([track], library: library)
+    }
+
+    /// The whole artist, every album; nothing to pin is a notice.
+    func downloadArtist(key: String, title: String) async {
+        if await !model.downloadArtist(key: key, title: title) {
+            navigator.notice = "Nothing to download."
+        }
+    }
+
+    /// The download items an artist or album menu offers, given whether
+    /// it is pinned and how far along: Download when it isn't; while a pin
+    /// is coming down, Stop, and once it has stalled, Retry beside Remove.
+    @ViewBuilder
+    func downloadItems(pinned: Bool, state: DownloadState, download: @escaping () -> Void, remove: @escaping () -> Void) -> some View {
+        if !offline {
+            Section {
+                if !pinned {
+                    Button(action: download) {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
+                } else {
+                    if state.isStalled {
+                        Button {
+                            model.downloads.retry { await model.resumeDownloads() }
+                        } label: {
+                            Label("Retry Download", systemImage: "arrow.trianglehead.2.clockwise")
+                        }
+                    }
+                    Button(role: .destructive, action: remove) {
+                        state.isDownloading && !state.isStalled
+                            ? Label("Stop Download", systemImage: "stop.circle")
+                            : Label("Remove Download", systemImage: "trash")
+                    }
+                }
+            }
+        }
+    }
+
     /// Navigation from inside the Now Playing cover closes it first; the
     /// column stays where it is.
     func open(_ route: LibraryRoute) {
@@ -162,6 +203,12 @@ struct ArtistMenu: View {
                 }
             }
         }
+        actions.downloadItems(
+            pinned: model.downloads.isPinned(artist: ratingKey),
+            state: model.downloads.state(artist: ratingKey),
+            download: { Task { await actions.downloadArtist(key: ratingKey, title: title) } },
+            remove: { model.downloads.unpinArtist(ratingKey) }
+        )
         ListenersMenu(model: model, artistKey: ratingKey, artist: title)
     }
 }
@@ -226,35 +273,14 @@ struct AlbumMenu: View {
                 }
             }
         }
-        if !offline {
-            Section {
-                switch model.downloads.status(album) {
-                case nil:
-                    Button {
-                        Task { await actions.download(album, known: tracks) }
-                    } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                case let status? where status.isStalled:
-                    Button {
-                        model.downloads.retry { await model.resumeDownloads() }
-                    } label: {
-                        Label("Retry Download", systemImage: "arrow.trianglehead.2.clockwise")
-                    }
-                    Button(role: .destructive) { model.downloads.unpin(album) } label: {
-                        Label("Remove Download", systemImage: "trash")
-                    }
-                case .pending?:
-                    Button(role: .destructive) { model.downloads.unpin(album) } label: {
-                        Label("Stop Download", systemImage: "stop.circle")
-                    }
-                default:
-                    Button(role: .destructive) { model.downloads.unpin(album) } label: {
-                        Label("Remove Download", systemImage: "trash")
-                    }
-                }
-            }
-        }
+        // An album under an artist pin reads as pinned; removing it
+        // narrows the artist to their other albums.
+        actions.downloadItems(
+            pinned: model.downloads.isPinned(album),
+            state: model.downloads.state(album),
+            download: { Task { await actions.download(album, known: tracks) } },
+            remove: { model.downloads.unpin(album) }
+        )
         if let key = album.parentRatingKey {
             ListenersMenu(model: model, artistKey: key, artist: album.parentTitle)
         }
@@ -331,13 +357,26 @@ struct TrackMenu: View {
         case .playing:
             EmptyView()
         }
-        // Hearts are read-only offline.
+        // Hearts are read-only offline, and so are downloads. A track
+        // under an album or artist pin reads as downloaded; removing it
+        // narrows that pin to the rest.
         if !offline {
             Section {
                 Button {
                     Task { await model.toggleFavorite(track) }
                 } label: {
                     Label(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.slash" : "heart")
+                }
+                if model.downloads.isPinned(track) {
+                    Button(role: .destructive) { model.downloads.unpin(track) } label: {
+                        model.downloads.isDownloading(track)
+                            ? Label("Stop Download", systemImage: "stop.circle")
+                            : Label("Remove Download", systemImage: "trash")
+                    }
+                } else {
+                    Button { actions.download(track) } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
                 }
             }
         }
