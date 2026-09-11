@@ -231,4 +231,4 @@ no shuffle mode of its own and doesn't need one for this. The lock-screen
 
 ## Explicitly out of scope
 
-Search, gapless and crossfade, sonic-analysis radio (M7's mixes are plain unions of picked artists or albums, not similarity), loudness leveling, waveform scrubbing, CarPlay, playlists. Gapless in particular is not a weekend item — `AVQueuePlayer` handles it poorly and doing it properly means a custom `AVAudioEngine` pipeline, which is the single largest piece of work in a Plexamp-class client.
+Search, gapless and crossfade, sonic-analysis radio (M7's mixes are plain unions of picked artists or albums, not similarity), loudness leveling, waveform scrubbing, playlists (CarPlay landed after M7; see `notes/carplay.md`). Gapless in particular is not a weekend item — `AVQueuePlayer` handles it poorly and doing it properly means a custom `AVAudioEngine` pipeline, which is the single largest piece of work in a Plexamp-class client.

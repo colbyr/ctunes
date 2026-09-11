@@ -4,8 +4,26 @@
 <dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
+		<!-- CarPlay is a second scene next to the phone's, so this has to be
+		     on; it also lets an iPad open more than one window, all of which
+		     share one AppRuntime. The window scene itself stays SwiftUI's
+		     and needs no entry here. -->
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>CPTemplateApplicationScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>CarPlay</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>

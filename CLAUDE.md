@@ -43,6 +43,15 @@ target iOS 26.
 
 ### Flow
 
+`AppRuntime.shared` builds the one `AppModel`, `AudioPlayer` and
+`TrackCache`, kicks off bootstrap, and wires the player's `connectionLost`
+hook, the `adopt` on a library swap and the stop on sign-out, following the
+model through `Observations`. It lives outside any view because the phone
+window and the CarPlay scene are peers: a car can launch the app with the
+phone locked and no window at all. `ContentView` reads it; so does
+`CarPlaySceneDelegate`. **Nothing that must run for playback to work may
+live in a SwiftUI view's `.task` or `.onChange`.**
+
 `AppModel` (`@MainActor @Observable`) owns the state machine:
 `loading → signedOut → linking → connecting → signedIn`, plus `connectFailed`
 and `offline`. On launch it restores a keychain token, discovers a server, and
@@ -65,6 +74,21 @@ shared session's 60s, so a dead address fails fast. The banner's "Try
 again" and scene activation call `reconnect()`. Hearts are read-only
 offline. Reachability is decided by the server answering, never by
 `NWPathMonitor`.
+
+**CarPlay** (`App/ctunes/CarPlay/`, `notes/carplay.md`) is a second
+scene: `CarPlaySceneDelegate` is named in `App/Info.plist` under the
+`CPTemplateApplicationSceneSessionRoleApplication` role, which is why
+`UIApplicationSupportsMultipleScenes` is on (an iPad can open several
+windows; all share the runtime). `CarPlayController` builds a tab bar of
+four `CPListTemplate`s (On Rotation, Artists, Recently Added, Favorites)
+from the same library fetches as the browse root, minus listener vetoes,
+and hands taps to `AudioPlayer`; Now Playing is the system's, fed by the
+same now-playing info and remote commands as the lock screen, so shuffle
+and repeat there are `MPRemoteCommandCenter` events. The entitlement
+`com.apple.developer.carplay-audio` is in `App/ctunes.entitlements`; a
+simulator build embeds it in the binary's `__entitlements` section. The
+car screen can't be opened from the terminal under Xcode 27 (DeviceHub
+replaced Simulator.app); test in DeviceHub or on the phone.
 
 The app runs on iPhone and iPad (and so on Apple silicon Macs as "Designed
 for iPad"). Now Playing has one host, in `LibraryView`, driven by the

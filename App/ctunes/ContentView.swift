@@ -2,26 +2,12 @@ import PlexKit
 import SwiftUI
 
 struct ContentView: View {
-    @State private var model: AppModel
-    @State private var player: AudioPlayer
+    /// Shared with the CarPlay scene, which may come up first; the model
+    /// and player are built and wired there. See `AppRuntime`.
+    private let runtime = AppRuntime.shared
     @Environment(\.scenePhase) private var scenePhase
 
-    init() {
-        // One cache with two roots, shared by the player (window prefetch)
-        // and the offline store (pins), so a single pump decides what
-        // downloads next.
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "ctunes/Offline")
-        let cache = TrackCache(
-            directory: caches.appending(path: "Tracks"),
-            pinnedDirectory: support.appending(path: "Tracks"),
-            session: AudioPlayer.downloadSession()
-        )
-        let store = OfflineStore(directory: support, cache: cache)
-        _player = State(initialValue: AudioPlayer(cache: cache))
-        _model = State(initialValue: AppModel(offline: store, cache: cache))
-    }
+    private var model: AppModel { runtime.model }
 
     var body: some View {
         Group {
@@ -48,30 +34,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .foregroundStyle(Color.ink)
         .background(ParchmentBackground())
-        .environment(player)
-        .task { await model.bootstrap() }
-        // The player's stream failures go through the same rediscovery as
-        // a browse fetch. The library is handed over here, before the
-        // player reloads, rather than left to `onChange` below, which runs
-        // on SwiftUI's schedule.
-        .onAppear {
-            player.connectionLost = { [model, player] error in
-                let recovered = await model.connectionLost(error)
-                player.adopt(model.library)
-                return recovered
-            }
-        }
-        // Sign-out lives in the model, which doesn't know the player; stop
-        // playback and drop the cached audio here when it happens.
-        .onChange(of: model.state) { old, new in
-            guard old == .signedIn || old == .offline || old == .reconnecting, new == .signedOut else { return }
-            Task { await player.signOut() }
-        }
-        // A queue that started offline reports timelines once the server is
-        // back, and one that started online keeps playing pinned files.
-        .onChange(of: model.libraryGeneration) {
-            player.adopt(model.library)
-        }
+        .environment(runtime.player)
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             model.refreshListeners()
