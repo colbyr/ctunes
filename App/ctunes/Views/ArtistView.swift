@@ -85,7 +85,7 @@ struct ArtistView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false)
+                    ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false)
                 } label: {
                     Label("More", systemImage: "ellipsis")
                 }
@@ -140,7 +140,7 @@ struct ArtistView: View {
             Artwork(url: artworkURL, size: 200, corner: 100)
                 .clipShape(.circle)
                 .artworkShadow()
-                .contextMenu { ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false) }
+                .contextMenu { ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false) }
                 .padding(.bottom, 8)
             ListenerVetoes(model: model, artistKey: route.ratingKey)
             HiddenRightNowLabel(model: model, artistKey: route.ratingKey)

@@ -131,8 +131,10 @@ struct ArtistMenu: View {
     let model: AppModel
     let ratingKey: String
     let title: String
-    /// Off on the artist's own page.
+    /// Both off on the artist's own page, where the page has the link
+    /// and the hero cards.
     var showArtist = true
+    var showPlayback = true
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
@@ -146,16 +148,18 @@ struct ArtistMenu: View {
                 }
             }
         }
-        Section {
-            Button {
-                Task { actions.mixAlbums(await actions.tracks(ofArtist: ratingKey)) }
-            } label: {
-                Label("Mix Albums", systemImage: "square.on.square")
-            }
-            Button {
-                Task { actions.shuffle(await actions.tracks(ofArtist: ratingKey)) }
-            } label: {
-                Label("Shuffle", systemImage: "shuffle")
+        if showPlayback {
+            Section {
+                Button {
+                    Task { actions.mixAlbums(await actions.tracks(ofArtist: ratingKey)) }
+                } label: {
+                    Label("Mix Albums", systemImage: "square.on.square")
+                }
+                Button {
+                    Task { actions.shuffle(await actions.tracks(ofArtist: ratingKey)) }
+                } label: {
+                    Label("Shuffle", systemImage: "shuffle")
+                }
             }
         }
         ListenersMenu(model: model, artistKey: ratingKey, artist: title)
@@ -171,7 +175,8 @@ struct AlbumMenu: View {
     var tracks: [PlexTrack]? = nil
     /// Off on the artist's page, where every tile is theirs.
     var showArtist = true
-    /// Off on the album's own page.
+    /// Off on the album's own page, which has the link and the Play and
+    /// Shuffle cards; the queue items stay.
     var showAlbum = true
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
@@ -197,15 +202,17 @@ struct AlbumMenu: View {
         }
         if playable {
             Section {
-                Button {
-                    Task { actions.play(await actions.tracks(of: album, known: tracks)) }
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                }
-                Button {
-                    Task { actions.shuffle(await actions.tracks(of: album, known: tracks)) }
-                } label: {
-                    Label("Shuffle", systemImage: "shuffle")
+                if showAlbum {
+                    Button {
+                        Task { actions.play(await actions.tracks(of: album, known: tracks)) }
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                    }
+                    Button {
+                        Task { actions.shuffle(await actions.tracks(of: album, known: tracks)) }
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                    }
                 }
                 Button {
                     Task { actions.enqueue(await actions.tracks(of: album, known: tracks), next: true) }
