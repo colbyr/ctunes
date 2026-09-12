@@ -30,6 +30,7 @@ struct StorageList: View {
             favoritesSection
             if downloads.isEmpty { emptySection } else { pinsSection; removeSection }
             cacheSection
+            clearCacheSection
         }
         .settingsBackground()
         .listSectionSpacing(.compact)
@@ -40,9 +41,6 @@ struct StorageList: View {
         } message: {
             Text("Everything kept offline will stream again. Nothing is removed from your library.")
         }
-        // Settings is presented from a stack tinted ink, which the sheet
-        // inherits; the swipe should read as destructive.
-        .tint(.red)
         .task { downloads.refresh() }
         // The cache moves as tracks play and as pins come and go, since a
         // pinned file leaves it and a removed one returns.
@@ -54,20 +52,28 @@ struct StorageList: View {
 
     // MARK: - Sections
 
-    /// The bar iPhone Storage draws: the app's two stores against what
-    /// else is on the phone and what's free.
+    /// The card iPhone Storage draws: the device's name and how much of it
+    /// is used, the bar, and a legend of the app's two stores against what
+    /// else is on the device.
     private var overviewSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(DeviceStorage.name)
+                        .font(.title2.weight(.semibold))
+                    Spacer()
+                    if let device {
+                        Text("\(DownloadText.bytes(device.total - device.free)) of \(DownloadText.bytes(device.total)) used")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
                 StorageBar(downloads: downloads.usage, cached: cacheUsage ?? 0, device: device)
-                HStack(spacing: 14) {
+                HStack(spacing: 16) {
                     StorageLegend(color: .accentText, label: "Downloads", bytes: downloads.usage)
                     StorageLegend(color: .artistMix, label: "Cached", bytes: cacheUsage ?? 0)
-                }
-                if let device {
-                    Text("\(DownloadText.bytes(device.free)) free of \(DownloadText.bytes(device.total))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.vertical, 6)
@@ -136,21 +142,24 @@ struct StorageList: View {
                     Text(DownloadText.bytes(bytes)).tag(bytes)
                 }
             }
-            if let cacheUsage, cacheUsage > 0 {
+        } header: {
+            SectionHeading("Cache", detail: "Recently played and upcoming tracks are kept so they don't stream twice.")
+        }
+    }
+
+    @ViewBuilder private var clearCacheSection: some View {
+        if let cacheUsage, cacheUsage > 0 {
+            Section {
                 Button(role: .destructive) {
                     Task {
                         await player.clearCache()
                         self.cacheUsage = await player.cacheUsage()
                     }
                 } label: {
-                    Label("Clear Cached Tracks", systemImage: "trash")
+                    Label("Remove Cached Tracks", systemImage: "trash")
                 }
                 .foregroundStyle(.red)
             }
-        } header: {
-            Text("Cache")
-        } footer: {
-            Text("Recently played and upcoming tracks are kept so they don't stream twice, and clear themselves at the cache size. Downloads never count against it.")
         }
     }
 
@@ -177,6 +186,7 @@ struct StorageList: View {
             Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
                 Label("Remove", systemImage: "trash")
             }
+            .tint(.red)
         }
         .contextMenu {
             Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
@@ -206,6 +216,7 @@ struct StorageList: View {
             Button(role: .destructive) { downloads.unpin(album) } label: {
                 Label("Remove", systemImage: "trash")
             }
+            .tint(.red)
         }
         .contextMenu {
             Button(role: .destructive) { downloads.unpin(album) } label: {
@@ -226,9 +237,7 @@ struct StorageList: View {
                 LabeledContent("Favorites", value: "\(usage.files) of \(DownloadText.count(inventory.favorites.count, "track")) · \(DownloadText.bytes(usage.bytes))")
             }
         } header: {
-            Text("Downloads")
-        } footer: {
-            Text("Favorite tracks are downloaded automatically.")
+            SectionHeading("Downloads", detail: "Downloads are available to play offline.")
         }
     }
 
@@ -277,7 +286,6 @@ struct DownloadedArtistPage: View {
             }
         }
         .settingsBackground()
-        .tint(.red)
         .navigationTitle(pin?.title ?? "Artist")
         .navigationSubtitle(pin.map { DownloadText.bytes(bytes(of: $0.albums)) } ?? "")
         .navigationBarTitleDisplayMode(.inline)
@@ -306,6 +314,7 @@ struct DownloadedArtistPage: View {
             Button(role: .destructive) { downloads.unpin(album) } label: {
                 Label("Remove", systemImage: "trash")
             }
+            .tint(.red)
         }
     }
 
@@ -349,7 +358,6 @@ struct DownloadedAlbumPage: View {
             }
         }
         .settingsBackground()
-        .tint(.red)
         .navigationTitle(album.title)
         .navigationSubtitle(DownloadText.summary(
             state: state, bytes: downloads.inventory.statuses[album.ratingKey]?.bytes ?? 0,
@@ -405,6 +413,7 @@ private struct DownloadedTrackRow: View {
                 Button(role: .destructive) { downloads.unpin(track) } label: {
                     Label("Remove", systemImage: "trash")
                 }
+                .tint(.red)
             }
         }
         .contextMenu {
@@ -433,10 +442,39 @@ private struct DownloadedTrackRow: View {
     }
 }
 
+/// A section header with a line of explanation under it, the way iPhone
+/// Storage captions its groups. The heading keeps the list's own header
+/// styling; the detail is plain footnote text.
+private struct SectionHeading: View {
+    let title: String
+    let detail: String
+
+    init(_ title: String, detail: String) {
+        self.title = title
+        self.detail = detail
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            Text(detail)
+                .font(.footnote)
+                .fontWeight(.regular)
+                .foregroundStyle(.secondary)
+                .textCase(nil)
+        }
+    }
+}
+
 /// What the phone reports for the volume the app lives on.
 struct DeviceStorage: Equatable {
     let total: Int
     let free: Int
+
+    /// "iPhone", "iPad", or "Mac" for the iPad build running there.
+    static var name: String {
+        ProcessInfo.processInfo.isiOSAppOnMac ? "Mac" : UIDevice.current.model
+    }
 
     /// `volumeAvailableCapacityForImportantUsage` rather than the raw free
     /// space: it counts purgeable content the system would clear for the
@@ -496,10 +534,12 @@ private struct StorageLegend: View {
     let bytes: Int
 
     var body: some View {
-        HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text("\(label) \(DownloadText.bytes(bytes))")
-                .font(.caption)
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 10, height: 10)
+            Text(label)
+                .font(.subheadline)
+            Text(DownloadText.bytes(bytes))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
     }
