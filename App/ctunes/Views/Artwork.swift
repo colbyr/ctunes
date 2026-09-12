@@ -101,10 +101,9 @@ struct DownloadBadge: View {
 }
 
 /// The corner of the cover on an album page and the portrait on an
-/// artist's: the badge once anything is down, and before that a bare
-/// arrow that starts the download. No disc, so it reads as an action
-/// rather than a state; a shadow keeps it legible on white art. Nothing
-/// offline, where there is no server to fetch from.
+/// artist's: the badge once anything is down, and before that the same
+/// arrow on the same glass disc with no ring, which starts the download.
+/// Nothing offline, where there is no server to fetch from.
 struct DownloadOverlay: View {
     let state: DownloadState
     let offline: Bool
@@ -116,11 +115,13 @@ struct DownloadOverlay: View {
         } else if !offline {
             Button(action: download) {
                 Image(systemName: "arrow.down")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 2.5)
-                    .frame(width: 44, height: 44)
-                    .contentShape(.rect)
+                    .frame(width: 28, height: 28)
+                    .glassEffect(.regular.tint(.black.opacity(0.35)).interactive(), in: .circle)
+                    // The hit area, not the disc: 44pt to tap, 28 to see.
+                    .padding(8)
+                    .contentShape(.circle)
             }
             .buttonStyle(.plain)
             .padding(2)

@@ -74,7 +74,7 @@ struct ListenersList: View {
                 Text("Listeners are saved on this phone, not in Plex. Choose who's listening from the Music screen.")
             }
         }
-        .parchment()
+        .settingsBackground()
         .navigationDestination(for: Listener.ID.self) { id in
             ListenerDetail(model: model, id: id, artists: artists)
         }
@@ -185,7 +185,7 @@ private struct ListenerDetail: View {
                 }
             }
         }
-        .parchment()
+        .settingsBackground()
         .navigationTitle(listener.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

@@ -34,7 +34,8 @@ struct StorageList: View {
             if downloads.isEmpty { emptySection } else { removeSection }
             cacheSection
         }
-        .parchment()
+        .settingsBackground()
+        .listSectionSpacing(.compact)
         .navigationTitle("Storage")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Remove all downloads?", isPresented: $confirmingRemoveAll, titleVisibility: .visible) {
@@ -42,6 +43,9 @@ struct StorageList: View {
         } message: {
             Text("Everything kept offline will stream again. Nothing is removed from your library.")
         }
+        // Settings is presented from a stack tinted ink, which the sheet
+        // inherits; the swipe should read as destructive.
+        .tint(.red)
         .task { downloads.refresh() }
         // The cache moves as tracks play and as pins come and go, since a
         // pinned file leaves it and a removed one returns.
@@ -105,7 +109,7 @@ struct StorageList: View {
     private var cacheSection: some View {
         Section {
             LabeledContent("Cached Tracks", value: DownloadText.bytes(cacheUsage ?? 0))
-            Picker("Cache Size", selection: Binding(
+            Picker("Max Cache Size", selection: Binding(
                 get: { player.cacheLimit },
                 set: { player.cacheLimit = $0 }
             )) {
@@ -114,15 +118,18 @@ struct StorageList: View {
                 }
             }
             if let cacheUsage, cacheUsage > 0 {
-                Button("Clear Cached Tracks") {
+                Button(role: .destructive) {
                     Task {
                         await player.clearCache()
                         self.cacheUsage = await player.cacheUsage()
                     }
+                } label: {
+                    Label("Clear Cached Tracks", systemImage: "trash")
                 }
+                .foregroundStyle(.red)
             }
         } header: {
-            Text("Play Cache")
+            Text("Cache")
         } footer: {
             Text("Recently played and upcoming tracks are kept so they don't stream twice, and clear themselves at the cache size. Downloads never count against it.")
         }
@@ -209,7 +216,7 @@ struct StorageList: View {
 
     private var favoritesSection: some View {
         Section {
-            Toggle("Keep Favorites Offline", isOn: Binding(
+            Toggle("Download Favorites", isOn: Binding(
                 get: { model.isFavoritesPinned },
                 set: { on in Task { await model.setFavoritesPinned(on) } }
             ))
@@ -218,17 +225,19 @@ struct StorageList: View {
                 let usage = downloads.usage(of: inventory.favorites)
                 LabeledContent("Favorites", value: "\(usage.files) of \(DownloadText.count(inventory.favorites.count, "track")) · \(DownloadText.bytes(usage.bytes))")
             }
+        } header: {
+            Text("Downloads")
         } footer: {
-            Text("Favorites follow your hearts: a new favorite downloads, an unhearted one is removed. A favorite that is also in a downloaded album stays either way.")
+            Text("Favorite tracks are downloaded automatically.")
         }
     }
 
     private var removeSection: some View {
         Section {
-            Button("Remove All Downloads", role: .destructive) { confirmingRemoveAll = true }
-                .foregroundStyle(.red)
-        } footer: {
-            Text("Removes every download and turns off Keep Favorites Offline. The play cache is left alone.")
+            Button(role: .destructive) { confirmingRemoveAll = true } label: {
+                Label("Remove All Downloads", systemImage: "trash")
+            }
+            .foregroundStyle(.red)
         }
     }
 
@@ -267,7 +276,8 @@ struct DownloadedArtistPage: View {
                 }
             }
         }
-        .parchment()
+        .settingsBackground()
+        .tint(.red)
         .navigationTitle(pin?.title ?? "Artist")
         .navigationSubtitle(pin.map { DownloadText.bytes(bytes(of: $0.albums)) } ?? "")
         .navigationBarTitleDisplayMode(.inline)
@@ -338,7 +348,8 @@ struct DownloadedAlbumPage: View {
                 }
             }
         }
-        .parchment()
+        .settingsBackground()
+        .tint(.red)
         .navigationTitle(album.title)
         .navigationSubtitle(DownloadText.summary(
             state: state, bytes: downloads.inventory.statuses[album.ratingKey]?.bytes ?? 0,
@@ -472,9 +483,9 @@ private struct StorageBar: View {
                 Spacer(minLength: 0)
             }
         }
-        .frame(height: 14)
+        .frame(height: 22)
         .background(Color.ink.opacity(0.08))
-        .clipShape(.rect(cornerRadius: 4))
+        .clipShape(.rect(cornerRadius: 6))
         .accessibilityLabel("Storage: \(DownloadText.bytes(downloads)) of downloads, \(DownloadText.bytes(cached)) cached")
     }
 }

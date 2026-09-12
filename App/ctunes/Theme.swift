@@ -94,6 +94,14 @@ extension View {
             .listRowSeparatorTint(.divider)
     }
 
+    /// The system's grouped ground for Settings and its pages: the rows
+    /// need the contrast against their cards, which the parchment doesn't
+    /// give them.
+    func settingsBackground() -> some View {
+        scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
+    }
+
     /// The same, washed at the top with the art's own color: the album and
     /// Now Playing screens take their ground from the cover on show.
     func artworkBackground(_ url: URL?) -> some View {

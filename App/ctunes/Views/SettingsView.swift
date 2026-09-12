@@ -31,7 +31,7 @@ struct SettingsSheet: View {
                 storageSection
                 accountSection
             }
-            .parchment()
+            .settingsBackground()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
