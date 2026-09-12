@@ -239,6 +239,7 @@ struct StorageList: View {
                 get: { model.isFavoritesPinned },
                 set: { on in Task { await model.setFavoritesPinned(on) } }
             ))
+            .tint(Color.heart)
             .disabled(offline)
             if inventory.favoritesPinned {
                 let usage = downloads.usage(of: inventory.favorites)
