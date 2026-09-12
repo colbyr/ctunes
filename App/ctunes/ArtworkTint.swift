@@ -26,6 +26,31 @@ struct ArtworkTint: Equatable, Sendable {
             return UIColor(red: mix(red, ground.0), green: mix(green, ground.1), blue: mix(blue, ground.2), alpha: 1)
         })
     }
+
+    /// The tint as an accent for the page's controls, in the amber's
+    /// place: the hue kept, pushed dark enough to read on white glass by
+    /// day and bright enough for the night ground, the way the two amber
+    /// values are. Nil for a sleeve with no hue to speak of (black, white,
+    /// grey), where a grey accent would read as disabled and the amber
+    /// looks right.
+    var accent: Color? {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0
+        UIColor(red: red, green: green, blue: blue, alpha: 1)
+            .getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: nil)
+        guard saturation > 0.12, brightness > 0.08 else { return nil }
+        return Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(hue: hue, saturation: min(max(saturation, 0.45), 0.8), brightness: min(max(brightness, 0.82), 0.95), alpha: 1)
+                : UIColor(hue: hue, saturation: min(max(saturation, 0.55), 0.95), brightness: min(max(brightness, 0.42), 0.6), alpha: 1)
+        })
+    }
+}
+
+extension EnvironmentValues {
+    /// The accent the art on show gives the page, set by
+    /// `artworkBackground(_:)` for the hero cards under it. Nil where
+    /// there is no art, or none with a usable hue.
+    @Entry var artworkAccent: Color?
 }
 
 extension UIImage {
@@ -78,39 +103,44 @@ extension UIImage {
 }
 
 /// The parchment gradient washed at the top with the art's color, fading
-/// to the plain ground by the foot. Fades between tints as the art changes.
-struct ArtworkBackground: View {
+/// to the plain ground by the foot, with the same color handed down as
+/// the page's accent. Fades between tints as the art changes.
+struct ArtworkGround: ViewModifier {
     let url: URL?
     @State private var tint: ArtworkTint?
 
-    var body: some View {
+    func body(content: Content) -> some View {
         // A known tint is read straight from the cache so the first frame
         // is already the cover's color; the state only carries one that
         // had to be computed, or the last one while the next is.
         let shown = url.flatMap { ImageLoader.shared.cachedTint(for: $0) } ?? tint
-        ZStack {
-            ParchmentBackground()
-            if let shown {
-                LinearGradient(
-                    stops: [
-                        .init(color: shown.wash, location: 0),
-                        .init(color: shown.wash.opacity(0.6), location: 0.5),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .ignoresSafeArea()
-                .transition(.opacity)
+        content
+            .environment(\.artworkAccent, shown?.accent)
+            .background {
+                ZStack {
+                    ParchmentBackground()
+                    if let shown {
+                        LinearGradient(
+                            stops: [
+                                .init(color: shown.wash, location: 0),
+                                .init(color: shown.wash.opacity(0.6), location: 0.5),
+                                .init(color: .clear, location: 1),
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.6), value: shown)
             }
-        }
-        .animation(.easeInOut(duration: 0.6), value: shown)
-        .task(id: url) {
-            guard let url else { tint = nil; return }
-            if ImageLoader.shared.cachedTint(for: url) != nil { return }
-            // Keep the old wash while the next one is computed: a track
-            // change within an album shouldn't blink to white.
-            let next = await ImageLoader.shared.tint(for: url)
-            if !Task.isCancelled { tint = next }
-        }
+            .task(id: url) {
+                guard let url else { tint = nil; return }
+                if ImageLoader.shared.cachedTint(for: url) != nil { return }
+                // Keep the old wash while the next one is computed: a track
+                // change within an album shouldn't blink to white.
+                let next = await ImageLoader.shared.tint(for: url)
+                if !Task.isCancelled { tint = next }
+            }
     }
 }

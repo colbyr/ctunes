@@ -292,9 +292,9 @@ struct TracksView: View {
             }
             HStack(spacing: 12) {
                 MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
-                              enabled: !playableTracks.isEmpty, loading: false, tint: .accentText, action: play)
+                              enabled: !playableTracks.isEmpty, loading: false, tint: nil, action: play)
                 MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
-                              enabled: !playableTracks.isEmpty, loading: false, tint: .accentText, action: shuffle)
+                              enabled: !playableTracks.isEmpty, loading: false, tint: nil, action: shuffle)
             }
             .padding(.top, 8)
             if case .complete(let count) = state, count > 0 {

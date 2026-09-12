@@ -106,7 +106,7 @@ extension View {
     /// Now Playing screens take their ground from the cover on show.
     func artworkBackground(_ url: URL?) -> some View {
         scrollContentBackground(.hidden)
-            .background(ArtworkBackground(url: url))
+            .modifier(ArtworkGround(url: url))
             .listRowSeparatorTint(.divider)
     }
 

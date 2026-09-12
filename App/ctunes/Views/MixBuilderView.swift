@@ -529,14 +529,17 @@ struct MixActionCard: View {
     let subtitle: String?
     let enabled: Bool
     let loading: Bool
-    /// The icon and its disc: the page's own color.
-    let tint: Color
+    /// The icon and its disc: the page's own color, or nil for the art's
+    /// accent on a page that has one and the amber otherwise.
+    let tint: Color?
     let action: () -> Void
+    @Environment(\.artworkAccent) private var artworkAccent
 
     /// Title-only cards share a row, so they tighten up.
     private var compact: Bool { subtitle == nil }
 
     var body: some View {
+        let tint = tint ?? artworkAccent ?? .accentText
         Button(action: action) {
             HStack(spacing: compact ? 10 : 14) {
                 Image(systemName: systemImage)

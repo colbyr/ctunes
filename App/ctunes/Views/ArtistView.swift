@@ -156,9 +156,9 @@ struct ArtistView: View {
             HiddenRightNowLabel(model: model, artistKey: route.ratingKey)
             HStack(spacing: 12) {
                 MixActionCard(systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
-                              enabled: !albums.isEmpty && loading == nil, loading: loading == .playAlbums, tint: .accentText) { play(.playAlbums) }
+                              enabled: !albums.isEmpty && loading == nil, loading: loading == .playAlbums, tint: nil) { play(.playAlbums) }
                 MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
-                              enabled: !albums.isEmpty && loading == nil, loading: loading == .shuffleTracks, tint: .accentText) { play(.shuffleTracks) }
+                              enabled: !albums.isEmpty && loading == nil, loading: loading == .shuffleTracks, tint: nil) { play(.shuffleTracks) }
             }
             .padding(.top, 8)
         }
