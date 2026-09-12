@@ -25,6 +25,7 @@ final class AppRuntime {
         let cache = TrackCache(
             directory: caches.appending(path: "Tracks"),
             pinnedDirectory: support.appending(path: "Tracks"),
+            limit: AudioPlayer.storedCacheLimit,
             session: AudioPlayer.downloadSession()
         )
         let store = OfflineStore(directory: support, cache: cache)

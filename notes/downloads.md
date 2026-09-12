@@ -64,10 +64,13 @@ inventory keeps a status for every browsed album, even with nothing down, so the
 rollup counts its tracks; an album known only through a heart and never browsed has no
 entry once the heart is gone.
 
-`DownloadBadge(state:)` draws a white arrow on a dark disc, plus a dotted ring while
-downloading (an exclamation mark once stalled) or a half ring for partial. It sits on every
-album tile, the album cover, the artist portrait and both mix pools. Track rows keep
-`arrow.down.circle.fill`, dotted while the file is on its way.
+`DownloadBadge(state:)` draws a white arrow on a glass disc tinted dark (so it holds up
+on white art), with a ring that fills as the download does: dotted while downloading (an
+exclamation mark once stalled), half for partial, whole for complete. It sits on every
+album tile, the album cover, the artist portrait and both mix pools. The cover and the
+portrait show a bare white arrow with a shadow instead when nothing is down; tapping it
+downloads, and Stop and Remove stay in the menu. Track rows keep `arrow.down.circle.fill`,
+dotted while the file is on its way.
 
 ## Menus and the manager
 
@@ -77,10 +80,13 @@ partial-by-intent. Tracks get Download or Stop/Remove beside the heart. `AppMode
 downloadArtist` fetches the album list and the artist's tracks in one go each and files
 the tracks per album.
 
-`DownloadsList` (Settings → Downloads): a size and count summary, Artists, Albums and
-Tracks sections in pin order, the favorites toggle with its own count, Remove All. An
-artist row opens their albums, an album row opens its tracks with per-track sizes; swipe
-removes at any level and the page pops itself once its pin is gone.
+`StorageList` (Settings → Storage): a bar of downloads and play cache against the phone's
+capacity (from `volumeAvailableCapacityForImportantUsage`, the figure iPhone Storage
+shows), the favorites toggle with its own count, Artists, Albums and Tracks sections in
+pin order, Remove All, then the play cache: its size, a picker for the limit (500 MB to
+10 GB, `AudioPlayer.cacheLimit`, evicting at once when lowered) and Clear. An artist row
+opens their albums, an album row opens its tracks with per-track sizes; swipe removes at
+any level and the page pops itself once its pin is gone.
 
 ## Verification
 
@@ -88,8 +94,8 @@ removes at any level and the page pops itself once its pin is gone.
 `CTUNES_DEV_ALBUM` set: `CTUNES_DEV_PIN=artist` wrote `artists/2899.json`, the three
 album lists, the portrait and three covers, and the artist page showed the solid badge on
 the portrait and every tile; `CTUNES_DEV_PIN=track` on another album showed the half
-ring on the cover and the glyph on one row; `CTUNES_DEV_SETTINGS=downloads` listed the
-artist pin and a v1 album pin with sizes.
+ring on the cover and the glyph on one row; `CTUNES_DEV_SETTINGS=storage` listed the
+artist pin and a v1 album pin with sizes under the storage bar.
 
 ## Follow-ups
 

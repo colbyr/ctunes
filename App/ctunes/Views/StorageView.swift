@@ -7,14 +7,18 @@ enum DownloadRoute: Hashable {
     case album(PlexAlbum)
 }
 
-/// The download manager, a page of Settings: what's kept offline, by
-/// artist, album and track, how much each takes, and a way to remove any
-/// of it. Reads the inventory mirror; every row is a pin as the store
-/// holds it, so an album under an artist appears on the artist's page and
-/// not here.
-struct DownloadsList: View {
+/// The Storage page of Settings: what the app holds on the phone against
+/// the phone's own capacity, the downloads by artist, album and track with
+/// a way to remove any of them, and the play cache with its size. Reads
+/// the inventory mirror; every row is a pin as the store holds it, so an
+/// album under an artist appears on the artist's page and not here.
+struct StorageList: View {
     let model: AppModel
+    @Environment(AudioPlayer.self) private var player
     @State private var confirmingRemoveAll = false
+    /// Bytes in the cache root; nil until read.
+    @State private var cacheUsage: Int?
+    @State private var device = DeviceStorage.read()
 
     private var downloads: Downloads { model.downloads }
     private var inventory: DownloadInventory { downloads.inventory }
@@ -22,45 +26,50 @@ struct DownloadsList: View {
 
     var body: some View {
         List {
-            summarySection
+            overviewSection
+            favoritesSection
             if !inventory.artists.isEmpty { artistsSection }
             if !inventory.albums.isEmpty { albumsSection }
             if !inventory.tracks.isEmpty { tracksSection }
-            favoritesSection
-            if !downloads.isEmpty { removeSection }
+            if downloads.isEmpty { emptySection } else { removeSection }
+            cacheSection
         }
         .parchment()
-        .navigationTitle("Downloads")
+        .navigationTitle("Storage")
         .navigationBarTitleDisplayMode(.inline)
-        .overlay {
-            if downloads.isEmpty {
-                ContentUnavailableView(
-                    "No downloads", systemImage: "arrow.down.circle",
-                    description: Text("Long-press an artist, album or track and choose Download to keep it offline.")
-                )
-            }
-        }
         .confirmationDialog("Remove all downloads?", isPresented: $confirmingRemoveAll, titleVisibility: .visible) {
             Button("Remove All Downloads", role: .destructive) { downloads.removeAll() }
         } message: {
             Text("Everything kept offline will stream again. Nothing is removed from your library.")
         }
         .task { downloads.refresh() }
+        // The cache moves as tracks play and as pins come and go, since a
+        // pinned file leaves it and a removed one returns.
+        .task(id: "\(player.currentTrack?.id ?? "")/\(downloads.generation)") {
+            cacheUsage = await player.cacheUsage()
+            device = DeviceStorage.read()
+        }
     }
 
     // MARK: - Sections
 
-    private var summarySection: some View {
+    /// The bar iPhone Storage draws: the app's two stores against what
+    /// else is on the phone and what's free.
+    private var overviewSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(DownloadText.bytes(downloads.usage))
-                    .font(.title2.weight(.semibold))
-                    .contentTransition(.numericText())
-                Text(summaryLine)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 10) {
+                StorageBar(downloads: downloads.usage, cached: cacheUsage ?? 0, device: device)
+                HStack(spacing: 14) {
+                    StorageLegend(color: .accentText, label: "Downloads", bytes: downloads.usage)
+                    StorageLegend(color: .artistMix, label: "Cached", bytes: cacheUsage ?? 0)
+                }
+                if let device {
+                    Text("\(DownloadText.bytes(device.free)) free of \(DownloadText.bytes(device.total))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
         } footer: {
             if offline {
                 Text("Offline. Downloads resume when the server answers.")
@@ -68,6 +77,8 @@ struct DownloadsList: View {
                 Button("Retry stalled downloads") {
                     downloads.retry { await model.resumeDownloads() }
                 }
+            } else {
+                Text(summaryLine)
             }
         }
     }
@@ -80,7 +91,41 @@ struct DownloadsList: View {
         if !inventory.tracks.isEmpty { parts.append(DownloadText.count(inventory.tracks.count, "track")) }
         if inventory.favoritesPinned { parts.append("favorites") }
         let pins = parts.isEmpty ? "Nothing kept offline" : parts.joined(separator: ", ")
-        return "\(pins) · \(DownloadText.count(files, "file")) on this device"
+        return "\(pins) · \(DownloadText.count(files, "file")) downloaded"
+    }
+
+    private var emptySection: some View {
+        Section("Downloads") {
+            Text("Long-press an artist, album or track and choose Download to keep it offline.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var cacheSection: some View {
+        Section {
+            LabeledContent("Cached Tracks", value: DownloadText.bytes(cacheUsage ?? 0))
+            Picker("Cache Size", selection: Binding(
+                get: { player.cacheLimit },
+                set: { player.cacheLimit = $0 }
+            )) {
+                ForEach(AudioPlayer.cacheLimitOptions, id: \.self) { bytes in
+                    Text(DownloadText.bytes(bytes)).tag(bytes)
+                }
+            }
+            if let cacheUsage, cacheUsage > 0 {
+                Button("Clear Cached Tracks") {
+                    Task {
+                        await player.clearCache()
+                        self.cacheUsage = await player.cacheUsage()
+                    }
+                }
+            }
+        } header: {
+            Text("Play Cache")
+        } footer: {
+            Text("Recently played and upcoming tracks are kept so they don't stream twice, and clear themselves at the cache size. Downloads never count against it.")
+        }
     }
 
     /// Any pin waiting out the backoff, so the retry line shows once.
@@ -183,7 +228,7 @@ struct DownloadsList: View {
             Button("Remove All Downloads", role: .destructive) { confirmingRemoveAll = true }
                 .foregroundStyle(.red)
         } footer: {
-            Text("Removes every download and turns off Keep Favorites Offline. Recently played tracks stay cached until they clear themselves.")
+            Text("Removes every download and turns off Keep Favorites Offline. The play cache is left alone.")
         }
     }
 
@@ -373,6 +418,78 @@ private struct DownloadedTrackRow: View {
             Image(systemName: "nosign")
         } else {
             Text("—")
+        }
+    }
+}
+
+/// What the phone reports for the volume the app lives on.
+struct DeviceStorage: Equatable {
+    let total: Int
+    let free: Int
+
+    /// `volumeAvailableCapacityForImportantUsage` rather than the raw free
+    /// space: it counts purgeable content the system would clear for the
+    /// user, which is the figure iPhone Storage shows.
+    static func read() -> DeviceStorage? {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        guard let values = try? home.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]),
+              let total = values.volumeTotalCapacity, total > 0
+        else { return nil }
+        return DeviceStorage(total: total, free: Int(values.volumeAvailableCapacityForImportantUsage ?? 0))
+    }
+}
+
+/// Downloads, the play cache, everything else on the phone, and free
+/// space, as one segmented bar. With no device figures the app's two
+/// stores share the bar between them.
+private struct StorageBar: View {
+    let downloads: Int
+    let cached: Int
+    let device: DeviceStorage?
+
+    private var segments: [(Color, Double)] {
+        let total = Double(device?.total ?? max(downloads + cached, 1))
+        let free = Double(device?.free ?? 0)
+        let other = max(total - free - Double(downloads) - Double(cached), 0)
+        return [
+            (.accentText, Double(downloads) / total),
+            (.artistMix, Double(cached) / total),
+            (Color.ink.opacity(0.25), other / total),
+        ]
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 1.5) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    // Anything the app holds shows at least a sliver, so a
+                    // few MB on a 512 GB phone isn't invisible.
+                    let width = segment.1 > 0 ? max(geometry.size.width * segment.1, 3) : 0
+                    if width > 0 {
+                        Rectangle().fill(segment.0).frame(width: width)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(height: 14)
+        .background(Color.ink.opacity(0.08))
+        .clipShape(.rect(cornerRadius: 4))
+        .accessibilityLabel("Storage: \(DownloadText.bytes(downloads)) of downloads, \(DownloadText.bytes(cached)) cached")
+    }
+}
+
+private struct StorageLegend: View {
+    let color: Color
+    let label: String
+    let bytes: Int
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text("\(label) \(DownloadText.bytes(bytes))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

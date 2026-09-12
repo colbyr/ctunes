@@ -221,10 +221,16 @@ album half-played before the server went away still lists and plays those
 tracks; artwork falls back to the online URL so `ImageLoader`'s disk cache
 can answer. `Downloads` (app target) mirrors the inventory onto the main
 actor from `cache.events`, coalescing refreshes. `DownloadBadge` is the one
-mark on art: a solid disc for complete, a dotted ring while downloading (an
-exclamation mark once stalled), a half ring for partial. The manager is a
-page of Settings (`DownloadsView.swift`), artist → album → track, each
-level removable by swipe.
+mark on art: a white arrow on a dark-tinted glass disc with a ring that
+fills as the download does, dotted while downloading (an exclamation mark
+once stalled), half for partial, whole for complete. The album cover and
+artist portrait show a bare arrow instead when nothing is down, and
+tapping it downloads (`DownloadOverlay`). The manager is the Storage page
+of Settings (`StorageView.swift`): a bar of downloads and play cache
+against the phone's capacity, then favorites, artist → album → track pins
+each removable by swipe, then the play cache with its size, a per-device
+`UserDefaults` setting owned by `AudioPlayer` (`cacheLimit`) that the
+cache is built with and told about on change.
 
 ## Plex API constraints
 
@@ -340,7 +346,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
 | `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the first listener's page |
-| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `downloads` opens it on the download manager |
+| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track |

@@ -270,11 +270,17 @@ struct TracksView: View {
     private var header: some View {
         let state = model.downloads.state(album)
         return VStack(spacing: 12) {
-            // The cover carries the download mark the grid tiles do; the
-            // download itself lives in the menu, a long press away.
+            // The cover carries the download mark the grid tiles do, or
+            // an arrow that starts the download; Stop and Remove live in
+            // the menu, a long press away.
             Artwork(url: artworkURL, size: 240, corner: 12)
                 .artworkShadow()
-                .overlay(alignment: .bottomTrailing) { DownloadBadge(state: state, large: true) }
+                .overlay(alignment: .bottomTrailing) {
+                    DownloadOverlay(state: state, offline: offline) {
+                        guard let library = model.library, !tracks.isEmpty else { return }
+                        model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+                    }
+                }
                 .contextMenu { AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false) }
                 .padding(.bottom, 8)
             if let artistKey = album.parentRatingKey {

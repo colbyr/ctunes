@@ -18,7 +18,7 @@ import os
 public actor TrackCache {
     public nonisolated let directory: URL
     public nonisolated let pinnedDirectory: URL
-    private let limit: Int
+    private var limit: Int
     private let session: URLSession
 
     private var inFlight: [String: Task<URL, Error>] = [:]
@@ -276,6 +276,13 @@ public actor TrackCache {
 
     /// Whether the sequential download pump is running.
     var isPumping: Bool { pump != nil }
+
+    /// Bytes the cache root is trimmed to. Lowering it evicts now, least
+    /// recently played first, never the window; the pinned root is untouched.
+    public func setLimit(_ bytes: Int) {
+        limit = bytes
+        evictIfNeeded()
+    }
 
     /// Cache paths whose last fetch failed and are still inside the backoff,
     /// so a status view can tell a stalled download from a slow one.

@@ -43,10 +43,11 @@ struct Artwork: View {
 
 /// The download mark in the corner of album art and artist portraits,
 /// shared by every tile, cover and portrait so it reads the same
-/// everywhere. A white arrow on a dark disc when every track is down; a
-/// dotted ring around it while a pin is still coming down (an exclamation
-/// mark once it has stalled); a half ring when some tracks are down and
-/// nothing is on its way. Nothing at all with no files.
+/// everywhere. A white arrow on a glass disc, tinted dark so it holds up
+/// on white art, with a ring that fills as the download does: dotted
+/// while a pin is still coming down (an exclamation mark once it has
+/// stalled), half when some tracks are down and nothing is on its way,
+/// whole when every track is. Nothing at all with no files.
 struct DownloadBadge: View {
     let state: DownloadState
     /// For the full-size cover on an album page or the portrait on an
@@ -55,31 +56,34 @@ struct DownloadBadge: View {
 
     var body: some View {
         if state.hasFiles || state.isDownloading {
-            let size: CGFloat = large ? 26 : 15
+            let size: CGFloat = large ? 28 : 16
             let line: CGFloat = large ? 2 : 1.5
             ZStack {
-                Circle().fill(.black.opacity(0.55))
                 switch state {
                 case .downloading(_, _, let stalled):
                     Circle()
                         .inset(by: line / 2)
                         .stroke(.white, style: .init(lineWidth: line, dash: [line, line * 1.4]))
                     Image(systemName: stalled ? "exclamationmark" : "arrow.down")
-                        .font(.system(size: size * 0.55, weight: .bold))
+                        .font(.system(size: size * 0.5, weight: .bold))
                 case .partial:
                     Circle()
                         .inset(by: line / 2)
                         .trim(from: 0, to: 0.5)
                         .stroke(.white, style: .init(lineWidth: line, lineCap: .round))
                     Image(systemName: "arrow.down")
-                        .font(.system(size: size * 0.55, weight: .bold))
+                        .font(.system(size: size * 0.5, weight: .bold))
                 case .complete, .none:
+                    Circle()
+                        .inset(by: line / 2)
+                        .stroke(.white, lineWidth: line)
                     Image(systemName: "arrow.down")
-                        .font(.system(size: size * 0.55, weight: .bold))
+                        .font(.system(size: size * 0.5, weight: .bold))
                 }
             }
             .foregroundStyle(.white)
             .frame(width: size, height: size)
+            .glassEffect(.regular.tint(.black.opacity(0.35)), in: .circle)
             .padding(large ? 10 : 5)
             .accessibilityLabel(Self.label(state))
         }
@@ -92,6 +96,35 @@ struct DownloadBadge: View {
             stalled ? "Download stalled, \(done) of \(total) tracks" : "Downloading, \(done) of \(total) tracks"
         case .partial(let done, let total): "\(done) of \(total) tracks downloaded"
         case .complete: "Downloaded"
+        }
+    }
+}
+
+/// The corner of the cover on an album page and the portrait on an
+/// artist's: the badge once anything is down, and before that a bare
+/// arrow that starts the download. No disc, so it reads as an action
+/// rather than a state; a shadow keeps it legible on white art. Nothing
+/// offline, where there is no server to fetch from.
+struct DownloadOverlay: View {
+    let state: DownloadState
+    let offline: Bool
+    let download: () -> Void
+
+    var body: some View {
+        if state.hasFiles || state.isDownloading {
+            DownloadBadge(state: state, large: true)
+        } else if !offline {
+            Button(action: download) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.7), radius: 2.5)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .padding(2)
+            .accessibilityLabel("Download")
         }
     }
 }

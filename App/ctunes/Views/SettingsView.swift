@@ -13,13 +13,11 @@ struct SettingsSheet: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(\.dismiss) private var dismiss
     @State private var path = NavigationPath()
-    /// Bytes of cached audio, for the clear row; nil until read.
-    @State private var cacheUsage: Int?
     @State private var confirmingSignOut = false
 
     private enum Page: Hashable {
         case listeners
-        case downloads
+        case storage
     }
 
     private var offline: Bool { model.state == .offline }
@@ -46,8 +44,8 @@ struct SettingsSheet: View {
                 case .listeners:
                     ListenersList(model: model, artists: artists)
                         .navigationTitle("Listeners")
-                case .downloads:
-                    DownloadsList(model: model)
+                case .storage:
+                    StorageList(model: model)
                 }
             }
             .navigationDestination(for: DownloadRoute.self) { route in
@@ -57,14 +55,11 @@ struct SettingsSheet: View {
                 }
             }
         }
-        .task(id: player.currentTrack?.id) {
-            cacheUsage = await player.cacheUsage()
-        }
         .task {
             #if DEBUG
-            // `downloads` lands on the manager, for simulator checks.
-            if ProcessInfo.processInfo.environment["CTUNES_DEV_SETTINGS"] == "downloads" {
-                path.append(Page.downloads)
+            // `storage` lands on the Storage page, for simulator checks.
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_SETTINGS"] == "storage" {
+                path.append(Page.storage)
             }
             #endif
         }
@@ -161,43 +156,32 @@ struct SettingsSheet: View {
 
     @ViewBuilder private var storageSection: some View {
         Section {
-            NavigationLink(value: Page.downloads) {
+            NavigationLink(value: Page.storage) {
                 HStack(spacing: 12) {
-                    Image(systemName: "arrow.down.circle")
+                    Image(systemName: "internaldrive")
                         .foregroundStyle(.secondary)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Downloads")
-                        Text(downloadsSummary)
+                        Text("Storage")
+                        Text(storageSummary)
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
-            LabeledContent("Cached Tracks", value: Self.bytes(cacheUsage ?? 0))
-            if let cacheUsage, cacheUsage > 0 {
-                Button("Clear Cached Tracks") {
-                    Task {
-                        await player.clearCache()
-                        self.cacheUsage = await player.cacheUsage()
-                    }
-                }
-            }
-        } header: {
-            Text("Storage")
         } footer: {
-            Text("Downloads are the artists, albums, tracks and favorites you keep offline. Cached tracks are recently played and upcoming tracks kept so they don't stream twice; they clear themselves at 2 GB.")
+            Text("Downloads are the artists, albums, tracks and favorites you keep offline. The play cache holds recently played and upcoming tracks so they don't stream twice.")
         }
     }
 
-    /// "1.2 GB · 2 artists, 5 albums" under the Downloads row.
-    private var downloadsSummary: String {
+    /// "1.2 GB downloaded · 2 artists, 5 albums" under the Storage row.
+    private var storageSummary: String {
         let inventory = model.downloads.inventory
         var parts: [String] = []
         if !inventory.artists.isEmpty { parts.append(DownloadText.count(inventory.artists.count, "artist")) }
         if !inventory.albums.isEmpty { parts.append(DownloadText.count(inventory.albums.count, "album")) }
         if !inventory.tracks.isEmpty { parts.append(DownloadText.count(inventory.tracks.count, "track")) }
         if inventory.favoritesPinned { parts.append("favorites") }
-        let size = Self.bytes(model.downloads.usage)
+        let size = "\(DownloadText.bytes(model.downloads.usage)) downloaded"
         return parts.isEmpty ? size : "\(size) · \(parts.joined(separator: ", "))"
     }
 
@@ -219,15 +203,4 @@ struct SettingsSheet: View {
         return "ctunes \(version) (\(build))"
     }
 
-    /// "0 KB" rather than the formatter's "Zero KB" for an empty root.
-    private static let byteFormatter: ByteCountFormatter = {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        formatter.allowsNonnumericFormatting = false
-        return formatter
-    }()
-
-    private static func bytes(_ count: Int) -> String {
-        byteFormatter.string(fromByteCount: Int64(count))
-    }
 }

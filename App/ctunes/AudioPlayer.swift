@@ -62,6 +62,25 @@ final class AudioPlayer {
         }
     }
     private static let streamQualityKey = "streamQuality"
+    /// Bytes the cache root is trimmed to. Per device, kept in UserDefaults
+    /// under `trackCacheLimit`; the cache is built with it at launch and
+    /// told when it changes, which evicts at once.
+    var cacheLimit: Int {
+        didSet {
+            UserDefaults.standard.set(cacheLimit, forKey: Self.cacheLimitKey)
+            let cache = cache, limit = cacheLimit
+            Task { await cache.setLimit(limit) }
+        }
+    }
+    private nonisolated static let cacheLimitKey = "trackCacheLimit"
+    /// The choices the Storage page offers, decimal so they read as the
+    /// round figures shown.
+    static let cacheLimitOptions = [500_000_000, 1_000_000_000, 2_000_000_000, 5_000_000_000, 10_000_000_000]
+    /// The stored limit, or 2 GB.
+    nonisolated static var storedCacheLimit: Int {
+        let stored = UserDefaults.standard.integer(forKey: cacheLimitKey)
+        return stored > 0 ? stored : 2_000_000_000
+    }
     /// Whether the current item was built from a cached file, so a failure
     /// can fall back to the stream instead of burning a retry.
     private var currentItemIsLocal = false
@@ -119,6 +138,7 @@ final class AudioPlayer {
         self.cache = cache
         streamQuality = UserDefaults.standard.string(forKey: Self.streamQualityKey)
             .flatMap(StreamQuality.init(rawValue:)) ?? .original
+        cacheLimit = Self.storedCacheLimit
         player.actionAtItemEnd = .pause
         observeTime()
         observeTimeControl()
