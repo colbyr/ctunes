@@ -92,10 +92,10 @@ replaced Simulator.app); test in DeviceHub or on the phone.
 
 The app runs on iPhone and iPad (and so on Apple silicon Macs as "Designed
 for iPad"). Now Playing has one host, in `LibraryView`, driven by the
-`NowPlayingPresentation` flag in the environment: a full-screen cover in a
-window narrower than 960pt (on a phone the header scrolls with the queue
-and a chevron or an overscroll pull closes it; on a regular width it gets
-a title bar), a trailing column beside the stack (36% of the width,
+`NowPlayingPresentation` flag in the environment: in a window narrower
+than 960pt it is a sheet on a compact width (the header scrolls with the
+queue and the system drag closes it) and a full-screen cover with a title
+bar on a regular one, a trailing column beside the stack (36% of the width,
 360–560pt) in a wider one. An artist tapped in Now Playing, or any route from an
 item menu, goes through `LibraryNavigator.open(_:)` in the environment,
 since the host owns the path. The host measures the window itself rather than

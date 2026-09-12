@@ -17,8 +17,8 @@ final class NowPlayingPresentation {
 /// How Now Playing is on screen. The column and the cover pin the header
 /// and scroll only the queue; the phone scrolls the header away with it.
 enum NowPlayingStyle {
-    /// A phone: covers the whole screen, the header scrolling with the
-    /// queue. A chevron closes it, as does pulling the top down.
+    /// A phone: a sheet, the header scrolling with the queue. Dragging it
+    /// down closes it, as any sheet does.
     case phone
     /// Regular width but too narrow for the column: covers the stack, with
     /// a close button in its toolbar.
@@ -58,13 +58,6 @@ struct NowPlayingView: View {
             }
             .listStyle(.plain)
             .artworkBackground(artworkURL)
-            // A full-screen cover has no drag to dismiss of its own, so
-            // pulling the top well past its rest position stands in for it.
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top < -70
-            } action: { _, pulled in
-                if pulled { presentation.isShown = false }
-            }
         } else {
             // The header lives outside the List on purpose. A List row whose
             // height follows the width (the art is a square of the column)
@@ -191,29 +184,17 @@ struct NowPlayingView: View {
 
     private var header: some View {
         VStack(spacing: 24) {
-            // The phone has no title bar, so a grab bar sits centered at
-            // the top, the way a sheet's handle does; tapping it closes too.
-            if style == .phone {
-                Button { presentation.isShown = false } label: {
-                    Capsule()
-                        .fill(.tertiary)
-                        .frame(width: 36, height: 5)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 28)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Hide Now Playing")
-            }
             // Edge to edge less a margin, so the art is as big as the screen
-            // allows rather than a fixed 300pt. In the column the toolbar
-            // already clears the top, and the art is capped so a wide column
-            // in a short window still leaves room for the queue.
+            // allows rather than a fixed 300pt. On the phone the sheet's
+            // drag indicator sits over the top, so the art clears it. In
+            // the column the toolbar already clears the top, and the art is
+            // capped so a wide column in a short window still leaves room
+            // for the queue.
             Artwork(url: artworkURL, size: nil, corner: 14)
                 .shadow(radius: 12, y: 6)
                 .frame(maxWidth: style == .phone ? nil : 400)
                 .padding(.horizontal, 12)
-                .padding(.top, style == .phone ? 0 : 8)
+                .padding(.top, style == .phone ? 28 : 8)
                 // A long press on the art is the track's menu: the way to
                 // its album, and to who hears its artist.
                 .contextMenu {
@@ -223,8 +204,13 @@ struct NowPlayingView: View {
                 }
 
             HStack(alignment: .top) {
-                // Balances the heart so the text stays centred.
-                Color.clear.frame(width: 44, height: 1)
+                // AirPlay at the leading edge balances the heart at the
+                // trailing one, so the text stays centred and the header
+                // grows no taller. Its height is the title's first line so
+                // the glyph sits level with the heart, not centred on 44pt.
+                AirPlayButton()
+                    .frame(width: 44, height: 26)
+                    .accessibilityLabel("AirPlay")
                 VStack(spacing: 6) {
                     Text(player.currentTrack?.title ?? "Nothing playing")
                         .font(.title3.bold())

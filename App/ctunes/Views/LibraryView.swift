@@ -71,12 +71,25 @@ struct LibraryView: View {
         // open presentation, and that pass evaluates the content without
         // the environment it inherited from above: "No Observable object
         // of type AudioPlayer found", a trap, at 730pt every time.
-        .fullScreenCover(isPresented: presented) {
-            NowPlayingView(model: model, style: sizeClass == .compact ? .phone : .fullScreen)
+        // On a phone it is a sheet, so dragging it down closes it the way
+        // any sheet does; a regular width too narrow for the column gets
+        // the cover, since a sheet there is a card floating mid-screen.
+        .sheet(isPresented: sizeClass == .compact ? presented : .constant(false)) {
+            NowPlayingView(model: model, style: .phone)
+                .environment(player)
+                .environment(nowPlaying)
+                .environment(navigator)
+                .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(isPresented: sizeClass == .compact ? .constant(false) : presented) {
+            NowPlayingView(model: model, style: .fullScreen)
                 .environment(player)
                 .environment(nowPlaying)
                 .environment(navigator)
         }
+        // Crossing compact/regular would swap the sheet for the cover
+        // under the user; close instead, as the column threshold does.
+        .onChange(of: sizeClass) { _, _ in nowPlaying.isShown = false }
         // A route from a menu, or the artist tapped in Now Playing: the
         // cover has closed itself (or the column stays), and the page goes
         // onto the stack behind it.
