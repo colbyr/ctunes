@@ -80,13 +80,17 @@ partial-by-intent. Tracks get Download or Stop/Remove beside the heart. `AppMode
 downloadArtist` fetches the album list and the artist's tracks in one go each and files
 the tracks per album.
 
-`StorageList` (Settings → Storage): a bar of downloads and play cache against the phone's
-capacity (from `volumeAvailableCapacityForImportantUsage`, the figure iPhone Storage
-shows), the favorites toggle with its own count, Artists, Albums and Tracks sections in
-pin order, Remove All, then the play cache: its size, a picker for the limit (500 MB to
-10 GB, `AudioPlayer.cacheLimit`, evicting at once when lowered) and Clear. An artist row
-opens their albums, an album row opens its tracks with per-track sizes; swipe removes at
-any level and the page pops itself once its pin is gone.
+`StorageList` (Settings → Storage), three blocks: a bar of downloads and play cache
+against the phone's capacity (from `volumeAvailableCapacityForImportantUsage`, the figure
+iPhone Storage shows); Downloads, which is the "Keep Favorites Downloaded" toggle, then
+every pin in one list newest first with the kind as the first word of its subtitle (a
+separate section per kind put three headers over one row each), then Remove All; and the
+cache: its size, a picker for the limit (500 MB to 10 GB, `AudioPlayer.cacheLimit`,
+evicting at once when lowered) and Clear. An artist row opens their albums, an album row
+opens its tracks with per-track sizes; swipe removes at any level and the page pops itself
+once its pin is gone. The cover's badge is tappable too: nothing or partial downloads the
+whole thing, complete asks and removes it; `unpinArtist` also drops the album and track
+pins under the artist, so an artist pinned album by album clears from its portrait.
 
 ## Verification
 

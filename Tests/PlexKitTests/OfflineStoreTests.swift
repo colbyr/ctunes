@@ -468,7 +468,29 @@ struct OfflineStoreTests {
         #expect(inventory.state(of: album("8")) == .none)
 
         await store.unpinArtist("A", server: Self.server)
-        #expect(await store.inventory(server: Self.server).albums.count == 2, "nothing left to narrow")
+        #expect(await store.inventory(server: Self.server).albums.isEmpty, "the album pins were theirs too")
+        #expect(!cache.isPinned(server: Self.server, part: first[0].part!))
+    }
+
+    @Test("removing an artist with no artist pin still drops their album and track pins")
+    func unpinArtistByAlbums() async throws {
+        let (store, cache, _) = try makeStore()
+        let mine = tracks([1], album: "9", artist: "A")
+        let loose = tracks([2], album: "8", artist: "A")
+        let other = tracks([3], album: "7", artist: "B")
+        await pin(store, album("9", artist: "A"), mine)
+        await store.pinTracks(loose, server: Self.server, art: { _ in nil }, sources: sources)
+        await pin(store, album("7", artist: "B"), other)
+        try await cache.drain()
+
+        await store.unpinArtist("A", server: Self.server)
+
+        let inventory = await store.inventory(server: Self.server)
+        #expect(inventory.albums.map(\.id) == ["7"])
+        #expect(inventory.tracks.isEmpty)
+        #expect(!cache.isPinned(server: Self.server, part: mine[0].part!))
+        #expect(!cache.isPinned(server: Self.server, part: loose[0].part!))
+        #expect(cache.isPinned(server: Self.server, part: other[0].part!))
     }
 
     @Test("removing a track narrows the album pin to its other tracks, and the artist pin above it first")

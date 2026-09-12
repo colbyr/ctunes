@@ -102,30 +102,46 @@ struct DownloadBadge: View {
 
 /// The corner of the cover on an album page and the portrait on an
 /// artist's: the badge once anything is down, and before that the same
-/// arrow on the same glass disc with no ring, which starts the download.
-/// Nothing offline, where there is no server to fetch from.
+/// arrow on the same glass disc with no ring. Tapping acts on what the
+/// mark shows: nothing or partial starts the whole download, complete
+/// asks before removing it, and a download in progress is left to the
+/// menu's Stop. Nothing offline, where there is no server to fetch from.
 struct DownloadOverlay: View {
     let state: DownloadState
     let offline: Bool
     let download: () -> Void
+    let remove: () -> Void
+    @State private var confirmingRemove = false
 
     var body: some View {
-        if state.hasFiles || state.isDownloading {
+        if offline {
             DownloadBadge(state: state, large: true)
-        } else if !offline {
-            Button(action: download) {
-                Image(systemName: "arrow.down")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .glassEffect(.regular.tint(.black.opacity(0.35)).interactive(), in: .circle)
-                    // The hit area, not the disc: 44pt to tap, 28 to see.
-                    .padding(8)
-                    .contentShape(.circle)
+        } else if state.isDownloading {
+            DownloadBadge(state: state, large: true)
+        } else {
+            Button {
+                if state.isComplete { confirmingRemove = true } else { download() }
+            } label: {
+                if state.hasFiles {
+                    DownloadBadge(state: state, large: true)
+                } else {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .glassEffect(.regular.tint(.black.opacity(0.35)).interactive(), in: .circle)
+                        .padding(10)
+                }
             }
             .buttonStyle(.plain)
-            .padding(2)
-            .accessibilityLabel("Download")
+            // The hit area, not the disc: the padding above is inside it.
+            .contentShape(.circle)
+            .accessibilityLabel(state.isComplete ? "Remove download" : "Download")
+            .confirmationDialog("Remove download?", isPresented: $confirmingRemove, titleVisibility: .visible) {
+                Button("Remove Download", role: .destructive, action: remove)
+            } message: {
+                Text("The files are removed from this device. Nothing is removed from your library.")
+            }
         }
     }
 }

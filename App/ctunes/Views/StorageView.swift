@@ -28,10 +28,7 @@ struct StorageList: View {
         List {
             overviewSection
             favoritesSection
-            if !inventory.artists.isEmpty { artistsSection }
-            if !inventory.albums.isEmpty { albumsSection }
-            if !inventory.tracks.isEmpty { tracksSection }
-            if downloads.isEmpty { emptySection } else { removeSection }
+            if downloads.isEmpty { emptySection } else { pinsSection; removeSection }
             cacheSection
         }
         .settingsBackground()
@@ -81,28 +78,50 @@ struct StorageList: View {
                 Button("Retry stalled downloads") {
                     downloads.retry { await model.resumeDownloads() }
                 }
-            } else {
-                Text(summaryLine)
             }
         }
     }
 
-    private var summaryLine: String {
-        let files = inventory.files.count
-        var parts: [String] = []
-        if !inventory.artists.isEmpty { parts.append(DownloadText.count(inventory.artists.count, "artist")) }
-        if !inventory.albums.isEmpty { parts.append(DownloadText.count(inventory.albums.count, "album")) }
-        if !inventory.tracks.isEmpty { parts.append(DownloadText.count(inventory.tracks.count, "track")) }
-        if inventory.favoritesPinned { parts.append("favorites") }
-        let pins = parts.isEmpty ? "Nothing kept offline" : parts.joined(separator: ", ")
-        return "\(pins) · \(DownloadText.count(files, "file")) downloaded"
-    }
-
     private var emptySection: some View {
-        Section("Downloads") {
+        Section {
             Text("Long-press an artist, album or track and choose Download to keep it offline.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// One kind of pin or another, in one list: artists and albums newest
+    /// first, then tracks newest first (their list carries no dates). The
+    /// art's shape and the first word of the subtitle say which is which.
+    private enum Pin: Identifiable {
+        case artist(DownloadInventory.ArtistPin)
+        case album(DownloadInventory.AlbumPin)
+        case track(PlexTrack)
+
+        var id: String {
+            switch self {
+            case .artist(let pin): "artist/\(pin.key)"
+            case .album(let pin): "album/\(pin.id)"
+            case .track(let track): "track/\(track.ratingKey)"
+            }
+        }
+    }
+
+    private var pins: [Pin] {
+        let dated: [(Date, Pin)] = inventory.artists.map { ($0.pinnedAt, .artist($0)) }
+            + inventory.albums.map { ($0.pinnedAt, .album($0)) }
+        return dated.sorted { $0.0 > $1.0 }.map(\.1) + inventory.tracks.reversed().map { .track($0) }
+    }
+
+    private var pinsSection: some View {
+        Section {
+            ForEach(pins) { pin in
+                switch pin {
+                case .artist(let artist): artistLink(artist)
+                case .album(let album): albumLink(album.album)
+                case .track(let track): DownloadedTrackRow(model: model, track: track, showAlbum: true)
+                }
+            }
         }
     }
 
@@ -140,39 +159,28 @@ struct StorageList: View {
         !inventory.failed.isEmpty
     }
 
-    private var artistsSection: some View {
-        Section("Artists") {
-            ForEach(inventory.artists) { pin in
-                NavigationLink(value: DownloadRoute.artist(key: pin.key)) {
-                    DownloadRow(
-                        art: model.library?.artworkURL(pin.thumb ?? pin.albums.first?.thumb),
-                        round: true,
-                        title: pin.title,
-                        subtitle: DownloadText.summary(
-                            state: downloads.state(artist: pin.key),
-                            bytes: bytes(of: pin.albums),
-                            unit: "album", count: pin.albums.count
-                        )
-                    )
-                }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
-                        Label("Remove", systemImage: "trash")
-                    }
-                }
-                .contextMenu {
-                    Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
-                        Label("Remove Download", systemImage: "trash")
-                    }
-                }
+    private func artistLink(_ pin: DownloadInventory.ArtistPin) -> some View {
+        NavigationLink(value: DownloadRoute.artist(key: pin.key)) {
+            DownloadRow(
+                art: model.library?.artworkURL(pin.thumb ?? pin.albums.first?.thumb),
+                round: true,
+                title: pin.title,
+                subtitle: DownloadText.summary(
+                    state: downloads.state(artist: pin.key),
+                    bytes: bytes(of: pin.albums),
+                    unit: "album", count: pin.albums.count
+                ),
+                detail: "Artist"
+            )
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
+                Label("Remove", systemImage: "trash")
             }
         }
-    }
-
-    private var albumsSection: some View {
-        Section("Albums") {
-            ForEach(inventory.albums) { pin in
-                albumLink(pin.album)
+        .contextMenu {
+            Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
+                Label("Remove Download", systemImage: "trash")
             }
         }
     }
@@ -191,7 +199,7 @@ struct StorageList: View {
                     bytes: inventory.statuses[album.ratingKey]?.bytes ?? 0,
                     unit: "track", count: album.leafCount ?? inventory.statuses[album.ratingKey]?.known
                 ),
-                detail: album.parentTitle
+                detail: ["Album", album.parentTitle].compactMap { $0 }.joined(separator: " · ")
             )
         }
         .swipeActions(edge: .trailing) {
@@ -206,17 +214,9 @@ struct StorageList: View {
         }
     }
 
-    private var tracksSection: some View {
-        Section("Tracks") {
-            ForEach(inventory.tracks) { track in
-                DownloadedTrackRow(model: model, track: track, showAlbum: true)
-            }
-        }
-    }
-
     private var favoritesSection: some View {
         Section {
-            Toggle("Download Favorites", isOn: Binding(
+            Toggle("Keep Favorites Downloaded", isOn: Binding(
                 get: { model.isFavoritesPinned },
                 set: { on in Task { await model.setFavoritesPinned(on) } }
             ))
@@ -384,7 +384,7 @@ private struct DownloadedTrackRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title).lineLimit(1)
                 if showAlbum {
-                    Text([track.trackArtist ?? track.grandparentTitle, track.parentTitle].compactMap { $0 }.joined(separator: " — "))
+                    Text("Track · " + [track.trackArtist ?? track.grandparentTitle, track.parentTitle].compactMap { $0 }.joined(separator: " — "))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

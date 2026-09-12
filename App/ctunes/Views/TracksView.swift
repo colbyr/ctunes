@@ -279,6 +279,8 @@ struct TracksView: View {
                     DownloadOverlay(state: state, offline: offline) {
                         guard let library = model.library, !tracks.isEmpty else { return }
                         model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+                    } remove: {
+                        model.downloads.unpin(album)
                     }
                 }
                 .contextMenu { AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false) }

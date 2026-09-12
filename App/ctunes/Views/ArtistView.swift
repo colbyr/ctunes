@@ -145,6 +145,8 @@ struct ArtistView: View {
                 .overlay(alignment: .bottomTrailing) {
                     DownloadOverlay(state: model.downloads.state(artist: route.ratingKey), offline: offline) {
                         Task { await model.downloadArtist(key: route.ratingKey, title: route.title) }
+                    } remove: {
+                        model.downloads.unpinArtist(route.ratingKey)
                     }
                     .padding(8)
                 }

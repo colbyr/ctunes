@@ -121,16 +121,27 @@ public actor OfflineStore {
         }
     }
 
-    /// Drops the artist and unpins every file nothing else still wants.
-    /// The album lists stay, for the pages offline.
+    /// Drops everything pinned under the artist: the artist pin, and any
+    /// album or track pins of theirs, so an artist whose albums were pinned
+    /// one by one clears the same way. Unpins every file nothing else still
+    /// wants. The album lists stay, for the pages offline.
     public func unpinArtist(_ key: String, server: String) async {
         var manifest = manifest(server)
-        guard manifest.artists.removeValue(forKey: key) != nil else { return }
         let before = wantedPaths(server)
+        manifest.artists.removeValue(forKey: key)
+        for (albumKey, pin) in manifest.albums where artistKey(of: albumKey, pin, server: server) == key {
+            manifest.albums.removeValue(forKey: albumKey)
+        }
+        setTrackPins(trackPins(server: server).filter { $0.grandparentRatingKey != key }, server: server)
         save(manifest, server: server)
         try? FileManager.default.removeItem(at: artistsDirectory(server).appending(path: "\(key).json"))
-        artistAlbums[albumKey(server, key)] = []
+        artistAlbums[self.albumKey(server, key)] = []
         await cache.unpin(Array(before.subtracting(wantedPaths(server))))
+    }
+
+    /// The artist of an album pin, from its record or its saved tracks.
+    private func artistKey(of ratingKey: String, _ pin: Manifest.PinnedAlbum, server: String) -> String? {
+        pin.album?.parentRatingKey ?? savedTracks(server, ratingKey).first?.grandparentRatingKey
     }
 
     /// Records the pin, saves the track list and the cover, and hands the
@@ -283,7 +294,10 @@ public actor OfflineStore {
             }
         inventory.albums = manifest.albums
             .sorted { $0.value.pinnedAt < $1.value.pinnedAt }
-            .map { key, pin in .init(album: pin.album ?? syntheticAlbum(key, pin, server: server), pinnedAt: pin.pinnedAt) }
+            .map { key, pin in
+                .init(album: pin.album.map { withArt($0, server: server) } ?? syntheticAlbum(key, pin, server: server),
+                      pinnedAt: pin.pinnedAt)
+            }
         inventory.tracks = trackPins(server: server)
         inventory.favoritesPinned = manifest.favoritesPinned
         inventory.favorites = favoriteTracks(server: server)
@@ -552,6 +566,19 @@ public actor OfflineStore {
     private func savedAlbumKeys(_ server: String) -> Set<String> {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: albumsDirectory(server).path)) ?? []
         return Set(files.filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) })
+    }
+
+    /// The record with its tracks' cover when it has none of its own: an
+    /// album reached by rating key alone knows its title, not its art.
+    private func withArt(_ album: PlexAlbum, server: String) -> PlexAlbum {
+        guard album.thumb == nil, let thumb = savedTracks(server, album.ratingKey).first?.thumb else { return album }
+        return PlexAlbum(
+            ratingKey: album.ratingKey, title: album.title, parentRatingKey: album.parentRatingKey,
+            parentTitle: album.parentTitle, year: album.year, thumb: thumb, addedAt: album.addedAt,
+            lastViewedAt: album.lastViewedAt, viewCount: album.viewCount,
+            leafCount: album.leafCount ?? savedTracks(server, album.ratingKey).count,
+            originallyAvailableAt: album.originallyAvailableAt, genres: album.genres
+        )
     }
 
     /// An album record for a pin written before the manifest kept one,
