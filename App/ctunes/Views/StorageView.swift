@@ -52,18 +52,18 @@ struct StorageList: View {
 
     // MARK: - Sections
 
-    /// The card iPhone Storage draws: the device's name and how much of it
-    /// is used, the bar, and a legend of the app's two stores against what
-    /// else is on the device.
+    /// The card iPhone Storage draws, for the app: its name, what it holds
+    /// against the size the phone was sold as, the bar, and a legend of its
+    /// two stores.
     private var overviewSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(DeviceStorage.name)
+                    Text(DeviceStorage.appName)
                         .font(.title2.weight(.semibold))
                     Spacer()
                     if let device {
-                        Text("\(DownloadText.bytes(device.total - device.free)) of \(DownloadText.bytes(device.total)) used")
+                        Text("\(DownloadText.bytes(downloads.usage + (cacheUsage ?? 0))) of \(device.marketingSize)")
                             .font(.title3)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -471,9 +471,18 @@ struct DeviceStorage: Equatable {
     let total: Int
     let free: Int
 
-    /// "iPhone", "iPad", or "Mac" for the iPad build running there.
-    static var name: String {
-        ProcessInfo.processInfo.isiOSAppOnMac ? "Mac" : UIDevice.current.model
+    /// The name on the home screen.
+    static var appName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Tunes for Plex"
+    }
+
+    /// The size the device was sold as: the volume reports a little under
+    /// the round number on the box, so the nearest doubling from 16 GB
+    /// gives "128 GB" or "1 TB" rather than "127.9 GB".
+    var marketingSize: String {
+        var tier = 16_000_000_000
+        while Double(total) > Double(tier) * 1.5 { tier *= 2 }
+        return tier >= 1_000_000_000_000 ? "\(tier / 1_000_000_000_000) TB" : "\(tier / 1_000_000_000) GB"
     }
 
     /// `volumeAvailableCapacityForImportantUsage` rather than the raw free
