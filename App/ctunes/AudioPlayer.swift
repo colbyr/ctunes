@@ -835,7 +835,7 @@ final class AudioPlayer {
     }
 
     private func loadArtwork(for track: PlexTrack) {
-        guard let library, let url = library.artworkURL(track.thumb, size: 600) else { return }
+        guard let library, let url = library.artworkURL(track.thumb, size: 900) else { return }
         let ratingKey = track.ratingKey
 
         Task {

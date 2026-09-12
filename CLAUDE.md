@@ -109,8 +109,10 @@ and `.environment(navigator)` explicitly**: when a Mac window is dragged across 
 boundary UIKit re-hosts the open presentation without the inherited
 environment and traps. The album, artist and Now Playing screens take
 their ground from the art (`ArtworkTint`, `artworkBackground(_:)`): the
-cover's dominant color, computed once per URL off the main actor and
-washed into the parchment at the top. **Keep width-dependent rows out of `List`** on any screen that
+cover's dominant color, computed off the main actor the first time any
+size of it loads (a grid tile counts), keyed by the cover's thumb path
+rather than the URL, kept in `Application Support/ctunes/ArtworkTints.json`
+across launches, and washed into the parchment at the top. **Keep width-dependent rows out of `List`** on any screen that
 reaches the Mac (grids, square artwork): a self-sizing row whose height
 follows the width recurses in `UICollectionView` during a live resize.
 The browse and mix grids are `ScrollView` + `LazyVStack` for that reason.

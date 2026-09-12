@@ -84,13 +84,17 @@ struct ArtworkBackground: View {
     @State private var tint: ArtworkTint?
 
     var body: some View {
+        // A known tint is read straight from the cache so the first frame
+        // is already the cover's color; the state only carries one that
+        // had to be computed, or the last one while the next is.
+        let shown = url.flatMap { ImageLoader.shared.cachedTint(for: $0) } ?? tint
         ZStack {
             ParchmentBackground()
-            if let tint {
+            if let shown {
                 LinearGradient(
                     stops: [
-                        .init(color: tint.wash, location: 0),
-                        .init(color: tint.wash.opacity(0.6), location: 0.5),
+                        .init(color: shown.wash, location: 0),
+                        .init(color: shown.wash.opacity(0.6), location: 0.5),
                         .init(color: .clear, location: 1),
                     ],
                     startPoint: .top, endPoint: .bottom
@@ -99,9 +103,10 @@ struct ArtworkBackground: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.6), value: tint)
+        .animation(.easeInOut(duration: 0.6), value: shown)
         .task(id: url) {
             guard let url else { tint = nil; return }
+            if ImageLoader.shared.cachedTint(for: url) != nil { return }
             // Keep the old wash while the next one is computed: a track
             // change within an album shouldn't blink to white.
             let next = await ImageLoader.shared.tint(for: url)

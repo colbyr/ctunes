@@ -222,11 +222,12 @@ struct TracksView: View {
                 model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
             }
         }
-        // The header already fetches the album cover at 600; warm the
-        // same size for any track that carries its own art so Now
-        // Playing and the lock screen open without a network round trip.
+        // The header already fetches the album cover at 900, the size Now
+        // Playing and the lock screen ask for too; warm the same size for
+        // any track that carries its own art so they open without a
+        // network round trip.
         for thumb in Set(tracks.compactMap(\.thumb)) where thumb != album.thumb {
-            ImageLoader.shared.prewarm(library.artworkURL(thumb, size: 600))
+            ImageLoader.shared.prewarm(library.artworkURL(thumb, size: 900))
         }
     }
 
@@ -234,7 +235,7 @@ struct TracksView: View {
     /// this covers an album record with no thumb of its own (which is
     /// also what the CTUNES_DEV_ALBUM hook produces).
     private var artworkURL: URL? {
-        model.library?.artworkURL(album.thumb ?? tracks.first?.thumb, size: 600)
+        model.library?.artworkURL(album.thumb ?? tracks.first?.thumb, size: 900)
     }
 
 
