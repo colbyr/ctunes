@@ -70,9 +70,13 @@ struct StorageList: View {
                             .minimumScaleFactor(0.7)
                     }
                 }
-                StorageBar(downloads: downloads.usage, cached: cacheUsage ?? 0, device: device)
+                let favorites = favoritesBytes
+                StorageBar(downloads: downloads.usage - favorites, favorites: favorites, cached: cacheUsage ?? 0, device: device)
                 HStack(spacing: 16) {
-                    StorageLegend(color: .accentText, label: "Downloads", bytes: downloads.usage)
+                    StorageLegend(color: .accentText, label: "Downloads", bytes: downloads.usage - favorites)
+                    if inventory.favoritesPinned {
+                        StorageLegend(color: .heart, label: "Favorites", bytes: favorites)
+                    }
                     StorageLegend(color: .artistMix, label: "Cached", bytes: cacheUsage ?? 0)
                 }
             }
@@ -161,6 +165,13 @@ struct StorageList: View {
                 .foregroundStyle(.red)
             }
         }
+    }
+
+    /// Bytes on disk only because of the favorites pin: a favorite that is
+    /// also in a downloaded album or artist counts as that download.
+    private var favoritesBytes: Int {
+        guard inventory.favoritesPinned else { return 0 }
+        return downloads.usage(of: inventory.favorites.filter { !inventory.isTrackPinned($0) }).bytes
     }
 
     /// Any pin waiting out the backoff, so the retry line shows once.
@@ -497,20 +508,23 @@ struct DeviceStorage: Equatable {
     }
 }
 
-/// Downloads, the play cache, everything else on the phone, and free
-/// space, as one segmented bar. With no device figures the app's two
-/// stores share the bar between them.
+/// Downloads, favorites kept downloaded, the play cache, everything else
+/// on the phone, and free space, as one segmented bar. With no device
+/// figures the app's stores share the bar between them.
 private struct StorageBar: View {
     let downloads: Int
+    let favorites: Int
     let cached: Int
     let device: DeviceStorage?
 
     private var segments: [(Color, Double)] {
-        let total = Double(device?.total ?? max(downloads + cached, 1))
+        let mine = downloads + favorites + cached
+        let total = Double(device?.total ?? max(mine, 1))
         let free = Double(device?.free ?? 0)
-        let other = max(total - free - Double(downloads) - Double(cached), 0)
+        let other = max(total - free - Double(mine), 0)
         return [
             (.accentText, Double(downloads) / total),
+            (.heart, Double(favorites) / total),
             (.artistMix, Double(cached) / total),
             (Color.ink.opacity(0.25), other / total),
         ]
@@ -533,7 +547,7 @@ private struct StorageBar: View {
         .frame(height: 22)
         .background(Color.ink.opacity(0.08))
         .clipShape(.rect(cornerRadius: 6))
-        .accessibilityLabel("Storage: \(DownloadText.bytes(downloads)) of downloads, \(DownloadText.bytes(cached)) cached")
+        .accessibilityLabel("Storage: \(DownloadText.bytes(downloads)) of downloads, \(DownloadText.bytes(favorites)) of favorites, \(DownloadText.bytes(cached)) cached")
     }
 }
 
