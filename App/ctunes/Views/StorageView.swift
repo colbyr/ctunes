@@ -18,7 +18,6 @@ struct StorageList: View {
     @State private var confirmingRemoveAll = false
     /// Bytes in the cache root; nil until read.
     @State private var cacheUsage: Int?
-    @State private var device = DeviceStorage.read()
 
     private var downloads: Downloads { model.downloads }
     private var inventory: DownloadInventory { downloads.inventory }
@@ -46,15 +45,16 @@ struct StorageList: View {
         // pinned file leaves it and a removed one returns.
         .task(id: "\(player.currentTrack?.id ?? "")/\(downloads.generation)") {
             cacheUsage = await player.cacheUsage()
-            device = DeviceStorage.read()
         }
     }
 
     // MARK: - Sections
 
-    /// The card iPhone Storage draws, for the app: its name, what it holds
-    /// against the size the phone was sold as, the bar, and a legend of its
-    /// two stores.
+    /// The card iPhone Storage draws, for the app: its name and what it
+    /// holds, the bar, and a legend of its stores. The bar's whole is the
+    /// downloads plus the cache's limit, not the phone: against a 512 GB
+    /// phone every store was a sliver, and the cache's room to grow is the
+    /// figure worth seeing.
     private var overviewSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
@@ -62,17 +62,14 @@ struct StorageList: View {
                     Text(DeviceStorage.appName)
                         .font(.title2.weight(.semibold))
                     Spacer()
-                    if let device {
-                        Text("\(DownloadText.bytes(downloads.usage + (cacheUsage ?? 0))) of \(device.marketingSize)")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
+                    Text(DownloadText.bytes(downloads.usage + (cacheUsage ?? 0)))
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
                 }
                 let favorites = favoritesBytes
-                StorageBar(downloads: downloads.usage - favorites, favorites: favorites, cached: cacheUsage ?? 0, device: device)
-                HStack(spacing: 16) {
+                StorageBar(downloads: downloads.usage - favorites, favorites: favorites,
+                           cached: cacheUsage ?? 0, cacheLimit: player.cacheLimit)
+                WrappingHStack(spacing: 16, rowSpacing: 6) {
                     StorageLegend(color: .accentText, label: "Downloads", bytes: downloads.usage - favorites)
                     if inventory.favoritesPinned {
                         StorageLegend(color: .heart, label: "Favorites", bytes: favorites)
@@ -477,56 +474,28 @@ private struct SectionHeading: View {
     }
 }
 
-/// What the phone reports for the volume the app lives on.
-struct DeviceStorage: Equatable {
-    let total: Int
-    let free: Int
-
+enum DeviceStorage {
     /// The name on the home screen.
     static var appName: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Tunes for Plex"
     }
-
-    /// The size the device was sold as: the volume reports a little under
-    /// the round number on the box, so the nearest doubling from 16 GB
-    /// gives "128 GB" or "1 TB" rather than "127.9 GB".
-    var marketingSize: String {
-        var tier = 16_000_000_000
-        while Double(total) > Double(tier) * 1.5 { tier *= 2 }
-        return tier >= 1_000_000_000_000 ? "\(tier / 1_000_000_000_000) TB" : "\(tier / 1_000_000_000) GB"
-    }
-
-    /// `volumeAvailableCapacityForImportantUsage` rather than the raw free
-    /// space: it counts purgeable content the system would clear for the
-    /// user, which is the figure iPhone Storage shows.
-    static func read() -> DeviceStorage? {
-        let home = URL(fileURLWithPath: NSHomeDirectory())
-        guard let values = try? home.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]),
-              let total = values.volumeTotalCapacity, total > 0
-        else { return nil }
-        return DeviceStorage(total: total, free: Int(values.volumeAvailableCapacityForImportantUsage ?? 0))
-    }
 }
 
-/// Downloads, favorites kept downloaded, the play cache, everything else
-/// on the phone, and free space, as one segmented bar. With no device
-/// figures the app's stores share the bar between them.
+/// Downloads, favorites kept downloaded and the play cache as one
+/// segmented bar, whose whole is the downloads plus the cache's limit:
+/// the unfilled tail is the room the cache has left before it trims.
 private struct StorageBar: View {
     let downloads: Int
     let favorites: Int
     let cached: Int
-    let device: DeviceStorage?
+    let cacheLimit: Int
 
     private var segments: [(Color, Double)] {
-        let mine = downloads + favorites + cached
-        let total = Double(device?.total ?? max(mine, 1))
-        let free = Double(device?.free ?? 0)
-        let other = max(total - free - Double(mine), 0)
+        let total = Double(max(downloads + favorites + max(cached, cacheLimit), 1))
         return [
             (.accentText, Double(downloads) / total),
             (.heart, Double(favorites) / total),
             (.artistMix, Double(cached) / total),
-            (Color.ink.opacity(0.25), other / total),
         ]
     }
 
@@ -534,8 +503,7 @@ private struct StorageBar: View {
         GeometryReader { geometry in
             HStack(spacing: 1.5) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    // Anything the app holds shows at least a sliver, so a
-                    // few MB on a 512 GB phone isn't invisible.
+                    // Anything on disk shows at least a sliver.
                     let width = segment.1 > 0 ? max(geometry.size.width * segment.1, 3) : 0
                     if width > 0 {
                         Rectangle().fill(segment.0).frame(width: width)
@@ -548,6 +516,56 @@ private struct StorageBar: View {
         .background(Color.ink.opacity(0.08))
         .clipShape(.rect(cornerRadius: 6))
         .accessibilityLabel("Storage: \(DownloadText.bytes(downloads)) of downloads, \(DownloadText.bytes(favorites)) of favorites, \(DownloadText.bytes(cached)) cached")
+    }
+}
+
+/// An HStack that starts a new row when it runs out of width, for a
+/// legend that has to hold two entries or three.
+private struct WrappingHStack: Layout {
+    var spacing: CGFloat = 8
+    var rowSpacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(for: subviews, width: proposal.width ?? .infinity)
+        let height = rows.map { $0.height }.reduce(0, +) + rowSpacing * CGFloat(max(rows.count - 1, 0))
+        let width = rows.map { $0.width }.max() ?? 0
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(for: subviews, width: bounds.width) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+                x += size.width + spacing
+            }
+            y += row.height + rowSpacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func rows(for subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = [Row()]
+        for (index, subview) in subviews.enumerated() {
+            let size = subview.sizeThatFits(.unspecified)
+            let needed = rows[rows.count - 1].width + (rows[rows.count - 1].indices.isEmpty ? 0 : spacing) + size.width
+            if needed > width, !rows[rows.count - 1].indices.isEmpty {
+                rows.append(Row())
+            }
+            var row = rows[rows.count - 1]
+            row.width += (row.indices.isEmpty ? 0 : spacing) + size.width
+            row.height = max(row.height, size.height)
+            row.indices.append(index)
+            rows[rows.count - 1] = row
+        }
+        return rows
     }
 }
 
