@@ -18,6 +18,9 @@ public protocol LibrarySource: Sendable {
     /// Every track in the section, for a mix with nothing picked.
     func tracks(inSection section: String) async throws -> [PlexTrack]
     func favoriteTracks(inSection section: String) async throws -> [PlexTrack]
+    /// Tracks for the search page: the server's title filter, which
+    /// matches a word prefix in the title, the album or the artist.
+    func searchTracks(inSection section: String, query: String) async throws -> [PlexTrack]
     func setFavorite(_ ratingKey: String, _ favorite: Bool) async throws
     func reportTimeline(_ track: PlexTrack, state: PlaybackState, time: Double, sessionIdentifier: String) async throws
     /// Synchronous: the player picks an item URL without hopping actors.

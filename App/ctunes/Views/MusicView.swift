@@ -2,27 +2,27 @@ import PlexKit
 import SwiftUI
 
 /// Browse root: every album in the library, or every artist, sorted,
-/// grouped and laid out however the arrange button last left it. The query
-/// from the floating search pill switches to a flat list ranked by match
-/// quality.
+/// grouped and laid out however the arrange button last left it. The
+/// floating search pill opens the search page over it.
 struct MusicView: View {
     let model: AppModel
     let section: PlexSection
-    @Binding var query: String
+    /// The albums and artists, loaded here and shared with the search page.
+    let catalog: LibraryCatalog
     @Binding var path: NavigationPath
     @Environment(AudioPlayer.self) private var player
 
-    @State private var albums: [PlexAlbum] = []
+    private var albums: [PlexAlbum] { catalog.albums }
     /// Every artist in the section, for the Artists subject: the portraits
     /// and the artists' own play dates, which the albums don't carry.
-    @State private var libraryArtists: [PlexArtist] = []
+    private var libraryArtists: [PlexArtist] { catalog.artists }
     /// Scored once when the plays land; `.none` before then or when the
     /// request fails, which leaves On Rotation on the server's play counts.
-    @State private var rotation: Rotation = .none
+    private var rotation: Rotation { catalog.rotation }
+    private var loaded: Bool { catalog.loaded }
     /// Fetched with the albums so the shuffle card can say how many tracks
     /// it would play; nil until the request lands.
     @State private var favorites: [PlexTrack]?
-    @State private var loaded = false
     @State private var loadingFavorites = false
     @State private var noFavorites = false
     @State private var everyFavoriteHidden = false
@@ -45,9 +45,6 @@ struct MusicView: View {
     private var groups: [AlbumGroup] {
         AlbumBrowse.groups(browsable, view: view, hiding: hidden, rotation: rotation)
     }
-    private var results: [PlexAlbum] {
-        AlbumBrowse.search(browsable, query: query, view: view, hiding: hidden, rotation: rotation)
-    }
     /// The Artists subject's list. Under Downloaded only, the artists with
     /// a downloaded album, read off the album list rather than rolling up
     /// every artist's state.
@@ -58,9 +55,6 @@ struct MusicView: View {
     }
     private var artistGroups: [ArtistGroup] {
         AlbumBrowse.groups(browsableArtists, view: view, hiding: hidden, rotation: rotation)
-    }
-    private var artistResults: [PlexArtist] {
-        AlbumBrowse.search(browsableArtists, query: query, view: view, hiding: hidden, rotation: rotation)
     }
     /// How many albums each artist has in the section, for the line under
     /// their name.
@@ -86,13 +80,6 @@ struct MusicView: View {
         case .artists: artistGroups.isEmpty
         }
     }
-    private var noResults: Bool {
-        switch subject {
-        case .albums: results.isEmpty
-        case .artists: artistResults.isEmpty
-        }
-    }
-
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: tileMinimum), spacing: 12, alignment: .top)]
     }
@@ -221,68 +208,58 @@ struct MusicView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if !query.isEmpty {
-                    Group {
-                        switch subject {
-                        case .albums: albumItems(results, showArtist: true)
-                        case .artists: artistItems(artistResults)
-                        }
+                if offline {
+                    OfflineBanner(reconnecting: model.reconnecting) {
+                        Task { await model.reconnect(force: true) }
                     }
-                    .padding(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
-                } else {
-                    if offline {
-                        OfflineBanner(reconnecting: model.reconnecting) {
-                            Task { await model.reconnect(force: true) }
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
+                }
+                // One row of three when the screen has the width for
+                // it, where a full-width hero card is mostly empty;
+                // otherwise the favorites card takes its own row. By
+                // measured width, not size class: beside the Now
+                // Playing column, or in a small Mac window, a "regular"
+                // stack can be 600pt, where three across wraps the
+                // favorites title one letter per line.
+                Group {
+                    if width >= Self.heroRowMinimum {
+                        HStack(spacing: 12) {
+                            MixTile(kind: .artist) { path.append(MixKind.artist) }
+                            MixTile(kind: .album) { path.append(MixKind.album) }
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                         }
-                        .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
-                    }
-                    // One row of three when the screen has the width for
-                    // it, where a full-width hero card is mostly empty;
-                    // otherwise the favorites card takes its own row. By
-                    // measured width, not size class: beside the Now
-                    // Playing column, or in a small Mac window, a "regular"
-                    // stack can be 600pt, where three across wraps the
-                    // favorites title one letter per line.
-                    Group {
-                        if width >= Self.heroRowMinimum {
+                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        VStack(spacing: 12) {
                             HStack(spacing: 12) {
                                 MixTile(kind: .artist) { path.append(MixKind.artist) }
                                 MixTile(kind: .album) { path.append(MixKind.album) }
-                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                             }
-                            .fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            VStack(spacing: 12) {
-                                HStack(spacing: 12) {
-                                    MixTile(kind: .artist) { path.append(MixKind.artist) }
-                                    MixTile(kind: .album) { path.append(MixKind.album) }
-                                }
-                                ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
-                            }
+                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                         }
                     }
-                    .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                    // The browser starts here: a rule, then the chips with the
-                    // arrange button, then the hidden-artist line when any are.
-                    Rectangle()
-                        .fill(Color.divider)
-                        .frame(height: 1)
-                        .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    AlbumBrowserControls(model: model, artists: artists, view: $view, layout: $layout,
-                                         scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
-                        .padding(.top, 16)
-                    HiddenLine(model: model, count: hiddenCount)
-                        .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-                    // In the stack rather than an overlay, so it sits under the
-                    // cards and the controls instead of over them.
-                    if loaded, !albums.isEmpty, filteredOut, downloadedOnly {
-                        ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
-                                               description: Text("Turn off Downloaded only to see the whole library."))
-                            .frame(maxWidth: .infinity)
-                            .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    }
-                    sections
                 }
+                .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                // The browser starts here: a rule, then the chips with the
+                // arrange button, then the hidden-artist line when any are.
+                Rectangle()
+                    .fill(Color.divider)
+                    .frame(height: 1)
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                AlbumBrowserControls(model: model, artists: artists, view: $view, layout: $layout,
+                                     scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
+                    .padding(.top, 16)
+                HiddenLine(model: model, count: hiddenCount)
+                    .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                // In the stack rather than an overlay, so it sits under the
+                // cards and the controls instead of over them.
+                if loaded, !albums.isEmpty, filteredOut, downloadedOnly {
+                    ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
+                                           description: Text("Turn off Downloaded only to see the whole library."))
+                        .frame(maxWidth: .infinity)
+                        .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                }
+                sections
             }
         }
         .parchment()
@@ -300,8 +277,6 @@ struct MusicView: View {
                 ProgressView()
             } else if albums.isEmpty {
                 ContentUnavailableView("No albums", systemImage: "square.stack")
-            } else if !query.isEmpty && noResults {
-                ContentUnavailableView.search(text: query)
             }
         }
         .navigationTitle("Tunes")
@@ -360,15 +335,15 @@ struct MusicView: View {
             async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
             // Optional too: the Artists subject is empty until it lands.
             async let artistList = library.artists(inSection: section.key)
-            albums = try await library.albums(inSection: section.key)
-            loaded = true
+            catalog.albums = try await library.albums(inSection: section.key)
+            catalog.loaded = true
             history = (try? await plays) ?? []
-            rotation = Rotation(history: history, albums: albums)
-            libraryArtists = (try? await artistList) ?? []
+            catalog.rotation = Rotation(history: history, albums: albums)
+            catalog.artists = (try? await artistList) ?? []
             favorites = try? await favoriteTracks
         } catch {
             await model.connectionLost(error)
-            loaded = true
+            catalog.loaded = true
             return
         }
         if !library.isOffline {

@@ -199,6 +199,26 @@ struct PlexLibraryTests {
         #expect(!tracks.isEmpty)
     }
 
+    @Test("track search asks the section's title filter, trimmed, folded and percent-encoded")
+    func searchTracksQuery() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("tracks")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        let tracks = try await library.searchTracks(inSection: "3", query: "  Sunday Morning ")
+        let url = try #require(seen.get())
+        #expect(url.contains("/library/sections/3/all?type=10&title=sunday%20morning"))
+        #expect(!tracks.isEmpty)
+        // Nothing to ask for: no request at all.
+        seen.set(nil)
+        let none = try await library.searchTracks(inSection: "3", query: " ")
+        #expect(none.isEmpty)
+        #expect(seen.get() == nil)
+    }
+
     @Test("favorite tracks query matches rating 10 exactly")
     func favoriteTracksQuery() async throws {
         let seen = Locked<String?>(nil)

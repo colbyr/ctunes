@@ -7,9 +7,19 @@ struct LibraryView: View {
     let model: AppModel
     @State private var path = NavigationPath()
     @State private var query = ""
+    /// The search pill is open. On the root and the deeper pages that
+    /// means the search page is on top of the stack; under a mix builder
+    /// the pill filters the builder's pool instead.
     @State private var searching = false
+    /// How deep the search page sits in the stack, nil while it isn't
+    /// there. The page follows the pill: opening the pill pushes it,
+    /// closing pops it, and a page pushed over it folds the pill.
+    @State private var searchDepth: Int?
+    /// The section's albums and artists, loaded by the browse root and
+    /// read by the search page.
+    @State private var catalog = LibraryCatalog()
     /// True while a mix builder is on top of the stack; the search pill then
-    /// filters the builder's pool instead of popping back to the root.
+    /// filters the builder's pool instead of opening the search page.
     @State private var buildingMix = false
     @State private var nowPlaying = NowPlayingPresentation()
     /// Routes and notices posted by the item menus, which sit on screens
@@ -117,15 +127,40 @@ struct LibraryView: View {
             // should be what's left, not a cover over it.
             nowPlaying.isShown = false
         }
-        // Results live on the root, so opening search from deeper in the
-        // stack pops back to it. Pushing an album folds the pill back to its
-        // icon but keeps the filter, so popping returns to the same results.
+        // The search page goes wherever the pill opens, on top of the
+        // root or of an album page, so back returns to what was there.
+        // Reopening the pill over a page pushed from a result pops back
+        // to the results; closing it takes the page away.
         .onChange(of: searching) { _, active in
-            if active && !path.isEmpty && !buildingMix { path = NavigationPath() }
+            guard !buildingMix else { return }
+            if active {
+                if let depth = searchDepth {
+                    if path.count > depth { path.removeLast(path.count - depth) }
+                } else {
+                    path.append(SearchRoute())
+                    searchDepth = path.count
+                }
+            } else if let depth = searchDepth, path.count == depth {
+                path.removeLast()
+                searchDepth = nil
+                query = ""
+            }
         }
-        .onChange(of: path.isEmpty) { _, atRoot in
-            if !atRoot { searching = false }
+        // A page pushed over the search page folds the pill to its icon
+        // and keeps the query, so back lands on the same results; popping
+        // past the page (the back button on it) closes the search.
+        .onChange(of: path.count) { _, count in
+            guard let depth = searchDepth else { return }
+            if count < depth {
+                searchDepth = nil
+                searching = false
+                query = ""
+            } else {
+                searching = count == depth
+            }
         }
+        // A library switch starts the catalog over with the root.
+        .onChange(of: model.selectedSection?.key) { _, _ in catalog.reset() }
         // A builder's query filters its pool only; popping back to the root
         // shouldn't leave the root showing results for it.
         .onChange(of: buildingMix) { _, building in
@@ -166,7 +201,7 @@ struct LibraryView: View {
                     // Keyed on the section so switching libraries from
                     // Settings starts the screen over instead of leaving the
                     // old albums under the new title.
-                    MusicView(model: model, section: section, query: $query, path: $path)
+                    MusicView(model: model, section: section, catalog: catalog, path: $path)
                         .id(section.key)
                 } else {
                     SectionPicker(model: model)
@@ -189,6 +224,11 @@ struct LibraryView: View {
             .navigationDestination(for: FavoritesRoute.self) { _ in
                 if let section = model.selectedSection {
                     FavoritesView(model: model, section: section)
+                }
+            }
+            .navigationDestination(for: SearchRoute.self) { _ in
+                if let section = model.selectedSection {
+                    SearchView(model: model, section: section, catalog: catalog, query: $query, path: $path)
                 }
             }
         }
