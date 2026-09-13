@@ -1,6 +1,18 @@
 import PlexKit
 import SwiftUI
 
+/// How much of the window the software keyboard covers. The bottom bar
+/// reads it from the keyboard's own notifications and `LibraryView` shares
+/// it, since the stack ignores the keyboard's safe area: a screen whose
+/// content must clear the keyboard adds this itself.
+@MainActor @Observable
+final class KeyboardInset {
+    var height: CGFloat = 0
+    /// A hardware keyboard's accessory strip is short; anything taller
+    /// is the real thing.
+    var isUp: Bool { height > 60 }
+}
+
 /// Floating pills along the bottom edge: the mini player on the left, search
 /// on the right. Activating search grows its pill into a text field, adds a
 /// close pill beyond it and shrinks the mini player down to its artwork so
@@ -17,13 +29,11 @@ struct BottomBar: View {
     @State private var bottomInset: CGFloat = 0
     /// How much of the screen the keyboard covers, from its own
     /// notifications, so the bar tracks it whatever screen was on top.
-    @State private var keyboardHeight: CGFloat = 0
+    @Environment(KeyboardInset.self) private var keyboard
     /// The window the bar sits in, for converting the keyboard's
     /// screen-space frame; `UIScreen.main` is gone.
     @State private var window: UIWindow?
-    /// A hardware keyboard's accessory strip is short; anything taller
-    /// is the real thing.
-    private var keyboardUp: Bool { keyboardHeight > 60 }
+    private var keyboardUp: Bool { keyboard.isUp }
 
     var body: some View {
         GlassEffectContainer(spacing: 8) {
@@ -63,7 +73,7 @@ struct BottomBar: View {
         // Pulled into the home-indicator inset so the gap below the pills is
         // a little more than the 20pt at their sides. With the keyboard up
         // the pills sit a fixed gap above its top edge instead.
-        .padding(.bottom, keyboardUp ? keyboardHeight - bottomInset + 8 : 26 - bottomInset)
+        .padding(.bottom, keyboardUp ? keyboard.height - bottomInset + 8 : 26 - bottomInset)
         .background {
             GeometryReader { proxy in
                 Color.clear.onChange(of: proxy.safeAreaInsets.bottom, initial: true) { _, inset in
@@ -73,16 +83,33 @@ struct BottomBar: View {
         }
         .background { WindowReader { window = $0 } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
-            guard let window,
+            guard let window, let screen = window.windowScene?.screen,
                   let screenFrame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
             else { return }
-            // The frame is in screen coordinates; the covered part of this
-            // window is below its top.
-            let frame = window.convert(screenFrame, from: nil)
+            // The frame is in screen coordinates. Through the screen's
+            // space, not `window.convert(_:from: nil)`, which takes it as
+            // the window's own and is off for a window not at the screen's
+            // origin (Split View, Stage Manager, a Mac).
+            let frame = screen.coordinateSpace.convert(screenFrame, to: window.coordinateSpace)
+            let covered = frame.intersection(window.bounds)
+            // Only a keyboard docked along the bottom edge lifts the bar.
+            // Measuring from the frame's top alone, the zero frame an
+            // undocked or floating keyboard reports read as covering the
+            // whole window and sent the bar to the top of the screen.
+            let height = covered.isNull || covered.maxY < window.bounds.maxY - 1 ? 0 : covered.height
             let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
             withAnimation(.easeOut(duration: duration)) {
-                keyboardHeight = max(0, window.bounds.maxY - frame.minY)
+                keyboard.height = height
             }
+        }
+        // Belt and braces: a hide always lands the bar, and a keyboard
+        // that went away with the app never posts its frame change.
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { note in
+            let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+            withAnimation(.easeOut(duration: duration)) { keyboard.height = 0 }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            keyboard.height = 0
         }
         .animation(.bouncy(duration: 0.4), value: searching)
         .animation(.bouncy(duration: 0.4), value: player.currentTrack == nil)

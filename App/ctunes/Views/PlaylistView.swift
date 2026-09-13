@@ -1,6 +1,44 @@
 import PlexKit
 import SwiftUI
 
+/// How a playlist page orders its rows. One setting for every playlist,
+/// persisted per device; the playlist's own order is the only one edit
+/// mode reorders.
+enum PlaylistSort: String, CaseIterable, Identifiable {
+    case playlist, title, artist, album
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .playlist: "Playlist Order"
+        case .title: "Title"
+        case .artist: "Artist"
+        case .album: "Album"
+        }
+    }
+
+    /// Stable, so tracks that tie keep the playlist's order.
+    func sorted<Row>(_ rows: [Row], track: (Row) -> PlexTrack) -> [Row] {
+        let key: (PlexTrack) -> [String] = switch self {
+        case .playlist: { _ in [] }
+        case .title: { [Self.name($0.title)] }
+        case .artist: { [Self.name($0.grandparentTitle), Self.name($0.parentTitle)] }
+        case .album: { [Self.name($0.parentTitle), Self.name($0.grandparentTitle)] }
+        }
+        guard self != .playlist else { return rows }
+        return rows.enumerated().sorted { a, b in
+            let (ka, kb) = (key(track(a.element)), key(track(b.element)))
+            return ka == kb ? a.offset < b.offset : ka.lexicographicallyPrecedes(kb)
+        }.map(\.element)
+    }
+
+    /// Case-folded so "the national" sorts among the Ns, not after the Zs.
+    private static func name(_ title: String?) -> String {
+        (title ?? "").lowercased()
+    }
+}
+
 /// One playlist as a list of track rows under Play and Shuffle, the
 /// Favorites page's shape rather than the album page's: it is tracks
 /// from many albums, and edit mode (reorder, swipe to remove) is a `List`
@@ -18,7 +56,10 @@ struct PlaylistView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var items: [PlaylistItem] = []
+    /// For the Listeners sheet's veto lists, which cover the whole library.
+    @State private var albums: [PlexAlbum] = []
     @State private var loaded = false
+    @AppStorage("playlistSort") private var sort: PlaylistSort = .playlist
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
@@ -30,6 +71,8 @@ struct PlaylistView: View {
     private var current: PlexPlaylist { model.playlists.first { $0.id == playlist.id } ?? playlist }
     /// Regular and online: the rows reorder and remove.
     private var editable: Bool { !current.smart && !offline }
+    /// Edit mode moves rows in the playlist's own order, so only there.
+    private var reorderable: Bool { editable && sort == .playlist }
 
     /// One row of the page, keyed by the item id where the server gives
     /// one and by position on a smart playlist, whose items have none.
@@ -40,12 +83,13 @@ struct PlaylistView: View {
     }
 
     private var tracks: [PlexTrack] { items.map(\.track) }
-    /// The rows: what no veto hides, in the playlist's order.
+    /// The rows: what no veto hides, in the chosen order.
     private var rows: [Row] {
-        items.enumerated().compactMap { index, item in
+        let rows = items.enumerated().compactMap { index, item -> Row? in
             guard !hidden.hides(item.track) else { return nil }
             return Row(id: item.playlistItemID.map { "item:\($0)" } ?? "pos:\(index)", item: item)
         }
+        return sort.sorted(rows, track: \.track)
     }
     /// Offline, only rows with a file are worth queueing.
     private var playableRows: [Row] {
@@ -73,6 +117,8 @@ struct PlaylistView: View {
             }
             .refreshable { await load() }
             // Deleted, here or elsewhere: the page has nothing left to show.
+            // Reordering is the playlist's own order; another sort ends it.
+            .onChange(of: sort) { _, _ in editMode = .inactive }
             .onChange(of: model.playlistGeneration) { _, _ in
                 if !offline, !model.playlists.contains(where: { $0.id == playlist.id }) { dismiss() }
             }
@@ -129,7 +175,7 @@ struct PlaylistView: View {
                 Label("More", systemImage: "ellipsis")
             }
         }
-        if editable, !items.isEmpty {
+        if reorderable, !items.isEmpty {
             ToolbarItem(placement: .topBarTrailing) {
                 let title: String = editMode.isEditing ? "Done" : "Edit"
                 Button(title) {
@@ -192,6 +238,30 @@ struct PlaylistView: View {
             .listRowBackground(Color.clear)
             .moveDisabled(true)
             .deleteDisabled(true)
+        ListenerChips(model: model, artists: AlbumBrowse.groups(albums, view: .artist)) {
+            Menu {
+                Picker("Sort", selection: $sort) {
+                    ForEach(PlaylistSort.allCases) { sort in
+                        Text(sort.title).tag(sort)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 34, height: 34)
+                    .background(.fill.tertiary, in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Sorted by \(sort.title)")
+        }
+        .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .moveDisabled(true)
+        .deleteDisabled(true)
         HiddenLine(model: model, count: hiddenCount)
             .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
             .listRowSeparator(.hidden)
@@ -205,7 +275,9 @@ struct PlaylistView: View {
     private func load() async {
         guard let library = model.library else { return }
         do {
+            async let all = library.albums(inSection: model.selectedSection?.key ?? "")
             items = try await library.items(inPlaylist: playlist.ratingKey)
+            albums = (try? await all) ?? []
         } catch {
             await model.connectionLost(error)
             if model.library?.isOffline != true { items = [] }
@@ -283,7 +355,7 @@ struct PlaylistView: View {
             }
         }
         .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-        .contextMenu { TrackMenu(model: model, track: track, placement: placement) }
+        .rowContextMenu(inset: Self.margin) { TrackMenu(model: model, track: track, placement: placement) }
         // Pruning a regular playlist deserves the shortcut, as the hearts
         // do on Favorites. Edits are refused offline.
         .swipeActions(edge: .trailing) {
@@ -302,7 +374,7 @@ struct PlaylistView: View {
     /// Nil on a smart playlist or offline, which also hides the edit
     /// controls the `List` would otherwise offer.
     private var moveHandler: ((IndexSet, Int) -> Void)? {
-        editable ? { moveRows(from: $0, to: $1) } : nil
+        reorderable ? { moveRows(from: $0, to: $1) } : nil
     }
 
     private var deleteHandler: ((IndexSet) -> Void)? {

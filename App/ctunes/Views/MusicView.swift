@@ -241,6 +241,12 @@ struct MusicView: View {
 
     @State private var scrollPosition = ScrollPosition()
 
+    /// The mix builder and the playlists page, side by side.
+    @ViewBuilder private var heroTiles: some View {
+        HeroTile(title: "Mix Builder",systemImage: "square.stack.3d.up.fill", accent: .mix) { path.append(MixRoute()) }
+        HeroTile(title: "Playlists", systemImage: "music.note.list", accent: .playlist) { path.append(PlaylistsRoute()) }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
@@ -260,17 +266,13 @@ struct MusicView: View {
                 Group {
                     if width >= Self.heroRowMinimum {
                         HStack(spacing: 12) {
-                            MixTile(kind: .artist) { path.append(MixKind.artist) }
-                            MixTile(kind: .album) { path.append(MixKind.album) }
+                            heroTiles
                             ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     } else {
                         VStack(spacing: 12) {
-                            HStack(spacing: 12) {
-                                MixTile(kind: .artist) { path.append(MixKind.artist) }
-                                MixTile(kind: .album) { path.append(MixKind.album) }
-                            }
+                            HStack(spacing: 12) { heroTiles }
                             ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
                         }
                     }
@@ -558,24 +560,32 @@ private struct ShuffleFavoritesCard: View {
     }
 }
 
-/// Half-width entry to a mix builder, sharing the hero card's chrome, in
-/// the mix's own color so the two read apart at a glance.
-private struct MixTile: View {
-    let kind: MixKind
+/// Half-width entry to the mix builder or the playlists page, sharing the
+/// hero card's chrome, each in its own color so the two read apart at a
+/// glance.
+private struct HeroTile: View {
+    let title: String
+    let systemImage: String
+    let accent: Color
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: kind.systemImage)
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
                     .font(.subheadline)
-                    .foregroundStyle(kind.accent)
+                    .foregroundStyle(accent)
                     .frame(width: 36, height: 36)
-                    .background(kind.accent.opacity(0.16), in: .circle)
-                // Half a phone's width is tight for "Mix Albums": one line,
-                // shrunk a touch before it would wrap.
-                Text(kind.title).font(.headline).lineLimit(1).minimumScaleFactor(0.85)
+                    .background(accent.opacity(0.16), in: .circle)
+                // Half a phone's width beside the chevron is tight for
+                // "Mix Builder": one line, shrunk before it would truncate.
+                Text(title).font(.headline).lineLimit(1).minimumScaleFactor(0.75)
                 Spacer(minLength: 0)
+                // A page to go to, not an action: the favorites card's
+                // chevron, a size down to leave the title its width.
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 12)

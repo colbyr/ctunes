@@ -279,7 +279,7 @@ struct FavoritesView: View {
             MoreButton { TrackMenu(model: model, track: track, placement: .list(siblings: rows)) }
         }
         .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-        .contextMenu { TrackMenu(model: model, track: track, placement: .list(siblings: rows)) }
+        .rowContextMenu(inset: Self.margin) { TrackMenu(model: model, track: track, placement: .list(siblings: rows)) }
         // The one swipe left in the app: this list is the hearts, so
         // pruning it deserves the shortcut. Hearts are read-only offline.
         .swipeActions(edge: .trailing) {

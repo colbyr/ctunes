@@ -75,7 +75,7 @@ struct StorageList: View {
                     if inventory.favoritesPinned {
                         StorageLegend(color: .heart, label: "Favorites", bytes: favorites)
                     }
-                    StorageLegend(color: .artistMix, label: "Cached", bytes: cacheUsage ?? 0)
+                    StorageLegend(color: .mix, label: "Cached", bytes: cacheUsage ?? 0)
                 }
             }
             .padding(.vertical, 6)
@@ -531,7 +531,7 @@ private struct StorageBar: View {
         return [
             (.accentText, Double(downloads) / total),
             (.heart, Double(favorites) / total),
-            (.artistMix, Double(cached) / total),
+            (.mix, Double(cached) / total),
         ]
     }
 

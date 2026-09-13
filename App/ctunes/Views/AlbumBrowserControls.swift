@@ -36,49 +36,68 @@ extension BrowseSubject {
     }
 }
 
-/// The album browser's arrange button: a 34pt circle pinned at the trailing
-/// edge of the listener chips, opening one menu: what to browse (the root
-/// alone), the sort, the layout as a row of icons, and the download filter.
-/// Picking one applies it and dismisses.
+/// The album browser's arrange buttons: two 34pt circles pinned at the
+/// trailing edge of the listener chips. The first is what the page shows
+/// and how (the subject, where the page has one, then grid or list), its
+/// glyph the current layout; the second is the order and the download
+/// filter. Picking one applies it and dismisses.
 struct ArrangeChip: View {
     @Binding var view: AlbumView
     @Binding var layout: BrowseLayout
     /// What the sorts are over, for the Artists view's name.
     var scope: BrowseScope = .albums
-    /// Only the root browses artists as well as albums.
+    /// Only the root and the mix builder browse more than one kind.
     var subject: Binding<BrowseSubject>? = nil
-    /// Only the main browser and the album pool offer the filter.
+    /// The kinds on offer: the mix builder has no playlists.
+    var subjects: [BrowseSubject] = BrowseSubject.allCases
+    /// Only the main browser and the mix builder offer the filter.
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
-        Menu {
-            if let subject {
-                Picker("Browse", selection: subject) {
-                    ForEach(BrowseSubject.allCases, id: \.self) { Label($0.title, systemImage: $0.systemImage) }
+        HStack(spacing: 8) {
+            Menu {
+                if let subject {
+                    Picker("Browse", selection: subject) {
+                        ForEach(subjects, id: \.self) { Label($0.title, systemImage: $0.systemImage) }
+                    }
+                    .pickerStyle(.inline)
+                }
+                Picker("Layout", selection: $layout) {
+                    ForEach(BrowseLayout.allCases, id: \.self) { Label($0.title, systemImage: $0.systemImage) }
                 }
                 .pickerStyle(.inline)
+            } label: {
+                ChipIcon(systemImage: layout.systemImage)
             }
-            Picker("Sort", selection: $view) {
-                ForEach(AlbumView.cases(in: scope), id: \.self) { Text($0.title(in: scope)) }
+            .accessibilityLabel(subject.map { "Showing \($0.wrappedValue.title.lowercased()) as a \(layout.title.lowercased())" }
+                ?? "Showing a \(layout.title.lowercased())")
+            Menu {
+                Picker("Sort", selection: $view) {
+                    ForEach(AlbumView.cases(in: scope), id: \.self) { Text($0.title(in: scope)) }
+                }
+                .pickerStyle(.inline)
+                if let downloadedOnly {
+                    Toggle("Downloaded only", systemImage: "arrow.down.circle", isOn: downloadedOnly)
+                }
+            } label: {
+                ChipIcon(systemImage: "arrow.up.arrow.down")
             }
-            .pickerStyle(.inline)
-            Picker("Layout", selection: $layout) {
-                ForEach(BrowseLayout.allCases, id: \.self) { Label($0.title, systemImage: $0.systemImage) }
-            }
-            .pickerStyle(.palette)
-            if let downloadedOnly {
-                Toggle("Downloaded only", systemImage: "arrow.down.circle", isOn: downloadedOnly)
-            }
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
+            .accessibilityLabel("Sorted by \(view.title(in: scope))")
+        }
+        .buttonStyle(.plain)
+    }
+
+    private struct ChipIcon: View {
+        let systemImage: String
+
+        var body: some View {
+            Image(systemName: systemImage)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.primary)
                 .frame(width: 34, height: 34)
                 .background(.fill.tertiary, in: .circle)
                 .contentShape(.circle)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Viewing \(view.title(in: scope)) as a \(layout.title.lowercased())")
     }
 }
 
@@ -92,11 +111,13 @@ struct AlbumBrowserControls: View {
     @Binding var layout: BrowseLayout
     var scope: BrowseScope = .albums
     var subject: Binding<BrowseSubject>? = nil
+    var subjects: [BrowseSubject] = BrowseSubject.allCases
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         ListenerChips(model: model, artists: artists) {
-            ArrangeChip(view: $view, layout: $layout, scope: scope, subject: subject, downloadedOnly: downloadedOnly)
+            ArrangeChip(view: $view, layout: $layout, scope: scope, subject: subject, subjects: subjects,
+                        downloadedOnly: downloadedOnly)
         }
     }
 }

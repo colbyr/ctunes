@@ -130,7 +130,7 @@ struct NowPlayingView: View {
                 // Zero insets so the press highlight reaches the row edges;
                 // the label pads itself back to the standard inset.
                 .listRowInsets(EdgeInsets())
-                .contextMenu { TrackMenu(model: model, track: entry.item, placement: .queued(entry)) }
+                .rowContextMenu { TrackMenu(model: model, track: entry.item, placement: .queued(entry)) }
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) { player.remove(entry) } label: {
                         Label("Remove", systemImage: "trash")
@@ -204,13 +204,11 @@ struct NowPlayingView: View {
                 }
 
             HStack(alignment: .top) {
-                // AirPlay at the leading edge balances the heart at the
+                // The heart at the leading edge balances AirPlay at the
                 // trailing one, so the text stays centred and the header
-                // grows no taller. Its height is the title's first line so
-                // the glyph sits level with the heart, not centred on 44pt.
-                AirPlayButton()
-                    .frame(width: 44, height: 26)
-                    .accessibilityLabel("AirPlay")
+                // grows no taller.
+                HeartButton(model: model, track: player.currentTrack)
+                    .frame(width: 44)
                 VStack(spacing: 6) {
                     Text(player.currentTrack?.title ?? "Nothing playing")
                         .font(.title3.bold())
@@ -225,8 +223,11 @@ struct NowPlayingView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .frame(maxWidth: .infinity)
-                HeartButton(model: model, track: player.currentTrack)
-                    .frame(width: 44)
+                // Its height is the title's first line so the glyph sits
+                // level with the heart, not centred on 44pt.
+                AirPlayButton()
+                    .frame(width: 44, height: 26)
+                    .accessibilityLabel("AirPlay")
             }
             .padding(.horizontal)
 

@@ -141,9 +141,11 @@ struct TracksView: View {
         .toolbar {
             // The title bar carries the artist under the title, and opens
             // their page: the native subtitle is plain text, so this is a
-            // principal item drawn to match it, without the glass.
+            // title item drawn to match it, without the glass. `.title`
+            // rather than `.principal`, which centres it where the native
+            // title sits at the leading edge.
             if let artist = album.parentTitle {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: .title) {
                     titleBlock(artist: artist)
                 }
                 .sharedBackgroundVisibility(.hidden)
@@ -249,7 +251,9 @@ struct TracksView: View {
                 path.append(ArtistRoute(ratingKey: key, title: artist))
             }
         } label: {
-            VStack(spacing: 1) {
+            // The bar centres the title at rest and moves it to the leading
+            // edge once the cards' icons scroll in, so the two lines follow.
+            VStack(alignment: actionsVisible ? .center : .leading, spacing: 1) {
                 Text(album.title)
                     .font(.headline)
                     .foregroundStyle(Color.ink)
@@ -376,7 +380,7 @@ struct TracksView: View {
             MoreButton { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
         }
         .padding(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin - 4))
-        .contextMenu { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
+        .rowContextMenu { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
     }
 
 

@@ -645,6 +645,19 @@ struct MoreButton<Content: View>: View {
     }
 }
 
+extension View {
+    /// A row's long press. The lifted preview is a copy of the row on the
+    /// page's ground: the default is a snapshot with a clear background,
+    /// which floats as bare text over whatever is behind it. `inset` pads
+    /// a `List` row, whose insets aren't part of the view.
+    func rowContextMenu<MenuItems: View>(inset: CGFloat = 0, @ViewBuilder _ menu: @escaping () -> MenuItems) -> some View {
+        contextMenu { menu() } preview: {
+            padding(.horizontal, inset)
+                .background(Color.parchmentTop)
+        }
+    }
+}
+
 extension PlexTrack {
     /// The album this track is on, as far as the track knows it: enough
     /// to push the album page, which fetches the rest by rating key.

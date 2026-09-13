@@ -22,6 +22,9 @@ struct LibraryView: View {
     /// filters the builder's pool instead of opening the search page.
     @State private var buildingMix = false
     @State private var nowPlaying = NowPlayingPresentation()
+    /// Written by the bottom bar, read by the mix builder, whose search
+    /// results would otherwise sit under the keyboard.
+    @State private var keyboard = KeyboardInset()
     /// Routes and notices posted by the item menus, which sit on screens
     /// with no path of their own.
     @State private var navigator = LibraryNavigator()
@@ -82,6 +85,7 @@ struct LibraryView: View {
         .animation(.snappy, value: nowPlaying.isColumn)
         .environment(nowPlaying)
         .environment(navigator)
+        .environment(keyboard)
         // The cover is handed the observables by hand. When a Mac window
         // drags across the compact/regular boundary UIKit re-hosts the
         // open presentation, and that pass evaluates the content without
@@ -259,9 +263,12 @@ struct LibraryView: View {
                 let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
                 path.append(ArtistRoute(ratingKey: parts[0], title: parts.count > 1 ? parts[1] : "Artist"))
             }
+            // `artist` or `album` opens the builder on that pool.
             if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
                let kind = MixKind(rawValue: String(raw.prefix { $0 != ":" })) {
-                path.append(kind)
+                let subject: BrowseSubject = kind == .artist ? .artists : .albums
+                UserDefaults.standard.set(subject.rawValue, forKey: "mixSubject")
+                path.append(MixRoute())
             }
             if ProcessInfo.processInfo.environment["CTUNES_DEV_FAVORITES"] == "1" {
                 path.append(FavoritesRoute())
@@ -307,10 +314,13 @@ struct LibraryView: View {
                     ArtistView(model: model, section: section, route: route, path: $path)
                 }
             }
-            .navigationDestination(for: MixKind.self) { kind in
+            .navigationDestination(for: MixRoute.self) { _ in
                 if let section = model.selectedSection {
-                    MixBuilderView(model: model, section: section, kind: kind, query: $query, building: $buildingMix)
+                    MixBuilderView(model: model, section: section, query: $query, building: $buildingMix)
                 }
+            }
+            .navigationDestination(for: PlaylistsRoute.self) { _ in
+                PlaylistsView(model: model, path: $path)
             }
             .navigationDestination(for: FavoritesRoute.self) { _ in
                 if let section = model.selectedSection {

@@ -1,39 +1,12 @@
 import PlexKit
 import SwiftUI
 
-/// Which kind of mix a builder assembles. Pushed onto the navigation path.
+/// Pushed onto the navigation path to open the mix builder.
+struct MixRoute: Hashable {}
+
+/// What a pick is. A mix holds artists, albums, or some of each.
 enum MixKind: String, Hashable {
     case artist, album
-
-    var title: String {
-        switch self {
-        case .artist: "Mix Artists"
-        case .album: "Mix Albums"
-        }
-    }
-
-    /// Each mix has its own color, neither of them the hearts' rose nor
-    /// the transport's amber: blue for artists, teal for albums.
-    var accent: Color {
-        switch self {
-        case .artist: .artistMix
-        case .album: .albumMix
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .artist: "person.2.fill"
-        case .album: "square.stack.fill"
-        }
-    }
-
-    var noun: String {
-        switch self {
-        case .artist: "artists"
-        case .album: "albums"
-        }
-    }
 }
 
 /// How a mix is laid out in the queue.
@@ -44,17 +17,19 @@ enum MixMode: Hashable {
     case playAlbums
 }
 
-/// Picks a set of artists or albums and plays every track in the union as
-/// a one-shot queue, shuffled by track or album by album. With nothing
-/// picked the mix is the whole pool. The pool never offers an artist a
-/// listening rider has vetoed.
+/// Picks artists and albums, any mix of the two, and plays every track in
+/// the union as a one-shot queue, shuffled by track or album by album. The
+/// pool lists one kind at a time, switched from the layout menu; the picks
+/// of both kinds share the grid above it. With nothing picked the mix is
+/// the whole library. The pool never offers what a listening rider vetoed.
 struct MixBuilderView: View {
     let model: AppModel
     let section: PlexSection
-    let kind: MixKind
     @Binding var query: String
     @Binding var building: Bool
     @Environment(AudioPlayer.self) private var player
+    /// The stack ignores the keyboard, so the pool makes its own room.
+    @Environment(KeyboardInset.self) private var keyboard
 
     @State private var artists: [PlexArtist] = []
     /// Fetched for both pools: the artist pool needs the albums' track
@@ -64,7 +39,8 @@ struct MixBuilderView: View {
     /// request fails, which leaves On Rotation on the server's play counts.
     @State private var rotation: Rotation = .none
     @State private var loaded = false
-    /// Rating keys in the order they were tapped.
+    /// Pick ids (`artist:<ratingKey>`, `album:<ratingKey>`) in the order
+    /// they were tapped.
     @State private var selected: [String] = []
     @State private var loadingMix: MixMode?
     @State private var nothingToPlay = false
@@ -73,35 +49,27 @@ struct MixBuilderView: View {
     @State private var actionsVisible = true
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(\.horizontalSizeClass) private var sizeClass
-    /// Per builder rather than the root's key: arranging a pool by play
-    /// count shouldn't reorder the album grid behind it. The layout is
-    /// the app's.
-    @AppStorage private var view: AlbumView
+    /// What the pool lists: albums or artists, never playlists.
+    @AppStorage("mixSubject") private var subject: BrowseSubject = .albums
+    /// A sort per pool rather than the root's keys: arranging a pool by
+    /// play count shouldn't reorder the album grid behind it. The layout
+    /// is the app's.
+    @AppStorage("mixView.artist") private var artistSort: AlbumView = .mostPlayed
+    @AppStorage("mixView.album") private var albumSort: AlbumView = .mostPlayed
     @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
-    /// Album pool only; there is no per-artist download state.
-    @AppStorage private var downloadedOnly: Bool
-    /// Comma-joined ratingKeys, so the last mix is waiting next time.
-    @AppStorage private var savedSelection: String
+    @AppStorage("mixDownloadedOnly.album") private var downloadedOnly = false
+    /// Comma-joined pick ids, so the last mix is waiting next time.
+    @AppStorage("mixSelection") private var savedSelection = ""
 
-    init(model: AppModel, section: PlexSection, kind: MixKind, query: Binding<String>, building: Binding<Bool>) {
-        self.model = model
-        self.section = section
-        self.kind = kind
-        _query = query
-        _building = building
-        _view = AppStorage(wrappedValue: .mostPlayed, "mixView.\(kind.rawValue)")
-        _downloadedOnly = AppStorage(wrappedValue: false, "mixDownloadedOnly.\(kind.rawValue)")
-        _savedSelection = AppStorage(wrappedValue: "", "mixSelection.\(kind.rawValue)")
-    }
-
-    /// Debug-only preselection from `CTUNES_DEV_MIX=<kind>:<key>,<key>`.
-    /// Nil without a colon, so the saved selection applies; a bare
-    /// `<kind>:` is an explicitly empty one.
+    /// Debug-only preselection from `CTUNES_DEV_MIX=<kind>:<key>,<key>`,
+    /// the keys taken as that kind. Nil without a colon, so the saved
+    /// selection applies; a bare `<kind>:` is an explicitly empty one.
     static var developmentSelection: [String]? {
         #if DEBUG
         guard let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
               let colon = raw.firstIndex(of: ":") else { return nil }
-        return raw[raw.index(after: colon)...].split(separator: ",").map(String.init)
+        let kind = raw[..<colon]
+        return raw[raw.index(after: colon)...].split(separator: ",").map { "\(kind):\($0)" }
         #else
         return nil
         #endif
@@ -109,19 +77,24 @@ struct MixBuilderView: View {
 
     /// One shape for both kinds so the grids render the same way.
     private struct Item: Identifiable {
-        let id: String
+        let kind: MixKind
+        let key: String
         let title: String
         let subtitle: String?
         let thumb: String?
-        /// A listening rider has vetoed the artist. Stays in the selected
-        /// grid, dimmed, so toggling the rider off brings it straight back.
+        /// A listening rider has vetoed it. Stays in the selected grid,
+        /// dimmed, so toggling the rider off brings it straight back.
         let vetoed: Bool
         /// Offline with nothing downloaded: still in the pool, dimmed.
         var unavailable = false
         /// What's on disk: the same badge as the browse root.
         var download: DownloadState = .none
+
+        var id: String { "\(kind.rawValue):\(key)" }
     }
 
+    private var kind: MixKind { subject == .artists ? .artist : .album }
+    private var sort: Binding<AlbumView> { kind == .artist ? $artistSort : $albumSort }
     private var hidden: VetoSet { model.roster.hidden }
     private var needle: String { query.trimmingCharacters(in: .whitespaces) }
     /// The album pool after the Downloaded only filter. Picks come from the
@@ -129,28 +102,27 @@ struct MixBuilderView: View {
     private var browsable: [PlexAlbum] {
         downloadedOnly ? albums.filter { model.downloads.hasDownloads($0) } : albums
     }
-
-    /// Everything in the section, in sort order, vetoes marked.
-    private var items: [Item] {
-        switch kind {
-        case .artist:
-            return view.sorted(artists, rotation: rotation).map {
-                Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb,
-                     vetoed: hidden.artists.contains($0.ratingKey), download: model.downloads.state(artist: $0.ratingKey))
-            }
-        case .album:
-            let list = view.sorted(albums, rotation: rotation)
-            return list.map(item)
-        }
+    /// The artist pool under the same filter: the artists with a
+    /// downloaded album, as on the root.
+    private var browsableArtists: [PlexArtist] {
+        guard downloadedOnly else { return artists }
+        let downloaded = Set(browsable.map(\.artistKey))
+        return artists.filter { downloaded.contains($0.ratingKey) }
     }
 
-    /// Under the artist view the header names the artist, so the card
-    /// shows the year instead.
-    private func item(_ album: PlexAlbum) -> Item {
+    private func item(artist: PlexArtist) -> Item {
+        Item(kind: .artist, key: artist.ratingKey, title: artist.title, subtitle: nil, thumb: artist.thumb,
+             vetoed: hidden.artists.contains(artist.ratingKey), download: model.downloads.state(artist: artist.ratingKey))
+    }
+
+    /// Under the album pool's Artists view the header names the artist, so
+    /// the card shows the year instead; a pick always names its artist.
+    private func item(album: PlexAlbum, showArtist: Bool = true) -> Item {
         Item(
-            id: album.ratingKey,
+            kind: .album,
+            key: album.ratingKey,
             title: album.title,
-            subtitle: view == .artist ? (album.year.map(String.init) ?? "—") : album.parentTitle,
+            subtitle: album.subtitle(showArtist: showArtist),
             thumb: album.thumb,
             vetoed: hidden.hides(album),
             unavailable: model.state == .offline && !model.downloads.hasDownloads(album),
@@ -162,23 +134,40 @@ struct MixBuilderView: View {
     /// picks. Empty groups fall away with their albums. Search shows the
     /// flat ranked `rest` instead.
     private var poolGroups: [AlbumGroup] {
-        let unpicked = browsable.filter { !selected.contains($0.ratingKey) }
-        return AlbumBrowse.groups(unpicked, view: view, hiding: hidden, rotation: rotation)
+        let unpicked = browsable.filter { !selected.contains("album:\($0.ratingKey)") }
+        return AlbumBrowse.groups(unpicked, view: albumSort, hiding: hidden, rotation: rotation)
     }
 
-    /// What survives the vetoes. Search narrows `rest` only, so a pick
-    /// never disappears from the selected grid.
-    private var pool: [Item] { items.filter { !$0.vetoed } }
+    /// The pool's kind, in sort order, minus what the vetoes hide.
+    private var pool: [Item] {
+        switch kind {
+        case .artist:
+            artistSort.sorted(browsableArtists, rotation: rotation).map { item(artist: $0) }.filter { !$0.vetoed }
+        case .album:
+            albumSort.sorted(browsable, rotation: rotation).map { item(album: $0, showArtist: albumSort != .artist) }.filter { !$0.vetoed }
+        }
+    }
 
-    /// Selected items in tap order, vetoed ones included.
+    /// Selected items of both kinds in tap order, vetoed ones included.
     private var picks: [Item] {
-        let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return selected.compactMap { byID[$0] }
+        let artistsByKey = Dictionary(artists.map { ($0.ratingKey, $0) }, uniquingKeysWith: { first, _ in first })
+        let albumsByKey = Dictionary(albums.map { ($0.ratingKey, $0) }, uniquingKeysWith: { first, _ in first })
+        return selected.compactMap { id in
+            let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return nil }
+            switch MixKind(rawValue: parts[0]) {
+            case .artist: return artistsByKey[parts[1]].map { item(artist: $0) }
+            case .album: return albumsByKey[parts[1]].map { item(album: $0) }
+            case nil: return nil
+            }
+        }
     }
 
     /// The picks that will actually go into the mix.
     private var playable: [Item] { picks.filter { !$0.vetoed } }
 
+    /// Search narrows `rest` only, so a pick never disappears from the
+    /// selected grid.
     private var rest: [Item] {
         let unpicked = pool.filter { !selected.contains($0.id) }
         guard !needle.isEmpty else { return unpicked }
@@ -186,9 +175,9 @@ struct MixBuilderView: View {
         case .artist:
             return unpicked.filter { $0.title.localizedCaseInsensitiveContains(needle) }
         case .album:
-            let ranked = AlbumBrowse.search(browsable, query: needle, view: view, hiding: hidden, rotation: rotation).map(\.ratingKey)
-            let byID = Dictionary(unpicked.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            return ranked.compactMap { byID[$0] }
+            let ranked = AlbumBrowse.search(browsable, query: needle, view: albumSort, hiding: hidden, rotation: rotation).map(\.ratingKey)
+            let byKey = Dictionary(unpicked.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+            return ranked.compactMap { byKey[$0] }
         }
     }
 
@@ -200,6 +189,8 @@ struct MixBuilderView: View {
     }
 
     private static let margin: CGFloat = 16
+    /// Where a search scrolls to: the controls over the pool.
+    private static let poolAnchor = "pool"
     /// Same floor as the album browser: wider tiles on a regular width.
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: sizeClass == .regular ? 180 : 100), spacing: 12, alignment: .top)]
@@ -207,46 +198,57 @@ struct MixBuilderView: View {
 
     var body: some View {
         let picks = picks
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                MixActions(kind: kind, loading: loadingMix, action: play)
-                    // Bottom inset clears the card's shadow; see `cardShadow`.
-                    .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                Group {
-                    if picks.isEmpty {
-                        emptySelection
-                    } else {
-                        items(picks, selected: true)
-                    }
-                }
-                .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                Rectangle()
-                    .fill(Color.divider)
-                    .frame(height: 1)
-                    .padding(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: $view, layout: $layout,
-                                     scope: kind == .artist ? .artists : .albums, downloadedOnly: kind == .album ? $downloadedOnly : nil)
-                    .padding(.top, 16)
-                HiddenLine(model: model, count: hiddenCount)
-                    .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-                if kind == .album && needle.isEmpty {
-                    ForEach(poolGroups) { group in
-                        Section {
-                            items(group.albums.map(item), selected: false)
-                                .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                        } header: {
-                            if !group.name.isEmpty {
-                                AlbumGroupHeader(group: group)
-                                    .padding(.leading, Self.margin)
-                                    .padding(.top, 14)
-                                    .padding(.bottom, 6)
-                            }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    MixActions(loading: loadingMix, action: play)
+                        // Bottom inset clears the card's shadow; see `cardShadow`.
+                        .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    Group {
+                        if picks.isEmpty {
+                            emptySelection
+                        } else {
+                            items(picks, selected: true)
                         }
                     }
-                } else {
-                    items(rest, selected: false)
-                        .padding(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    Rectangle()
+                        .fill(Color.divider)
+                        .frame(height: 1)
+                        .padding(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: sort, layout: $layout,
+                                         scope: kind == .artist ? .artists : .albums, subject: $subject,
+                                         subjects: [.albums, .artists], downloadedOnly: $downloadedOnly)
+                        .padding(.top, 16)
+                        .id(Self.poolAnchor)
+                    HiddenLine(model: model, count: hiddenCount)
+                        .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                    if kind == .album && needle.isEmpty {
+                        ForEach(poolGroups) { group in
+                            Section {
+                                items(group.albums.map { item(album: $0, showArtist: albumSort != .artist) }, selected: false)
+                                    .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                            } header: {
+                                if !group.name.isEmpty {
+                                    AlbumGroupHeader(group: group)
+                                        .padding(.leading, Self.margin)
+                                        .padding(.top, 14)
+                                        .padding(.bottom, 6)
+                                }
+                            }
+                        }
+                    } else {
+                        items(rest, selected: false)
+                            .padding(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
+                    }
                 }
+            }
+            // A query brings the pool up under the bar. With only a few
+            // results the scroll stops at the end of the content, which the
+            // keyboard's margin below leaves just clear of the search pill.
+            .onChange(of: needle) { _, needle in
+                guard !needle.isEmpty else { return }
+                withAnimation(.snappy) { proxy.scrollTo(Self.poolAnchor, anchor: .top) }
             }
         }
         .parchment()
@@ -258,17 +260,18 @@ struct MixBuilderView: View {
         } action: { _, scrolledPast in
             withAnimation(.snappy) { actionsVisible = !scrolledPast }
         }
-        .contentMargins(.bottom, 84, for: .scrollContent)
+        // Room for the floating pills, and for the keyboard under them.
+        .contentMargins(.bottom, 84 + (keyboard.isUp ? keyboard.height : 0), for: .scrollContent)
         .overlay {
             if !loaded {
                 ProgressView()
             } else if rest.isEmpty && !needle.isEmpty {
                 ContentUnavailableView.search(text: needle)
             } else if pool.isEmpty {
-                ContentUnavailableView("Nothing to mix", systemImage: kind.systemImage)
+                ContentUnavailableView("Nothing to mix", systemImage: kind == .artist ? "person.2" : "square.stack")
             }
         }
-        .navigationTitle(kind.title)
+        .navigationTitle("Mix")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // The cards' actions follow you down the pool as icons.
@@ -302,18 +305,18 @@ struct MixBuilderView: View {
         .alert("Nothing to play", isPresented: $nothingToPlay) {
             Button("OK") {}
         } message: {
-            Text("None of the selected \(kind.noun) have any tracks to play right now.")
+            Text("None of the selected artists or albums have any tracks to play right now.")
         }
     }
 
     /// The fetch: on appear, on a library swap, and on pull to refresh.
+    /// Both lists every time, since picks of either kind can be waiting.
     private func load() async {
         guard let library = model.library else { return }
         async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
-        if kind == .artist {
-            artists = (try? await library.artists(inSection: section.key)) ?? []
-        }
+        async let artistList = library.artists(inSection: section.key)
         albums = (try? await library.albums(inSection: section.key)) ?? []
+        artists = (try? await artistList) ?? []
         loaded = true
         let history = (try? await plays) ?? []
         rotation = Rotation(history: history, albums: albums)
@@ -323,11 +326,11 @@ struct MixBuilderView: View {
     /// same columns, or one invisible row, so the pool doesn't jump when
     /// the first pick lands.
     private var emptySelection: some View {
-        let blank = Item(id: "", title: " ", subtitle: " ", thumb: nil, vetoed: false)
+        let blank = Item(kind: .album, key: "", title: " ", subtitle: " ", thumb: nil, vetoed: false)
         return items([blank], selected: false)
             .hidden()
             .overlay {
-                Text("Mix all \(kind.noun), or pick specific ones below.")
+                Text("Mix the whole library, or pick artists and albums below.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -341,13 +344,13 @@ struct MixBuilderView: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
                 ForEach(items) { item in
                     self.item(item, selected: isSelected) {
-                        MixTile(kind: kind, item: item, selected: isSelected, url: model.library?.artworkURL(item.thumb))
+                        MixTile(item: item, selected: isSelected, url: model.library?.artworkURL(item.thumb))
                     }
                 }
             }
         case .list:
             BrowseList(items: items) { item in
-                BrowseRow(url: model.library?.artworkURL(item.thumb), round: kind == .artist, title: item.title,
+                BrowseRow(url: model.library?.artworkURL(item.thumb), round: item.kind == .artist, title: item.title,
                           subtitle: item.subtitle, download: item.download, dimmed: item.vetoed || item.unavailable) {
                     toggle(item.id)
                 } accessory: {
@@ -355,7 +358,7 @@ struct MixBuilderView: View {
                     // color from the tiles, gray once vetoed.
                     Image(systemName: isSelected ? "xmark.circle.fill" : "plus.circle")
                         .font(.title3)
-                        .foregroundStyle(isSelected ? (item.vetoed ? .gray : kind.accent) : .secondary)
+                        .foregroundStyle(isSelected ? (item.vetoed ? .gray : Color.mix) : .secondary)
                 } menu: {
                     menu(for: item)
                 }
@@ -376,11 +379,11 @@ struct MixBuilderView: View {
     }
 
     @ViewBuilder private func menu(for item: Item) -> some View {
-        switch kind {
+        switch item.kind {
         case .artist:
-            ArtistMenu(model: model, ratingKey: item.id, title: item.title)
+            ArtistMenu(model: model, ratingKey: item.key, title: item.title)
         case .album:
-            if let album = albums.first(where: { $0.ratingKey == item.id }) {
+            if let album = albums.first(where: { $0.ratingKey == item.key }) {
                 AlbumMenu(model: model, album: album)
             }
         }
@@ -396,36 +399,36 @@ struct MixBuilderView: View {
         }
     }
 
-    /// Every track across the selection, or the whole pool when nothing is
-    /// picked, fetched concurrently, then ordered once at enqueue time:
+    /// Every track across the selection, or the whole library when nothing
+    /// is picked, fetched concurrently, then ordered once at enqueue time:
     /// spread-shuffled like Shuffle Favorites, or kept in whole albums with
-    /// only the album order shuffled.
+    /// only the album order shuffled. An album picked alongside its artist
+    /// goes in once.
     private func play(_ mode: MixMode) {
         guard let library = model.library, loadingMix == nil else { return }
-        let keys = playable.map(\.id)
-        guard selected.isEmpty || !keys.isEmpty else {
+        let picked = playable.map { ($0.kind, $0.key) }
+        guard selected.isEmpty || !picked.isEmpty else {
             nothingToPlay = true
             return
         }
         loadingMix = mode
         Task {
             defer { loadingMix = nil }
-            let kind = kind
             let section = section.key
             let tracks: [PlexTrack]
-            if keys.isEmpty {
+            if picked.isEmpty {
                 // Nothing picked: the whole section in one request. Under
-                // Downloaded only, the pool is what the filter shows.
+                // Downloaded only, the albums the filter shows.
                 let all = (try? await library.tracks(inSection: section)) ?? []
-                if downloadedOnly, kind == .album {
+                if downloadedOnly {
                     let shown = Set(browsable.map(\.ratingKey))
                     tracks = all.filter { shown.contains($0.parentRatingKey ?? "") }
                 } else {
                     tracks = all
                 }
             } else {
-                tracks = await withTaskGroup(of: [PlexTrack].self) { group in
-                    for key in keys {
+                let fetched = await withTaskGroup(of: [PlexTrack].self) { group in
+                    for (kind, key) in picked {
                         group.addTask {
                             switch kind {
                             case .artist: (try? await library.tracks(forArtist: key, inSection: section)) ?? []
@@ -437,6 +440,8 @@ struct MixBuilderView: View {
                     for await batch in group { all += batch }
                     return all
                 }
+                var seen: Set<String> = []
+                tracks = fetched.filter { seen.insert($0.ratingKey).inserted }
             }
             // A pick's vetoed albums and tracks drop out here; offline,
             // only what's on disk can go in the queue.
@@ -458,13 +463,14 @@ struct MixBuilderView: View {
     }
 
     private struct MixTile: View {
-        let kind: MixKind
         let item: Item
         let selected: Bool
         let url: URL?
 
+        private var round: Bool { item.kind == .artist }
+
         var body: some View {
-            VStack(alignment: kind == .artist ? .center : .leading, spacing: 8) {
+            VStack(alignment: round ? .center : .leading, spacing: 8) {
                 art
                     .overlay(alignment: .topTrailing) {
                         if selected {
@@ -474,10 +480,10 @@ struct MixBuilderView: View {
                                 .frame(width: 24, height: 24)
                                 .background(Color.pill, in: .circle)
                                 .overlay(Circle().stroke(Color.parchmentTop, lineWidth: 2))
-                                .offset(x: kind == .artist ? 0 : 6, y: kind == .artist ? 0 : -6)
+                                .offset(x: round ? 0 : 6, y: round ? 0 : -6)
                         }
                     }
-                VStack(alignment: kind == .artist ? .center : .leading, spacing: 1) {
+                VStack(alignment: round ? .center : .leading, spacing: 1) {
                     Text(item.title)
                         .font(.footnote)
                         .lineLimit(1)
@@ -487,18 +493,17 @@ struct MixBuilderView: View {
                             .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: kind == .artist ? .center : .leading)
+                .frame(maxWidth: .infinity, alignment: round ? .center : .leading)
             }
             .frame(maxWidth: .infinity)
             .opacity(item.vetoed || item.unavailable ? 0.4 : 1)
             .contentShape(.rect)
         }
 
-        private var ring: Color { item.vetoed ? .gray : kind.accent }
+        private var ring: Color { item.vetoed ? .gray : .mix }
 
         @ViewBuilder private var art: some View {
-            switch kind {
-            case .artist:
+            if round {
                 Artwork(url: url, size: nil, corner: 8)
                     .clipShape(.circle)
                     .artworkShadow()
@@ -511,7 +516,7 @@ struct MixBuilderView: View {
                             Circle().stroke(ring, lineWidth: 2)
                         }
                     }
-            case .album:
+            } else {
                 Artwork(url: url, size: nil, corner: 8)
                     .artworkShadow()
                     .overlay(alignment: .bottomTrailing) { DownloadBadge(state: item.download) }
@@ -529,7 +534,6 @@ struct MixBuilderView: View {
 /// root: a card per mode, always live, since an empty selection mixes
 /// everything.
 private struct MixActions: View {
-    let kind: MixKind
     let loading: MixMode?
     let action: (MixMode) -> Void
 
@@ -538,12 +542,12 @@ private struct MixActions: View {
             MixActionCard(
                 systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
                 enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums,
-                tint: kind.accent
+                tint: .mix
             ) { action(.playAlbums) }
             MixActionCard(
                 systemImage: "shuffle", title: "Shuffle", subtitle: nil,
                 enabled: loading == nil || loading == .shuffleTracks, loading: loading == .shuffleTracks,
-                tint: kind.accent
+                tint: .mix
             ) { action(.shuffleTracks) }
         }
     }

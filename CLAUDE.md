@@ -163,9 +163,10 @@ is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
 
 **Browsing** (`AlbumBrowse.swift`, `AlbumBrowserControls.swift`,
-`BrowseItems.swift`): the arrange chip's menu holds what to browse
-(`BrowseSubject`, albums or artists, root only), the sort (`AlbumView`),
-the layout (`BrowseLayout`, grid or list) and the download filter. The
+`BrowseItems.swift`): the arrange chip is two menus. The first, its glyph
+the current layout, holds what to browse (`BrowseSubject`, on the root
+and the mix builder only) and the layout (`BrowseLayout`, grid or list);
+the second holds the sort (`AlbumView`) and the download filter. The
 sort is per screen (`albumView`, `artistView`, `mixView.<kind>`); the
 layout is one app-wide key, `browseLayout`, since a taste for lists is
 about reading, not any one page. The four sorts apply to every scope
@@ -198,11 +199,13 @@ being found must ask again once it answers. Offline, the same word-prefix
 match runs over the tracks on disk. Tapping a song plays its album from
 that song; its `···` is the track menu with the song as its only sibling.
 
-**Playlists** (`PlaylistView.swift`, `notes/playlists.md`) are the third
-browse subject beside Albums and Artists, not a hero card, so the grid,
-the list layout, the sorts (A to Z, Recently Updated by `updatedAt`, Most
-Played by `viewCount`, Back Catalog) and the Downloaded filter come for
-free; the CarPlay tab bar gets a Playlists tab (Recently Added's slot
+**Playlists** (`PlaylistView.swift`, `PlaylistsView.swift`,
+`notes/playlists.md`) are the third browse subject beside Albums and
+Artists, so the grid, the list layout, the sorts (A to Z, Recently
+Updated by `updatedAt`, Most Played by `viewCount`, Back Catalog) and the
+Downloaded filter come for free. The root's Playlists hero tile opens
+`PlaylistsRoute`, the page that manages them: a `List` of rows with New
+Playlist in the toolbar and a swipe to delete that asks first; the CarPlay tab bar gets a Playlists tab (Recently Added's slot
 when the car shows four). `AppModel.playlists` is the section's list
 (`/playlists?playlistType=audio&sectionID=`), fetched with the browse
 root's other requests and after every write, so the Add to Playlist
@@ -230,7 +233,10 @@ the favorites, never a node in the pin tree.
 Every tile, row, cover and name gets one as a long-press `.contextMenu`,
 a track row also opens it from the `···` (`MoreButton`) at its trailing
 edge, and the album and artist pages put theirs behind a `···` toolbar
-item. The only swipe left is Unfavorite on the Favorites list. **In a
+item. The swipes left are Unfavorite on the Favorites list and the
+playlist removes and deletes. **A row's long press goes through
+`rowContextMenu` (or `BrowseRow`'s own preview)**: the default preview is
+a snapshot with a clear ground, which lifts as bare text. **In a
 `List`, a `.contextMenu` on any part of a row is the whole row's**: the
 album page is a `ScrollView` so a long press on the cover is the cover's
 alone. A menu hides what its screen already answers (`showArtist`,
@@ -460,7 +466,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
-| `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
+| `CTUNES_DEV_MIX` | `artist` or `album` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
 disk; `scripts/plex-token.sh` reads it and caches each field in the login
