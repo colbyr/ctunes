@@ -53,6 +53,11 @@ public struct OfflineLibrary: LibrarySource {
 
     public func favoriteTracks(inSection section: String) async throws -> [PlexTrack] { snapshot.favorites }
 
+    /// The server's word-prefix match over what is on disk under a pin.
+    public func searchTracks(inSection section: String, query: String) async throws -> [PlexTrack] {
+        try await tracks(inSection: section).filter { LibrarySearch.matches($0, query: query) }
+    }
+
     public func setFavorite(_ ratingKey: String, _ favorite: Bool) async throws {
         throw PlexError.offline
     }

@@ -99,6 +99,20 @@ public actor PlexLibrary {
         try await fetch(PlexTrack.self, path: "/library/sections/\(section)/all?type=10")
     }
 
+    /// Tracks matching a query. `title=` is not a substring match, measured
+    /// against a real server: every word of the query has to start a word
+    /// of the track's title, its album or its artist ("velvet" finds every
+    /// Velvet Underground track, "unday" finds nothing), case-insensitive.
+    /// The search page re-ranks what comes back.
+    public func searchTracks(inSection section: String, query: String) async throws -> [PlexTrack] {
+        let needle = LibrarySearch.needle(query)
+        guard !needle.isEmpty else { return [] }
+        return try await fetch(
+            PlexTrack.self,
+            path: "/library/sections/\(section)/all?type=10&title=\(Self.encode(needle))"
+        )
+    }
+
     // MARK: - Ratings
 
     /// Every track rated a full 10 in the section.

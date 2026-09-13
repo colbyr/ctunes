@@ -160,12 +160,16 @@ private struct SearchPill: View {
             if searching {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Artists and albums", text: $query)
+                    TextField("Artists, Albums and Songs", text: $query)
                         .focused($focused)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .submitLabel(.search)
-                        .onAppear { focused = true }
+                        .onSubmit { focused = false }
+                        // A fresh search wants the keyboard; the pill
+                        // reopening over kept results (back from an album
+                        // opened from them) wants the results.
+                        .onAppear { if query.isEmpty { focused = true } }
                     if !query.isEmpty {
                         Button {
                             query = ""
@@ -195,10 +199,6 @@ private struct SearchPill: View {
             }
         }
         .glassEffect(.regular.interactive(), in: .capsule)
-        // Keyboard dismissed with nothing typed: nothing to keep open.
-        .onChange(of: focused) { _, isFocused in
-            if !isFocused && !filtering { query = ""; searching = false }
-        }
     }
 }
 

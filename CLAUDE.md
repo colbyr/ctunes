@@ -176,6 +176,28 @@ Z" over artists, "Release Date" on an artist's page, where
 drawing of an item; `BrowseList` is the list layout's stack, a
 `LazyVStack` with hairlines, never a `List`.
 
+**Search** (`SearchView.swift`, `LibrarySearch.swift`) is its own page,
+`SearchRoute`, that follows the bottom pill: opening the pill pushes it on
+top of whatever page is up, closing the pill (the ×, or back past the
+page) pops it, and a page opened from a result folds the pill to its icon
+and keeps the query, so back lands on the same results. `LibraryView`
+tracks where the page sits as `searchDepth`; under a mix builder the pill
+filters the builder's pool instead and no page is pushed. The page shows
+what was opened from it before while the field is empty ("Recently
+Searched", `RecentSearches`, 20 per server in `UserDefaults`, a track
+stored whole so it can play again), otherwise up to three names to finish
+the query with and one ranked list of artists, albums and songs
+(`LibrarySearch.hits`): an item's own name first, prefix before word
+prefix before inside, artist before album before track at each; a match
+only through a parent's name after; the best 50 tracks. Artists and
+albums are matched on the phone from the `LibraryCatalog` the browse root
+loads (shared so opening search never refetches); tracks are asked of
+the server as the query settles, keyed on the library generation as
+well, since a search opened on the snapshot while the server was still
+being found must ask again once it answers. Offline, the same word-prefix
+match runs over the tracks on disk. Tapping a song plays its album from
+that song; its `···` is the track menu with the song as its only sibling.
+
 **Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu` and
 `TrackMenu` are the one place an artist, album or track's actions live.
 Every tile, row, cover and name gets one as a long-press `.contextMenu`,
@@ -325,6 +347,13 @@ appears to offer.
   `N` in 0–10, `-1` clears. The app treats only a full 10 as a favorite. Query
   favorite tracks with `/library/sections/{key}/all?type=10&userRating=10` —
   exact match. `userRating>>=10` returns nothing even though `>>=1` works.
+- **Track search is `/library/sections/{key}/all?type=10&title={q}`, and
+  `title=` is not a substring match.** Every word of the query has to
+  start a word of the track's title, its album or its artist,
+  case-insensitive: `velvet` returns every Velvet Underground track,
+  `sunday%20mo` returns "Sunday Morning", `unday` returns nothing. It is
+  a search, not a filter, so the app re-ranks what comes back.
+  `/library/sections/{key}/search?type=10&query=` answers the same.
 - **The album list comes from `/library/sections/{key}/albums`, not
   `all?type=9`.** Same albums, same fields, plus `leafCount` (track count),
   which `all?type=9` omits however it is asked. The per-artist query stays on
