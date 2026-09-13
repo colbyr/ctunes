@@ -196,6 +196,44 @@ struct AlbumBrowseTests {
         #expect(AlbumBrowse.search(Self.artists, query: "no", view: .artist).map(\.ratingKey) == ["n"])
         #expect(AlbumBrowse.search(Self.artists, query: "beat", view: .artist).map(\.ratingKey) == ["b"])
     }
+
+    static let playlists = [
+        PlexPlaylist(ratingKey: "r", title: "Road Trip", addedAt: 10, updatedAt: 50, lastViewedAt: Self.ago(2), viewCount: 14),
+        PlexPlaylist(ratingKey: "a", title: "All Music", smart: true, addedAt: 30, updatedAt: 40, lastViewedAt: Self.ago(0), viewCount: 3),
+        PlexPlaylist(ratingKey: "n", title: "New", addedAt: 20),
+        PlexPlaylist(ratingKey: "o", title: "Old Favorites", addedAt: 5, updatedAt: 60, viewCount: 3),
+    ]
+
+    @Test("playlists sort A to Z, by last edit, by play count and by last play, never played first")
+    func playlistSorting() {
+        #expect(AlbumView.artist.sorted(Self.playlists).map(\.ratingKey) == ["a", "n", "o", "r"])
+        // Updated when the server has it, else added; nothing known last.
+        #expect(AlbumView.recentlyAdded.sorted(Self.playlists).map(\.ratingKey) == ["o", "r", "a", "n"])
+        // Play count, ties by title.
+        #expect(AlbumView.mostPlayed.sorted(Self.playlists).map(\.ratingKey) == ["r", "a", "o", "n"])
+        // Least recently played first, never played at the top, by title.
+        #expect(AlbumView.backCatalog.sorted(Self.playlists).map(\.ratingKey) == ["n", "o", "r", "a"])
+    }
+
+    @Test("the playlist scope renames three of the four sorts")
+    func playlistTitles() {
+        #expect(BrowseSubject.playlists.scope == .playlists)
+        #expect(BrowseSubject.playlists.title == "Playlists")
+        #expect(AlbumView.artist.title(in: .playlists) == "A to Z")
+        #expect(AlbumView.recentlyAdded.title(in: .playlists) == "Recently Updated")
+        #expect(AlbumView.mostPlayed.title(in: .playlists) == "Most Played")
+        #expect(AlbumView.backCatalog.title(in: .playlists) == "Back Catalog")
+        #expect(AlbumView.cases(in: .playlists) == AlbumView.allCases)
+    }
+
+    @Test("playlist search ranks prefix over word over inside by title, ties in the view's order")
+    func playlistSearch() {
+        #expect(AlbumBrowse.search(Self.playlists, query: " ", view: .artist).isEmpty)
+        // "Old Favorites" starts with it; "Road Trip" has it inside.
+        #expect(AlbumBrowse.search(Self.playlists, query: "o", view: .artist).map(\.ratingKey) == ["o", "r"])
+        #expect(AlbumBrowse.search(Self.playlists, query: "trip", view: .artist).map(\.ratingKey) == ["r"])
+        #expect(AlbumBrowse.search(Self.playlists, query: "music", view: .artist).map(\.ratingKey) == ["a"])
+    }
 }
 
 @Suite("On Rotation")

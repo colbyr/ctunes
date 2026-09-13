@@ -47,8 +47,10 @@ background downloads; a cellular switch.
 old album pin gets a synthetic record from its saved tracks for the manager's row.
 
 Wanted files: artist pins' albums' tracks, album pins' tracks, track pins, favorites when
-on. `unpin*` diffs the wanted set before and after and hands the difference to the cache,
-which renames those files back into the cache root, as before.
+on, and every pinned playlist's saved items (`Manifest.playlists`, a group beside the
+favorites that the tree never absorbs; see `notes/playlists.md`). `unpin*` diffs the
+wanted set before and after and hands the difference to the cache, which renames those
+files back into the cache root, as before.
 
 ## State
 

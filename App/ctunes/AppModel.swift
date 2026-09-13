@@ -55,6 +55,14 @@ final class AppModel {
     private(set) var sections: [PlexSection] = []
     private(set) var selectedSection: PlexSection?
 
+    /// The section's playlists, fetched with the browse root's other
+    /// requests and after every edit, so the Add to Playlist submenu is
+    /// synchronous and every screen agrees on the names.
+    private(set) var playlists: [PlexPlaylist] = []
+    /// Bumped on every playlist write, so a page keyed on it reloads
+    /// after an add from another screen's menu.
+    private(set) var playlistGeneration = 0
+
     /// Hearts toggled in this session, keyed by ratingKey. Tracks are
     /// immutable values fetched per screen and also held in the player's
     /// queue, so a toggle is layered over them here rather than pushed into
@@ -235,6 +243,7 @@ final class AppModel {
             downloads.attach(server: server.machineIdentifier, offline: false)
             await resumeDownloads()
             await syncFavoritesPin()
+            await syncPlaylistPins()
         } catch {
             errorMessage = error.localizedDescription
             // Already offline: stay there; the banner shows the error.
@@ -263,6 +272,7 @@ final class AppModel {
         serverName = snapshot.serverName
         sections = snapshot.sections
         selectedSection = snapshot.section
+        playlists = snapshot.playlists
         libraryGeneration += 1
         self.state = state
         downloads.attach(server: snapshot.server, offline: true)
@@ -339,10 +349,11 @@ final class AppModel {
 
     // MARK: - Snapshot
 
-    /// Saves what the browse root just loaded, plus the artists, so the
-    /// next launch can browse without the server. Keyed by section, so
-    /// switching libraries snapshots each on first browse. Also brings the
-    /// favorites pin up to date with the set as the server has it.
+    /// Saves what the browse root just loaded, plus the artists and the
+    /// playlists as last listed, so the next launch can browse without
+    /// the server. Keyed by section, so switching libraries snapshots
+    /// each on first browse. Also brings the favorites pin up to date
+    /// with the set as the server has it.
     func snapshot(albums: [PlexAlbum], favorites: [PlexTrack], history: [PlayHistoryEntry]) async {
         guard let library, !library.isOffline, let section = selectedSection else { return }
         guard let artists = try? await library.artists(inSection: section.key) else { return }
@@ -355,6 +366,7 @@ final class AppModel {
             artists: artists,
             favorites: favorites,
             history: history,
+            playlists: playlists,
             baseURL: (library as? PlexLibrary)?.baseURL
         )
         try? await offline.save(snapshot)
@@ -368,6 +380,157 @@ final class AppModel {
     func rememberTracks(_ tracks: [PlexTrack], inAlbum album: PlexAlbum) async {
         guard let library, !library.isOffline else { return }
         await offline.saveTracks(tracks, inAlbum: album.ratingKey, server: library.serverIdentifier)
+    }
+
+    // MARK: - Playlists
+
+    /// Fetches the section's playlists. A failure keeps the old list: the
+    /// screen that asked runs the usual rediscovery on its own fetch.
+    func loadPlaylists() async {
+        guard let library, !library.isOffline, let section = selectedSection else { return }
+        guard let fetched = try? await library.playlists(inSection: section.key) else { return }
+        if fetched != playlists { playlists = fetched }
+    }
+
+    /// Remembers a playlist's items as browsed, so offline the page can
+    /// list them and play whichever are on disk; a pinned playlist also
+    /// reconciles its files with the list.
+    func rememberItems(_ items: [PlaylistItem], inPlaylist playlist: PlexPlaylist) async {
+        guard let library, !library.isOffline else { return }
+        await offline.setPlaylistItems(items, inPlaylist: playlist.ratingKey, server: library.serverIdentifier,
+                                       sources: library.trackSource)
+        downloads.refresh()
+    }
+
+    /// The writes: each calls the server, then refetches the list and bumps
+    /// the generation so every page agrees. A connection failure runs the
+    /// usual rediscovery; any failure returns false so the caller reverts
+    /// what it applied optimistically. All refused offline, like hearts.
+    func createPlaylist(title: String, tracks: [PlexTrack]) async -> PlexPlaylist? {
+        guard let library, !library.isOffline else { return nil }
+        do {
+            let created = try await library.createPlaylist(title: title, trackKeys: tracks.map(\.ratingKey))
+            await playlistsChanged()
+            return created
+        } catch {
+            await playlistWriteFailed(error)
+            return nil
+        }
+    }
+
+    /// Appends the tracks and returns how many were new to the playlist,
+    /// or nil on failure. The server drops what is already there.
+    func add(_ tracks: [PlexTrack], to playlist: PlexPlaylist) async -> Int? {
+        guard let library, !library.isOffline else { return nil }
+        do {
+            let added = try await library.add(trackKeys: tracks.map(\.ratingKey), toPlaylist: playlist.ratingKey)
+            await playlistsChanged()
+            return added
+        } catch {
+            await playlistWriteFailed(error)
+            return nil
+        }
+    }
+
+    func remove(_ item: PlaylistItem, from playlist: PlexPlaylist) async -> Bool {
+        guard let library, !library.isOffline, let id = item.playlistItemID else { return false }
+        do {
+            try await library.remove(item: id, fromPlaylist: playlist.ratingKey)
+            await playlistsChanged()
+            return true
+        } catch {
+            await playlistWriteFailed(error)
+            return false
+        }
+    }
+
+    /// Puts the item after `after`, or at the top with none.
+    func move(_ item: PlaylistItem, after: PlaylistItem?, in playlist: PlexPlaylist) async -> Bool {
+        guard let library, !library.isOffline, let id = item.playlistItemID else { return false }
+        do {
+            try await library.move(item: id, after: after?.playlistItemID, inPlaylist: playlist.ratingKey)
+            await playlistsChanged()
+            return true
+        } catch {
+            await playlistWriteFailed(error)
+            return false
+        }
+    }
+
+    func rename(_ playlist: PlexPlaylist, to title: String) async -> Bool {
+        guard let library, !library.isOffline else { return false }
+        do {
+            try await library.renamePlaylist(playlist.ratingKey, title: title)
+            await playlistsChanged()
+            return true
+        } catch {
+            await playlistWriteFailed(error)
+            return false
+        }
+    }
+
+    /// The one irreversible action in the app: the caller confirms first.
+    func delete(_ playlist: PlexPlaylist) async -> Bool {
+        guard let library, !library.isOffline else { return false }
+        do {
+            try await library.deletePlaylist(playlist.ratingKey)
+            if await offline.playlistPinned(playlist.ratingKey, server: library.serverIdentifier) {
+                await offline.unpinPlaylist(playlist.ratingKey, server: library.serverIdentifier)
+                downloads.refresh()
+            }
+            await playlistsChanged()
+            return true
+        } catch {
+            await playlistWriteFailed(error)
+            return false
+        }
+    }
+
+    private func playlistsChanged() async {
+        await loadPlaylists()
+        playlistGeneration += 1
+    }
+
+    private func playlistWriteFailed(_ error: Error) async {
+        errorMessage = error.localizedDescription
+        await connectionLost(error)
+    }
+
+    /// Keeps the playlist offline, or stops: its items are fetched and
+    /// pinned as a group beside the favorites, never as part of the
+    /// artist/album/track tree, so removing it narrows nothing else.
+    func setPlaylistPinned(_ playlist: PlexPlaylist, _ enabled: Bool) async {
+        guard let library, !library.isOffline else { return }
+        let server = library.serverIdentifier
+        if enabled {
+            guard let items = try? await library.items(inPlaylist: playlist.ratingKey) else { return }
+            await offline.pinPlaylist(playlist, items: items, server: server,
+                                      art: { library.artworkURL($0, size: 600) }, sources: library.trackSource)
+        } else {
+            await offline.unpinPlaylist(playlist.ratingKey, server: server)
+        }
+        downloads.refresh()
+    }
+
+    /// Reconciles every pinned playlist with the server after a connect,
+    /// which catches edits made from other clients; one gone from the
+    /// server is unpinned.
+    private func syncPlaylistPins() async {
+        guard let library, !library.isOffline else { return }
+        let server = library.serverIdentifier
+        let pinned = await offline.inventory(server: server).playlists
+        guard !pinned.isEmpty else { return }
+        await loadPlaylists()
+        let listed = Set(playlists.map(\.ratingKey))
+        for pin in pinned {
+            if !playlists.isEmpty, !listed.contains(pin.id) {
+                await offline.unpinPlaylist(pin.id, server: server)
+                continue
+            }
+            guard let items = try? await library.items(inPlaylist: pin.id) else { continue }
+            await offline.setPlaylistItems(items, inPlaylist: pin.id, server: server, sources: library.trackSource)
+        }
+        downloads.refresh()
     }
 
     // MARK: - Downloads
@@ -616,6 +779,7 @@ final class AppModel {
             serverName = nil
             sections = []
             selectedSection = nil
+            playlists = []
             favoriteOverrides = [:]
             state = .signedOut
             await offline.clear()

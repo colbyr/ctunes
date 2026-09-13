@@ -46,6 +46,22 @@ struct LibrarySearchTests {
         track("t6", "Any Given Day", album: "given"),
     ]
 
+    @Test("a playlist matches on its title alone, after the albums at its level")
+    func playlists() {
+        let playlists = [
+            PlexPlaylist(ratingKey: "p1", title: "Sunday Drive"),
+            PlexPlaylist(ratingKey: "p2", title: "Lazy Sunday"),
+            PlexPlaylist(ratingKey: "p3", title: "Velvet"),
+        ]
+        let hits = LibrarySearch.hits(artists: Self.artists, albums: Self.albums, tracks: [], playlists: playlists, query: "sunday")
+        #expect(hits.map(\.id) == ["artist:sv", "playlist:p1", "album:bloody", "playlist:p2", "album:given"])
+        // Nothing else reaches a playlist: no artist, no album, no veto.
+        var hidden = VetoSet()
+        hidden.artists = ["vu"]
+        let velvet = LibrarySearch.hits(artists: Self.artists, albums: Self.albums, tracks: [], playlists: playlists, query: "velvet", hiding: hidden)
+        #expect(velvet.map(\.id) == ["playlist:p3"])
+    }
+
     @Test("ranks own-name prefix, word, inside, then a parent's name, artist before album before track")
     func ranking() {
         // The tracks the server would return for the query, as in the app.

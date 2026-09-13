@@ -1,0 +1,462 @@
+{
+    "MediaContainer": {
+        "size": 7,
+        "composite": "/playlists/1251/composite/1756333152",
+        "duration": 1669,
+        "leafCount": 7,
+        "playlistType": "audio",
+        "ratingKey": "1251",
+        "smart": false,
+        "title": "A Gentle Introduction to Laura Stevenson",
+        "Metadata": [
+            {
+                "ratingKey": "1212",
+                "key": "/library/metadata/1212",
+                "parentRatingKey": "1138",
+                "grandparentRatingKey": "12",
+                "guid": "plex://track/684067d81b66b18345175baf",
+                "parentGuid": "plex://album/684022711b66b183450b193a",
+                "grandparentGuid": "plex://artist/5d07be27403c64029065db87",
+                "parentStudio": "Really Records",
+                "type": "track",
+                "title": "#1",
+                "grandparentKey": "/library/metadata/12",
+                "parentKey": "/library/metadata/1138",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "Laura Stevenson",
+                "parentTitle": "Late Great",
+                "summary": "",
+                "index": 1,
+                "parentIndex": 1,
+                "ratingCount": 4364,
+                "userRating": 10.0,
+                "viewCount": 111,
+                "skipCount": 1,
+                "lastViewedAt": 1788826801,
+                "lastRatedAt": 1753022555,
+                "parentYear": 2025,
+                "thumb": "/library/metadata/1138/thumb/1784019606",
+                "parentThumb": "/library/metadata/1138/thumb/1784019606",
+                "grandparentThumb": "/library/metadata/12/thumb/1789199565",
+                "playlistItemID": 398,
+                "duration": 263357,
+                "addedAt": 1751025626,
+                "updatedAt": 1788591389,
+                "Media": [
+                    {
+                        "id": 1084,
+                        "duration": 263357,
+                        "bitrate": 1719,
+                        "audioChannels": 2,
+                        "audioCodec": "flac",
+                        "container": "flac",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 1183,
+                                "key": "/library/parts/1183/1750999050/file.flac",
+                                "duration": 263357,
+                                "file": "/Users/colby/Media/Music/Laura Stevenson/Late Great/Laura Stevenson - Late Great - 01 #1.flac",
+                                "size": 56696798,
+                                "container": "flac",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "#1",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/12/thumb/1789199565"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "609",
+                "key": "/library/metadata/609",
+                "parentRatingKey": "604",
+                "grandparentRatingKey": "12",
+                "guid": "plex://track/5d3110c0f0b09c68c12f86cf",
+                "parentGuid": "plex://album/5d30ad57f0b09c68c12f531b",
+                "grandparentGuid": "plex://artist/5d07be27403c64029065db87",
+                "parentStudio": "Audiotree Music",
+                "type": "track",
+                "title": "Runner",
+                "grandparentKey": "/library/metadata/12",
+                "parentKey": "/library/metadata/604",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "Laura Stevenson",
+                "parentTitle": "Audiotree Live",
+                "summary": "",
+                "index": 5,
+                "parentIndex": 1,
+                "ratingCount": 20036,
+                "userRating": 10.0,
+                "viewCount": 59,
+                "skipCount": 1,
+                "lastViewedAt": 1788724919,
+                "lastRatedAt": 1737748002,
+                "parentYear": 2019,
+                "thumb": "/library/metadata/604/thumb/1784019605",
+                "parentThumb": "/library/metadata/604/thumb/1784019605",
+                "grandparentThumb": "/library/metadata/12/thumb/1789199565",
+                "playlistItemID": 399,
+                "duration": 231003,
+                "addedAt": 1737671702,
+                "updatedAt": 1787903209,
+                "Media": [
+                    {
+                        "id": 538,
+                        "duration": 231003,
+                        "bitrate": 786,
+                        "audioChannels": 2,
+                        "audioCodec": "flac",
+                        "container": "flac",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 677,
+                                "key": "/library/parts/677/1737671200/file.flac",
+                                "duration": 231003,
+                                "file": "/Users/colby/Media/Music/Laura Stevenson/Laura Stevenson on Audiotree Live/Laura Stevenson - Laura Stevenson on Audiotree Live - 05 Runner.flac",
+                                "size": 22793823,
+                                "container": "flac",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Runner",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/12/thumb/1789199565"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "580",
+                "key": "/library/metadata/580",
+                "parentRatingKey": "569",
+                "grandparentRatingKey": "12",
+                "guid": "plex://track/5d07e285403c640290645a43",
+                "parentGuid": "plex://album/5d07c754403c640290b77886",
+                "grandparentGuid": "plex://artist/5d07be27403c64029065db87",
+                "parentStudio": "Don Giovanni Records",
+                "type": "track",
+                "title": "Telluride",
+                "grandparentKey": "/library/metadata/12",
+                "parentKey": "/library/metadata/569",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "Laura Stevenson",
+                "parentTitle": "Wheel",
+                "summary": "",
+                "index": 11,
+                "parentIndex": 1,
+                "ratingCount": 5838,
+                "userRating": 10.0,
+                "viewCount": 30,
+                "skipCount": 4,
+                "lastViewedAt": 1788963692,
+                "lastRatedAt": 1755293182,
+                "parentYear": 2013,
+                "thumb": "/library/metadata/569/thumb/1784019610",
+                "parentThumb": "/library/metadata/569/thumb/1784019610",
+                "grandparentThumb": "/library/metadata/12/thumb/1789199565",
+                "playlistItemID": 391,
+                "duration": 212840,
+                "addedAt": 1737671699,
+                "updatedAt": 1787903212,
+                "Media": [
+                    {
+                        "id": 514,
+                        "duration": 212840,
+                        "bitrate": 936,
+                        "audioChannels": 2,
+                        "audioCodec": "flac",
+                        "container": "flac",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 558,
+                                "key": "/library/parts/558/1737671206/file.flac",
+                                "duration": 212840,
+                                "file": "/Users/colby/Media/Music/Laura Stevenson/Wheel/Laura Stevenson - Wheel - 11 Telluride.flac",
+                                "size": 24951568,
+                                "container": "flac",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Telluride",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/12/thumb/1789199565"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "29",
+                "key": "/library/metadata/29",
+                "parentRatingKey": "26",
+                "grandparentRatingKey": "12",
+                "guid": "plex://track/601c877ca93fd3002cf80cd6",
+                "parentGuid": "plex://album/5d07c4ef403c640290a42278",
+                "grandparentGuid": "plex://artist/5d07be27403c64029065db87",
+                "parentStudio": "Don Giovanni Records",
+                "type": "track",
+                "title": "Caretaker",
+                "grandparentKey": "/library/metadata/12",
+                "parentKey": "/library/metadata/26",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "Laura Stevenson",
+                "parentTitle": "Sit Resist (Remastered Deluxe Edition)",
+                "summary": "",
+                "index": 3,
+                "parentIndex": 1,
+                "ratingCount": 5129,
+                "userRating": 10.0,
+                "viewCount": 48,
+                "skipCount": 1,
+                "lastViewedAt": 1789135299,
+                "lastRatedAt": 1737748232,
+                "parentYear": 2011,
+                "thumb": "/library/metadata/26/thumb/1784019609",
+                "parentThumb": "/library/metadata/26/thumb/1784019609",
+                "grandparentThumb": "/library/metadata/12/thumb/1789199565",
+                "playlistItemID": 396,
+                "duration": 194821,
+                "addedAt": 1736042123,
+                "updatedAt": 1772262514,
+                "Media": [
+                    {
+                        "id": 23,
+                        "duration": 194821,
+                        "bitrate": 320,
+                        "audioChannels": 2,
+                        "audioCodec": "mp3",
+                        "container": "mp3",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 473,
+                                "key": "/library/parts/473/1595380267/file.mp3",
+                                "duration": 194821,
+                                "file": "/Users/colby/Media/Music/Laura Stevenson/Sit Resist (Remastered Deluxe Edition)/03 Caretaker.mp3",
+                                "size": 7794244,
+                                "container": "mp3"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Caretaker",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/12/thumb/1789199565"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "589",
+                "key": "/library/metadata/589",
+                "parentRatingKey": "587",
+                "grandparentRatingKey": "12",
+                "guid": "plex://track/5d07f0f0403c6402900feb29",
+                "parentGuid": "plex://album/5d07c9b3403c640290cb2b42",
+                "grandparentGuid": "plex://artist/5d07be27403c64029065db87",
+                "parentStudio": "Don Giovanni Records",
+                "type": "track",
+                "title": "Torch Song",
+                "grandparentKey": "/library/metadata/12",
+                "parentKey": "/library/metadata/587",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "Laura Stevenson",
+                "parentTitle": "Cocksure",
+                "summary": "",
+                "index": 2,
+                "parentIndex": 1,
+                "ratingCount": 9014,
+                "viewCount": 5,
+                "lastViewedAt": 1756334074,
+                "parentYear": 2015,
+                "thumb": "/library/metadata/587/thumb/1784019605",
+                "parentThumb": "/library/metadata/587/thumb/1784019605",
+                "grandparentThumb": "/library/metadata/12/thumb/1789199565",
+                "playlistItemID": 400,
+                "duration": 177352,
+                "addedAt": 1737671702,
+                "updatedAt": 1787903209,
+                "Media": [
+                    {
+                        "id": 520,
+                        "duration": 177352,
+                        "bitrate": 976,
+                        "audioChannels": 2,
+                        "audioCodec": "flac",
+                        "container": "flac",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 564,
+                                "key": "/library/parts/564/1737671205/file.flac",
+                                "duration": 177352,
+                                "file": "/Users/colby/Media/Music/Laura Stevenson/Cocksure/Laura Stevenson - Cocksure - 02 Torch Song.flac",
+                                "size": 21741376,
+                                "container": "flac",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Torch Song",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/12/thumb/1789199565"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "56",
+                "key": "/library/metadata/56",
+                "parentRatingKey": "50",
+                "grandparentRatingKey": "12",
+                "guid": "plex://track/60ece94a6b1e1d1302242380",
+                "parentGuid": "plex://album/60ece94a6b1e1d1302241c58",
+                "grandparentGuid": "plex://artist/5d07be27403c64029065db87",
+                "parentStudio": "Don Giovanni Records",
+                "type": "track",
+                "title": "Sky Blue, Bad News",
+                "grandparentKey": "/library/metadata/12",
+                "parentKey": "/library/metadata/50",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "Laura Stevenson",
+                "parentTitle": "Laura Stevenson",
+                "summary": "",
+                "index": 6,
+                "parentIndex": 1,
+                "ratingCount": 6799,
+                "viewCount": 10,
+                "skipCount": 1,
+                "lastViewedAt": 1774185829,
+                "parentYear": 2021,
+                "thumb": "/library/metadata/50/thumb/1784019607",
+                "parentThumb": "/library/metadata/50/thumb/1784019607",
+                "grandparentThumb": "/library/metadata/12/thumb/1789199565",
+                "playlistItemID": 394,
+                "duration": 284551,
+                "addedAt": 1736042128,
+                "updatedAt": 1788591389,
+                "Media": [
+                    {
+                        "id": 49,
+                        "duration": 284551,
+                        "bitrate": 320,
+                        "audioChannels": 2,
+                        "audioCodec": "mp3",
+                        "container": "mp3",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 499,
+                                "key": "/library/parts/499/1628249732/file.mp3",
+                                "duration": 284551,
+                                "file": "/Users/colby/Media/Music/Laura Stevenson/Laura Stevenson/Laura Stevenson - Laura Stevenson - 06 Sky Blue, Bad News.mp3",
+                                "size": 11624837,
+                                "container": "mp3",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Sky Blue, Bad News",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/12/thumb/1789199565"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "24",
+                "key": "/library/metadata/24",
+                "parentRatingKey": "15",
+                "grandparentRatingKey": "12",
+                "guid": "plex://track/5d0809b6403c640290549608",
+                "parentGuid": "plex://album/5d07cd00403c640290ecc77d",
+                "grandparentGuid": "plex://artist/5d07be27403c64029065db87",
+                "parentStudio": "Don Giovanni Records",
+                "type": "track",
+                "title": "Low Slow",
+                "grandparentKey": "/library/metadata/12",
+                "parentKey": "/library/metadata/15",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "Laura Stevenson",
+                "parentTitle": "The Big Freeze",
+                "summary": "",
+                "index": 9,
+                "parentIndex": 1,
+                "ratingCount": 7256,
+                "userRating": 10.0,
+                "viewCount": 43,
+                "skipCount": 2,
+                "lastViewedAt": 1788824333,
+                "lastRatedAt": 1737756157,
+                "parentYear": 2019,
+                "thumb": "/library/metadata/15/thumb/1784019605",
+                "parentThumb": "/library/metadata/15/thumb/1784019605",
+                "grandparentThumb": "/library/metadata/12/thumb/1789199565",
+                "playlistItemID": 393,
+                "duration": 308271,
+                "addedAt": 1736042119,
+                "updatedAt": 1787903209,
+                "Media": [
+                    {
+                        "id": 19,
+                        "duration": 308271,
+                        "bitrate": 320,
+                        "audioChannels": 2,
+                        "audioCodec": "mp3",
+                        "container": "mp3",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 469,
+                                "key": "/library/parts/469/1548791386/file.mp3",
+                                "duration": 308271,
+                                "file": "/Users/colby/Media/Music/Laura Stevenson/The Big Freeze/09 Low Slow.mp3",
+                                "size": 12332149,
+                                "container": "mp3"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Low Slow",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/12/thumb/1789199565"
+                    }
+                ]
+            }
+        ]
+    }
+}

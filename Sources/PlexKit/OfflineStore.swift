@@ -15,15 +15,18 @@ import Foundation
 ///     <server>/albums/<ratingKey>.json         [PlexTrack] per album ever browsed
 ///     <server>/tracks.json                     [PlexTrack] pinned on their own
 ///     <server>/favorites.json                  [PlexTrack] in the favorites group
+///     <server>/playlists/<ratingKey>.json      [PlaylistItem] per playlist ever browsed
 ///     <server>/<section>/library.json          LibrarySnapshot
-///     <server>/art/<name>.jpg                  covers and portraits for pinned items
+///     <server>/art/<name>.jpg                  covers, portraits and composites for pinned items
 ///
 /// The pins form a tree, artist over album over track, and the three kinds
 /// are kept disjoint: pinning an artist absorbs their album and track pins,
 /// and removing an album or a track under a wider pin narrows that pin to
-/// what's left rather than dropping it. Reference counting is derived, not
-/// stored: a file is wanted while any pin or the favorites group lists a
-/// track with that cache path.
+/// what's left rather than dropping it. A pinned playlist is a group like
+/// the favorites, not a node in the tree: it crosses artists and albums,
+/// so it absorbs nothing and nothing absorbs it. Reference counting is
+/// derived, not stored: a file is wanted while any pin, the favorites
+/// group or a pinned playlist lists a track with that cache path.
 public actor OfflineStore {
     public nonisolated let directory: URL
     private let cache: TrackCache
@@ -34,6 +37,7 @@ public actor OfflineStore {
     private var artistAlbums: [String: [PlexAlbum]] = [:]
     private var trackPins: [String: [PlexTrack]] = [:]
     private var favorites: [String: [PlexTrack]] = [:]
+    private var playlistItems: [String: [PlaylistItem]] = [:]
 
     public init(directory: URL, cache: TrackCache, session: URLSession = .shared) {
         self.directory = directory
@@ -56,20 +60,29 @@ public actor OfflineStore {
             /// artist pins existed, when the saved tracks stand in.
             var album: PlexAlbum?
         }
+        struct PinnedPlaylist: Codable, Equatable {
+            /// The entry as pinned, for the manager's row and its art.
+            var playlist: PlexPlaylist
+            var pinnedAt: Date
+        }
         /// By artist ratingKey.
         var artists: [String: PinnedArtist] = [:]
         /// By album ratingKey.
         var albums: [String: PinnedAlbum] = [:]
         var favoritesPinned = false
+        /// By playlist ratingKey.
+        var playlists: [String: PinnedPlaylist] = [:]
 
         init() {}
 
-        /// `artists` is new; a manifest from before it decodes without one.
+        /// `artists` and `playlists` are newer than the manifest; one from
+        /// before either decodes without them.
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             artists = try c.decodeIfPresent([String: PinnedArtist].self, forKey: .artists) ?? [:]
             albums = try c.decodeIfPresent([String: PinnedAlbum].self, forKey: .albums) ?? [:]
             favoritesPinned = try c.decodeIfPresent(Bool.self, forKey: .favoritesPinned) ?? false
+            playlists = try c.decodeIfPresent([String: PinnedPlaylist].self, forKey: .playlists) ?? [:]
         }
     }
 
@@ -274,6 +287,91 @@ public actor OfflineStore {
         await cache.pin(tracks.compactMap(sources))
     }
 
+    // MARK: - Playlists
+
+    /// Keeps the playlist offline: records the pin, saves its items and its
+    /// composite, and hands the cache every fetchable track in playlist
+    /// order. A group beside the favorites, never part of the pin tree.
+    public func pinPlaylist(
+        _ playlist: PlexPlaylist,
+        items: [PlaylistItem],
+        server: String,
+        art: ArtResolver,
+        sources: @Sendable (PlexTrack) -> TrackSource?
+    ) async {
+        var manifest = manifest(server)
+        let pinnedAt = manifest.playlists[playlist.ratingKey]?.pinnedAt ?? Date()
+        manifest.playlists[playlist.ratingKey] = .init(playlist: playlist, pinnedAt: pinnedAt)
+        saveItems(items, inPlaylist: playlist.ratingKey, server: server)
+        save(manifest, server: server)
+        await cache.pin(items.map(\.track).compactMap(sources))
+        await saveArt(playlist.composite, resolve: art, server: server)
+    }
+
+    /// Drops the playlist pin and unpins every file nothing else still
+    /// wants; a track also under an album pin or the favorites keeps its
+    /// file. The item list stays, for the page offline.
+    public func unpinPlaylist(_ ratingKey: String, server: String) async {
+        var manifest = manifest(server)
+        guard manifest.playlists.removeValue(forKey: ratingKey) != nil else { return }
+        let before = wantedPaths(server)
+        save(manifest, server: server)
+        await cache.unpin(Array(before.subtracting(wantedPaths(server))))
+    }
+
+    /// Replaces a playlist's saved items, and when the playlist is pinned
+    /// pins what is new and unpins what was dropped unless another pin
+    /// still wants the file: the page reloading online, or the reconcile
+    /// on connect after an edit made elsewhere.
+    public func setPlaylistItems(
+        _ items: [PlaylistItem],
+        inPlaylist ratingKey: String,
+        server: String,
+        sources: @Sendable (PlexTrack) -> TrackSource?
+    ) async {
+        guard manifest(server).playlists[ratingKey] != nil else {
+            return saveItems(items, inPlaylist: ratingKey, server: server)
+        }
+        let before = wantedPaths(server)
+        saveItems(items, inPlaylist: ratingKey, server: server)
+        await cache.unpin(Array(before.subtracting(wantedPaths(server))))
+        await cache.pin(items.map(\.track).compactMap(sources))
+    }
+
+    /// Remembers a playlist's items as browsed online, so offline the
+    /// page can list them and play whichever are on disk. An empty list
+    /// is saved too: a playlist pruned to nothing should read as empty,
+    /// not as it last was.
+    public func saveItems(_ items: [PlaylistItem], inPlaylist ratingKey: String, server: String) {
+        guard savedItems(server, ratingKey) != items else { return }
+        playlistItems[albumKey(server, "playlist:\(ratingKey)")] = items
+        try? write(items, to: playlistsDirectory(server).appending(path: "\(ratingKey).json"))
+    }
+
+    /// The saved items of any playlist browsed or pinned; nil when the
+    /// playlist was never opened.
+    public func items(inPlaylist ratingKey: String, server: String) -> [PlaylistItem]? {
+        let items = savedItems(server, ratingKey)
+        if !items.isEmpty { return items }
+        return hasSavedItems(server, ratingKey) ? [] : nil
+    }
+
+    public func playlistPinned(_ ratingKey: String, server: String) -> Bool {
+        manifest(server).playlists[ratingKey] != nil
+    }
+
+    /// Every playlist with a saved item list and at least one file on
+    /// disk in either root. Offline only, like `availableAlbums`.
+    public func availablePlaylists(server: String) -> Set<String> {
+        var result: Set<String> = []
+        for ratingKey in savedPlaylistKeys(server) {
+            if savedItems(server, ratingKey).contains(where: { onDisk($0.track, server: server) }) {
+                result.insert(ratingKey)
+            }
+        }
+        return result
+    }
+
     /// Re-enqueues every pinned track with no file yet. Called on connect and
     /// on foreground, since nothing survives the app being suspended.
     public func resume(server: String, sources: @Sendable (PlexTrack) -> TrackSource?) async {
@@ -301,6 +399,9 @@ public actor OfflineStore {
         inventory.tracks = trackPins(server: server)
         inventory.favoritesPinned = manifest.favoritesPinned
         inventory.favorites = favoriteTracks(server: server)
+        inventory.playlists = manifest.playlists
+            .sorted { $0.value.pinnedAt < $1.value.pinnedAt }
+            .map { .init(playlist: $0.value.playlist, pinnedAt: $0.value.pinnedAt) }
         inventory.artBytes = artBytes(server)
 
         let wanted = pinnedTracks(server: server)
@@ -308,6 +409,28 @@ public actor OfflineStore {
         let wantedKeys = Set(wanted.map(\.ratingKey))
         let pinnedAlbums = pinnedAlbumKeys(manifest, server: server)
         let loose = inventory.tracks + inventory.favorites
+
+        // Every playlist browsed: what's down of it, whether or not it is
+        // pinned, for the tile's badge and the Downloaded filter.
+        for key in savedPlaylistKeys(server) {
+            let tracks = savedItems(server, key).map(\.track)
+            var status = AlbumDownloadStatus(known: tracks.count, pinned: manifest.playlists[key] != nil)
+            for track in tracks {
+                let isWanted = wantedKeys.contains(track.ratingKey)
+                guard let path = track.part?.cachePath(server: server) else {
+                    if isWanted { status.undownloadable += 1 }
+                    continue
+                }
+                if let size = inventory.files[path] {
+                    status.done += 1
+                    status.bytes += size
+                } else if isWanted {
+                    status.missing += 1
+                    if inventory.failed.contains(path) { status.failed += 1 }
+                }
+            }
+            inventory.playlistStatuses[key] = status
+        }
 
         var albumKeys = savedAlbumKeys(server)
         albumKeys.formUnion(loose.compactMap(\.parentRatingKey))
@@ -448,7 +571,8 @@ public actor OfflineStore {
     }
 
     /// Every track any pin wants: artists in pin order, their albums in
-    /// list order, then album pins, track pins and the favorites.
+    /// list order, then album pins, track pins, the favorites and the
+    /// pinned playlists in pin order.
     public func pinnedTracks(server: String) -> [PlexTrack] {
         let manifest = manifest(server)
         var result: [PlexTrack] = []
@@ -462,6 +586,9 @@ public actor OfflineStore {
         }
         result += trackPins(server: server)
         if manifest.favoritesPinned { result += favoriteTracks(server: server) }
+        for (ratingKey, _) in manifest.playlists.sorted(by: { $0.value.pinnedAt < $1.value.pinnedAt }) {
+            result += savedItems(server, ratingKey).map(\.track)
+        }
         return result
     }
 
@@ -527,6 +654,7 @@ public actor OfflineStore {
         artistAlbums = [:]
         trackPins = [:]
         favorites = [:]
+        playlistItems = [:]
         await cache.clearPinned()
         let manager = FileManager.default
         guard let children = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
@@ -565,6 +693,26 @@ public actor OfflineStore {
     /// Every album with a saved track list.
     private func savedAlbumKeys(_ server: String) -> Set<String> {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: albumsDirectory(server).path)) ?? []
+        return Set(files.filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) })
+    }
+
+    private func savedItems(_ server: String, _ ratingKey: String) -> [PlaylistItem] {
+        let key = albumKey(server, "playlist:\(ratingKey)")
+        if let loaded = playlistItems[key] { return loaded }
+        let loaded: [PlaylistItem] = read(playlistsDirectory(server).appending(path: "\(ratingKey).json")) ?? []
+        playlistItems[key] = loaded
+        return loaded
+    }
+
+    /// Whether a list was ever saved, so an empty playlist tells apart
+    /// from one never opened.
+    private func hasSavedItems(_ server: String, _ ratingKey: String) -> Bool {
+        FileManager.default.fileExists(atPath: playlistsDirectory(server).appending(path: "\(ratingKey).json").path)
+    }
+
+    /// Every playlist with a saved item list.
+    private func savedPlaylistKeys(_ server: String) -> Set<String> {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: playlistsDirectory(server).path)) ?? []
         return Set(files.filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) })
     }
 
@@ -622,6 +770,10 @@ public actor OfflineStore {
 
     private nonisolated func artistsDirectory(_ server: String) -> URL {
         serverDirectory(server).appending(path: "artists")
+    }
+
+    private nonisolated func playlistsDirectory(_ server: String) -> URL {
+        serverDirectory(server).appending(path: "playlists")
     }
 
     private nonisolated func artDirectory(_ server: String) -> URL {

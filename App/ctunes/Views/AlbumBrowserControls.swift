@@ -31,6 +31,7 @@ extension BrowseSubject {
         switch self {
         case .albums: "square.stack"
         case .artists: "person.2"
+        case .playlists: "music.note.list"
         }
     }
 }

@@ -6,12 +6,14 @@ public enum SearchHit: Codable, Hashable, Sendable, Identifiable {
     case artist(PlexArtist)
     case album(PlexAlbum)
     case track(PlexTrack)
+    case playlist(PlexPlaylist)
 
     public var id: String {
         switch self {
         case .artist(let artist): "artist:\(artist.ratingKey)"
         case .album(let album): "album:\(album.ratingKey)"
         case .track(let track): "track:\(track.ratingKey)"
+        case .playlist(let playlist): "playlist:\(playlist.ratingKey)"
         }
     }
 }
@@ -29,10 +31,13 @@ public enum LibrarySearch {
     /// of two fields, say, comes last. Ties keep the lists' own order.
     /// Only the best `trackLimit` tracks are kept: an artist's name can
     /// match every track of theirs, and the artist row already covers them.
+    /// A playlist matches on its own title alone and sits after the
+    /// albums at each level; playlists are not veto targets.
     public static func hits(
         artists: [PlexArtist],
         albums: [PlexAlbum],
         tracks: [PlexTrack],
+        playlists: [PlexPlaylist] = [],
         query: String,
         hiding hidden: VetoSet = VetoSet(),
         trackLimit: Int = 50
@@ -48,9 +53,13 @@ public enum LibrarySearch {
             guard let rank = rank(own: album.title, related: [album.parentTitle], needle: needle) else { continue }
             ranked.append((rank, 1, index, .album(album)))
         }
+        for (index, playlist) in playlists.enumerated() {
+            guard let rank = rank(own: playlist.title, related: [], needle: needle) else { continue }
+            ranked.append((rank, 2, index, .playlist(playlist)))
+        }
         for (index, track) in tracks.enumerated() where !hidden.hides(track) {
             let rank = rank(own: track.title, related: [track.parentTitle, track.grandparentTitle, track.originalTitle], needle: needle)
-            ranked.append((rank ?? Rank.elsewhere, 2, index, .track(track)))
+            ranked.append((rank ?? Rank.elsewhere, 3, index, .track(track)))
         }
         var tracksKept = 0
         return ranked

@@ -62,6 +62,38 @@ public struct OfflineLibrary: LibrarySource {
         throw PlexError.offline
     }
 
+    public func playlists(inSection section: String) async throws -> [PlexPlaylist] { snapshot.playlists }
+
+    /// The items saved when the page was last opened online; nothing for
+    /// a playlist never browsed.
+    public func items(inPlaylist ratingKey: String) async throws -> [PlaylistItem] {
+        await store.items(inPlaylist: ratingKey, server: snapshot.server) ?? []
+    }
+
+    public func createPlaylist(title: String, trackKeys: [String]) async throws -> PlexPlaylist {
+        throw PlexError.offline
+    }
+
+    public func add(trackKeys: [String], toPlaylist ratingKey: String) async throws -> Int {
+        throw PlexError.offline
+    }
+
+    public func remove(item playlistItemID: Int, fromPlaylist ratingKey: String) async throws {
+        throw PlexError.offline
+    }
+
+    public func move(item playlistItemID: Int, after: Int?, inPlaylist ratingKey: String) async throws {
+        throw PlexError.offline
+    }
+
+    public func renamePlaylist(_ ratingKey: String, title: String) async throws {
+        throw PlexError.offline
+    }
+
+    public func deletePlaylist(_ ratingKey: String) async throws {
+        throw PlexError.offline
+    }
+
     public func reportTimeline(_ track: PlexTrack, state: PlaybackState, time: Double, sessionIdentifier: String) async throws {}
 
     /// Nothing to stream from; the player resolves by server and part.

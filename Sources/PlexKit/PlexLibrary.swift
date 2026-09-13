@@ -138,6 +138,95 @@ public actor PlexLibrary {
         try await client.data(for: request)
     }
 
+    // MARK: - Playlists
+
+    /// The account's audio playlists that draw on the section. Measured:
+    /// `sectionID` filters, so an audiobook playlist never shows under
+    /// Music; a bogus id is an empty container, not an error.
+    public func playlists(inSection section: String) async throws -> [PlexPlaylist] {
+        try await fetch(PlexPlaylist.self, path: "/playlists?playlistType=audio&sectionID=\(section)")
+    }
+
+    /// Every item, in the playlist's order, unpaged: the 1,221-track
+    /// smart playlist measured at 1.9 MB, the way a year of play history
+    /// is, and paging would be a request per screen.
+    public func items(inPlaylist ratingKey: String) async throws -> [PlaylistItem] {
+        try await fetch(PlaylistItem.self, path: "/playlists/\(ratingKey)/items")
+    }
+
+    /// A regular playlist of the tracks, in order. The answer is the new
+    /// playlist's own list entry, so the tile needs no second request.
+    /// `machineIdentifier` is the one `/identity` reports, which is what
+    /// the resource's `clientIdentifier` is too.
+    public func createPlaylist(title: String, trackKeys: [String]) async throws -> PlexPlaylist {
+        guard let url = URL(string:
+            server.baseURL.absoluteString
+            + "/playlists?type=audio&smart=0&title=\(Self.encode(title))"
+            + "&uri=\(itemsURI(trackKeys))")
+        else { throw PlexError.noServerReachable }
+        let response = try await client.decode(
+            MediaContainerResponse<PlexPlaylist>.self, from: client.request("POST", url: url, token: token)
+        )
+        guard let playlist = response.items.first else {
+            throw PlexError.decoding(underlying: "no playlist in the create response", body: nil)
+        }
+        return playlist
+    }
+
+    /// Appends the tracks and returns how many were new to the playlist.
+    /// Measured: a track already in it is dropped silently and the
+    /// container's `leafCountAdded` says so, so 0 is "already there".
+    public func add(trackKeys: [String], toPlaylist ratingKey: String) async throws -> Int {
+        guard !trackKeys.isEmpty else { return 0 }
+        guard let url = URL(string:
+            server.baseURL.absoluteString
+            + "/playlists/\(ratingKey)/items?uri=\(itemsURI(trackKeys))")
+        else { throw PlexError.noServerReachable }
+        let response = try await client.decode(
+            MediaContainerResponse<PlexPlaylist>.self, from: client.request("PUT", url: url, token: token)
+        )
+        return response.mediaContainer.leafCountAdded ?? 0
+    }
+
+    public func remove(item playlistItemID: Int, fromPlaylist ratingKey: String) async throws {
+        guard let url = URL(string: server.baseURL.absoluteString + "/playlists/\(ratingKey)/items/\(playlistItemID)")
+        else { throw PlexError.noServerReachable }
+        try await client.data(for: client.request("DELETE", url: url, token: token))
+    }
+
+    /// Puts the item after `after`, or at the top with none. Measured:
+    /// both are a 200 and the item ids stay what they were.
+    public func move(item playlistItemID: Int, after: Int?, inPlaylist ratingKey: String) async throws {
+        guard let url = URL(string:
+            server.baseURL.absoluteString
+            + "/playlists/\(ratingKey)/items/\(playlistItemID)/move"
+            + (after.map { "?after=\($0)" } ?? ""))
+        else { throw PlexError.noServerReachable }
+        try await client.data(for: client.request("PUT", url: url, token: token))
+    }
+
+    public func renamePlaylist(_ ratingKey: String, title: String) async throws {
+        guard let url = URL(string: server.baseURL.absoluteString + "/playlists/\(ratingKey)?title=\(Self.encode(title))")
+        else { throw PlexError.noServerReachable }
+        try await client.data(for: client.request("PUT", url: url, token: token))
+    }
+
+    /// A 204; the playlist is a 404 afterwards.
+    public func deletePlaylist(_ ratingKey: String) async throws {
+        guard let url = URL(string: server.baseURL.absoluteString + "/playlists/\(ratingKey)")
+        else { throw PlexError.noServerReachable }
+        try await client.data(for: client.request("DELETE", url: url, token: token))
+    }
+
+    /// The `uri` a playlist write takes: the tracks by rating key on this
+    /// server, sent bare the way it was measured to work. An album key
+    /// expands to its tracks too (measured), but the app sends the tracks
+    /// it already fetched for Play.
+    private func itemsURI(_ trackKeys: [String]) -> String {
+        "server://\(server.machineIdentifier)/com.plexapp.plugins.library/library/metadata/"
+            + trackKeys.joined(separator: ",")
+    }
+
     // MARK: - Timeline
 
     /// Tells the server where playback stands. This is the only way a play

@@ -31,17 +31,22 @@ public enum AlbumView: String, CaseIterable, Sendable, Codable {
     public static func cases(in scope: BrowseScope) -> [AlbumView] {
         switch scope {
         case .discography: [.artist, .mostPlayed, .recentlyAdded, .backCatalog]
-        case .albums, .artists: allCases
+        case .albums, .artists, .playlists: allCases
         }
     }
 
     /// The view's name in a menu over `scope`: the Artists view sections
     /// a library of albums by artist, but over a list of artists it is
     /// plain name order, and over one artist's albums it is release order.
+    /// Over playlists three of the four read differently: there is no
+    /// rotation score and no arrival date, only the server's play count
+    /// and the last edit.
     public func title(in scope: BrowseScope) -> String {
         switch (self, scope) {
-        case (.artist, .artists): "A to Z"
+        case (.artist, .artists), (.artist, .playlists): "A to Z"
         case (.artist, .discography): "Release Date"
+        case (.recentlyAdded, .playlists): "Recently Updated"
+        case (.mostPlayed, .playlists): "Most Played"
         default: title
         }
     }
@@ -74,17 +79,25 @@ public enum AlbumView: String, CaseIterable, Sendable, Codable {
     public func sorted(_ artists: [PlexArtist], rotation: Rotation = .none) -> [PlexArtist] {
         sort.sorted(artists, rotation: rotation)
     }
+
+    /// The same view over the playlist list, always flat: A to Z, last
+    /// edited, the server's play count, or least recently played first.
+    public func sorted(_ playlists: [PlexPlaylist]) -> [PlexPlaylist] {
+        sort.sorted(playlists)
+    }
 }
 
-/// What the browse root lists: every album, or every artist. Raw values
-/// are persisted, so keep them stable.
+/// What the browse root lists: every album, every artist, or the
+/// account's playlists on the section. Raw values are persisted, so keep
+/// them stable.
 public enum BrowseSubject: String, CaseIterable, Sendable {
-    case albums, artists
+    case albums, artists, playlists
 
     public var title: String {
         switch self {
         case .albums: "Albums"
         case .artists: "Artists"
+        case .playlists: "Playlists"
         }
     }
 
@@ -93,6 +106,7 @@ public enum BrowseSubject: String, CaseIterable, Sendable {
         switch self {
         case .albums: .albums
         case .artists: .artists
+        case .playlists: .playlists
         }
     }
 }
@@ -106,6 +120,8 @@ public enum BrowseScope: Sendable {
     case artists
     /// One artist's albums: the Artists view is release order, flat.
     case discography
+    /// The playlists: name order, last edit, play count, last play.
+    case playlists
 }
 
 /// How much each album and artist is being played lately, from the play
@@ -184,6 +200,10 @@ enum AlbumSort: Sendable {
         sorted(artists, key: { key($0, rotation: rotation) }, title: \.title)
     }
 
+    func sorted(_ playlists: [PlexPlaylist]) -> [PlexPlaylist] {
+        sorted(playlists, key: key, title: \.title)
+    }
+
     private var ascending: Bool { self == .lastPlayedAscending }
     private var missingFirst: Bool { self == .lastPlayedAscending || self == .releaseDate }
 
@@ -215,6 +235,19 @@ enum AlbumSort: Sendable {
         case .addedAt: artist.addedAt.map(Double.init)
         case .lastPlayedAscending: artist.lastViewedAt.map(Double.init)
         case .rotation: rotation.isEmpty ? artist.viewCount.map(Double.init) : rotation.artists[artist.ratingKey]
+        case .releaseDate: nil
+        }
+    }
+
+    /// A playlist has no play history of its own, so rotation is the
+    /// server's play count; "recently added" reads as recently edited,
+    /// since every content change bumps `updatedAt` and a playlist made
+    /// months ago and filled last week belongs at the top.
+    private func key(_ playlist: PlexPlaylist) -> Double? {
+        switch self {
+        case .addedAt: (playlist.updatedAt ?? playlist.addedAt).map(Double.init)
+        case .lastPlayedAscending: playlist.lastViewedAt.map(Double.init)
+        case .rotation: playlist.viewCount.map(Double.init)
         case .releaseDate: nil
         }
     }
@@ -373,6 +406,24 @@ public enum AlbumBrowse {
         return ranked.enumerated()
             .sorted { ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset) }
             .map(\.element.artist)
+    }
+
+    /// Flat playlist search by title, best match first by the same
+    /// ranking; ties keep the view's order. Playlists are not veto
+    /// targets, so nothing is hidden here.
+    public static func search(
+        _ playlists: [PlexPlaylist],
+        query: String,
+        view: AlbumView
+    ) -> [PlexPlaylist] {
+        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else { return [] }
+        let ranked: [(rank: Int, playlist: PlexPlaylist)] = view.sort.sorted(playlists).compactMap { playlist in
+            MatchQuality(playlist.title, needle).map { ($0.rawValue, playlist) }
+        }
+        return ranked.enumerated()
+            .sorted { ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset) }
+            .map(\.element.playlist)
     }
 
     /// Where the query sits in the text, best first.

@@ -29,6 +29,7 @@ struct MusicView: View {
     @State private var showingListeners = false
     @State private var showingSettings = false
     @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
     @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage("albumView") private var view: AlbumView = .mostPlayed
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
@@ -65,12 +66,21 @@ struct MusicView: View {
     private var artists: [AlbumGroup] {
         AlbumBrowse.groups(albums, view: .artist)
     }
+    /// The Playlists subject's list, the model's, in the view's order.
+    /// Under Downloaded only, the playlists with a saved item on disk,
+    /// which leaves out any never opened.
+    private var playlists: [PlexPlaylist] {
+        let all = model.playlists
+        return view.sorted(downloadedOnly ? all.filter { model.downloads.hasDownloads($0) } : all)
+    }
     /// Counted over this section's albums, so a veto from another
-    /// section doesn't count here. Browsing artists, only the artists.
+    /// section doesn't count here. Browsing artists, only the artists;
+    /// playlists are not veto targets, so nothing there.
     private var hiddenCount: HiddenCount {
         switch subject {
         case .albums: .over(albums, hidden: hidden)
         case .artists: HiddenCount(artists: libraryArtists.filter { hidden.artists.contains($0.ratingKey) }.count)
+        case .playlists: HiddenCount()
         }
     }
     /// Whether the browser has nothing to show under the filter.
@@ -78,6 +88,7 @@ struct MusicView: View {
         switch subject {
         case .albums: groups.isEmpty
         case .artists: artistGroups.isEmpty
+        case .playlists: playlists.isEmpty
         }
     }
     private var columns: [GridItem] {
@@ -137,6 +148,27 @@ struct MusicView: View {
         count.map { "\($0) album\($0 == 1 ? "" : "s")" }
     }
 
+    @ViewBuilder private func playlistItems(_ playlists: [PlexPlaylist]) -> some View {
+        switch layout {
+        case .grid:
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                ForEach(playlists) { playlist in
+                    Button { path.append(playlist) } label: {
+                        PlaylistTile(model: model, playlist: playlist)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { PlaylistMenu(model: model, playlist: playlist) }
+                }
+            }
+        case .list:
+            BrowseList(items: playlists) { playlist in
+                PlaylistRow(model: model, playlist: playlist) { path.append(playlist) } menu: {
+                    PlaylistMenu(model: model, playlist: playlist)
+                }
+            }
+        }
+    }
+
     /// The group headings and their items, either subject. Under the
     /// Artists view an album heading is the artist, and opens their page.
     @ViewBuilder private var sections: some View {
@@ -187,6 +219,10 @@ struct MusicView: View {
                     }
                 }
             }
+        case .playlists:
+            // One nameless section: every sort over playlists is flat.
+            playlistItems(playlists)
+                .padding(.init(top: 14, leading: Self.margin, bottom: 0, trailing: Self.margin))
         }
     }
 
@@ -258,6 +294,20 @@ struct MusicView: View {
                                            description: Text("Turn off Downloaded only to see the whole library."))
                         .frame(maxWidth: .infinity)
                         .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                } else if loaded, subject == .playlists, model.playlists.isEmpty {
+                    ContentUnavailableView {
+                        Label("No playlists", systemImage: "music.note.list")
+                    } description: {
+                        Text("Make one from any track, album or artist's menu.")
+                    } actions: {
+                        if !offline {
+                            Button("New Playlist") { navigator.composing = [] }
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.capsule)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
                 }
                 sections
             }
@@ -281,6 +331,13 @@ struct MusicView: View {
         }
         .navigationTitle("Tunes")
         .toolbar {
+            // A playlist with nothing in it yet, named here; online only,
+            // like every playlist write.
+            if subject == .playlists, !offline {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("New Playlist", systemImage: "plus") { navigator.composing = [] }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }
@@ -333,14 +390,17 @@ struct MusicView: View {
             async let favoriteTracks = library.favoriteTracks(inSection: section.key)
             // Optional: the grid falls back to play counts without it.
             async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
-            // Optional too: the Artists subject is empty until it lands.
+            // Optional too: the Artists subject is empty until it lands,
+            // and the Playlists subject keeps the last list.
             async let artistList = library.artists(inSection: section.key)
+            async let playlistList: () = model.loadPlaylists()
             catalog.albums = try await library.albums(inSection: section.key)
             catalog.loaded = true
             history = (try? await plays) ?? []
             catalog.rotation = Rotation(history: history, albums: albums)
             catalog.artists = (try? await artistList) ?? []
             favorites = try? await favoriteTracks
+            await playlistList
         } catch {
             await model.connectionLost(error)
             catalog.loaded = true

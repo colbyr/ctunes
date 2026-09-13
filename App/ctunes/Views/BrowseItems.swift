@@ -111,6 +111,55 @@ struct ArtistRow<Menu: View>: View {
     }
 }
 
+/// One composite with the title and the counts under it, for the root's
+/// Playlists subject. A smart playlist's list counts are stale (measured
+/// off by up to half), so it says "Smart playlist" and no count.
+struct PlaylistTile: View {
+    let model: AppModel
+    let playlist: PlexPlaylist
+
+    var body: some View {
+        let offline = model.state == .offline
+        VStack(alignment: .leading, spacing: 6) {
+            Artwork(url: model.library?.artworkURL(playlist.composite), size: nil, corner: 8, placeholder: "music.note.list")
+                .artworkShadow()
+                .overlay(alignment: .bottomTrailing) { DownloadBadge(state: model.downloads.state(playlist)) }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(playlist.title)
+                    .font(.footnote)
+                    .lineLimit(1)
+                Text(playlist.subtitle)
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(offline && !model.downloads.hasDownloads(playlist) ? 0.35 : 1)
+        .contentShape(.rect)
+    }
+}
+
+/// The same playlist as a row.
+struct PlaylistRow<Menu: View>: View {
+    let model: AppModel
+    let playlist: PlexPlaylist
+    let action: () -> Void
+    @ViewBuilder let menu: () -> Menu
+
+    var body: some View {
+        BrowseRow(
+            url: model.library?.artworkURL(playlist.composite),
+            placeholder: "music.note.list",
+            title: playlist.title,
+            subtitle: playlist.subtitle,
+            download: model.downloads.state(playlist),
+            dimmed: model.state == .offline && !model.downloads.hasDownloads(playlist),
+            action: action,
+            menu: menu
+        )
+    }
+}
+
 /// One row of the list layout: the art at the leading edge, a title and
 /// a line under it, whatever the screen puts after them, then the `···`.
 /// Like a track row, the tap target stops at the `···`, which opens the
@@ -121,6 +170,7 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
     let url: URL?
     /// A portrait rather than a cover.
     var round = false
+    var placeholder = "music.note"
     let title: String
     let subtitle: String?
     var download: DownloadState = .none
@@ -149,7 +199,7 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
 
     private var content: some View {
         HStack(spacing: 12) {
-            Artwork(url: url, size: Self.artSize, corner: 6)
+            Artwork(url: url, size: Self.artSize, corner: 6, placeholder: placeholder)
                 .clipShape(round ? AnyShape(.circle) : AnyShape(.rect(cornerRadius: 6)))
                 .artworkShadow()
                 .overlay(alignment: .bottomTrailing) {
@@ -175,10 +225,11 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
 }
 
 extension BrowseRow where Accessory == EmptyView {
-    init(url: URL?, round: Bool = false, title: String, subtitle: String?, download: DownloadState = .none, dimmed: Bool = false,
+    init(url: URL?, round: Bool = false, placeholder: String = "music.note", title: String, subtitle: String?,
+         download: DownloadState = .none, dimmed: Bool = false,
          action: @escaping () -> Void, @ViewBuilder menu: @escaping () -> Menu) {
-        self.init(url: url, round: round, title: title, subtitle: subtitle, download: download, dimmed: dimmed,
-                  action: action, accessory: { EmptyView() }, menu: menu)
+        self.init(url: url, round: round, placeholder: placeholder, title: title, subtitle: subtitle, download: download,
+                  dimmed: dimmed, action: action, accessory: { EmptyView() }, menu: menu)
     }
 }
 
@@ -210,5 +261,30 @@ extension PlexAlbum {
     /// the year where the artist is already named.
     func subtitle(showArtist: Bool) -> String {
         showArtist ? (parentTitle ?? "—") : (year.map(String.init) ?? "—")
+    }
+}
+
+extension PlexPlaylist {
+    /// "12 tracks · 48 min" from the list's own counts for a regular
+    /// playlist; "Smart playlist" alone for a smart one, whose list counts
+    /// the server doesn't keep fresh.
+    var subtitle: String {
+        guard !smart else { return "Smart playlist" }
+        var parts = [Self.trackCount(leafCount ?? 0)]
+        if let duration, duration > 0 { parts.append(Self.length(milliseconds: duration)) }
+        return parts.joined(separator: " · ")
+    }
+
+    static func trackCount(_ count: Int) -> String {
+        "\(count) track\(count == 1 ? "" : "s")"
+    }
+
+    /// "48 min", "1 hr 12 min", "3 hr".
+    static func length(milliseconds: Int) -> String {
+        let minutes = Int((Double(milliseconds) / 60_000).rounded())
+        let hours = minutes / 60
+        let rest = minutes % 60
+        if hours == 0 { return "\(minutes) min" }
+        return rest == 0 ? "\(hours) hr" : "\(hours) hr \(rest) min"
     }
 }

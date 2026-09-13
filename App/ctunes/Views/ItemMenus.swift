@@ -10,6 +10,13 @@ import SwiftUI
 final class LibraryNavigator {
     var requested: LibraryRoute?
     var notice: String?
+    /// The tracks a new playlist should start with, none included: the
+    /// host asks for a name, creates it and opens its page.
+    var composing: [PlexTrack]?
+    /// A playlist to rename; the host asks for the new name.
+    var renaming: PlexPlaylist?
+    /// A playlist to delete; the host confirms first.
+    var deleting: PlexPlaylist?
 
     func open(_ route: LibraryRoute) { requested = route }
 }
@@ -17,6 +24,7 @@ final class LibraryNavigator {
 enum LibraryRoute: Hashable {
     case artist(ArtistRoute)
     case album(PlexAlbum)
+    case playlist(PlexPlaylist)
 }
 
 /// The work behind the menu items. Built by each menu from the environment
@@ -110,6 +118,39 @@ private struct LibraryActions {
             await model.connectionLost(error)
             return []
         }
+    }
+
+    /// Every item of a playlist, from the page that has them or one
+    /// fetch, remembered for offline like a browsed album.
+    func items(of playlist: PlexPlaylist, known: [PlaylistItem]?) async -> [PlaylistItem] {
+        if let known { return known }
+        guard let library = model.library else { return [] }
+        do {
+            let items = try await library.items(inPlaylist: playlist.ratingKey)
+            await model.rememberItems(items, inPlaylist: playlist)
+            return items
+        } catch {
+            await model.connectionLost(error)
+            return []
+        }
+    }
+
+    /// Appends to a playlist and says what happened: the server drops
+    /// tracks already there, so "Already in" is common and worth a line.
+    func add(_ tracks: [PlexTrack], to playlist: PlexPlaylist) async {
+        guard !tracks.isEmpty else { return navigator.notice = "Nothing to add." }
+        guard let added = await model.add(tracks, to: playlist) else {
+            return navigator.notice = "Couldn't add to \(playlist.title)."
+        }
+        navigator.notice = added == 0
+            ? "Already in \(playlist.title)."
+            : "Added \(PlexPlaylist.trackCount(added)) to \(playlist.title)."
+    }
+
+    /// Asks the host for a name and starts a playlist with the tracks.
+    func compose(_ tracks: [PlexTrack]) {
+        if nowPlaying.isShown, !nowPlaying.isColumn { nowPlaying.isShown = false }
+        navigator.composing = tracks
     }
 
     func download(_ album: PlexAlbum, known: [PlexTrack]?) async {
@@ -211,6 +252,8 @@ struct ArtistMenu: View {
                 }
             }
         }
+        // Vetoes are not applied here: they apply when the playlist plays.
+        AddToPlaylistMenu(model: model) { await actions.tracks(ofArtist: ratingKey) }
         actions.downloadItems(
             pinned: model.downloads.isPinned(artist: ratingKey),
             state: model.downloads.state(artist: ratingKey),
@@ -281,6 +324,7 @@ struct AlbumMenu: View {
                 }
             }
         }
+        AddToPlaylistMenu(model: model) { await actions.tracks(of: album, known: tracks) }
         // An album under an artist pin reads as pinned; removing it
         // narrows the artist to their other albums.
         actions.downloadItems(
@@ -293,11 +337,134 @@ struct AlbumMenu: View {
     }
 }
 
+/// Long-press menu for a playlist: a tile in the grid, a search result,
+/// or the `···` on its own page, where the items are already loaded and
+/// handed in. Playing it skips what the active listeners hide by any
+/// veto: a playlist is opened on purpose but it is a mixed bag, and a
+/// vetoed artist inside it is exactly what a veto is for.
+struct PlaylistMenu: View {
+    let model: AppModel
+    let playlist: PlexPlaylist
+    /// The page's items when it has them; nil fetches on demand.
+    var items: [PlaylistItem]? = nil
+    /// Off on the playlist's own page, which has the link and the Play
+    /// and Shuffle cards; the queue items stay.
+    var showPlaylist = true
+    @Environment(AudioPlayer.self) private var player
+    @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
+
+    private var offline: Bool { model.library?.isOffline ?? false }
+    /// Offline, a playlist with no file has nothing to queue.
+    private var playable: Bool { !offline || model.downloads.hasDownloads(playlist) }
+
+    var body: some View {
+        let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
+        let tracks: () async -> [PlexTrack] = { await actions.items(of: playlist, known: items).map(\.track) }
+        if showPlaylist {
+            Section {
+                Button { actions.open(.playlist(playlist)) } label: {
+                    Label("Go to Playlist", systemImage: "music.note.list")
+                }
+            }
+        }
+        if playable {
+            Section {
+                if showPlaylist {
+                    Button {
+                        Task { actions.play(await tracks(), within: nil) }
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                    }
+                    Button {
+                        Task { actions.shuffle(await tracks(), within: nil) }
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                    }
+                }
+                Button {
+                    Task { actions.enqueue(await tracks(), within: nil, next: true) }
+                } label: {
+                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                Button {
+                    Task { actions.enqueue(await tracks(), within: nil, next: false) }
+                } label: {
+                    Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+                }
+            }
+        }
+        // A smart playlist is a saved filter: the server names and fills
+        // it, so no edits here. Every write is refused offline.
+        if !offline, !playlist.smart {
+            Section {
+                Button { navigator.renaming = playlist } label: {
+                    Label("Rename…", systemImage: "pencil")
+                }
+                Button(role: .destructive) { navigator.deleting = playlist } label: {
+                    Label("Delete Playlist…", systemImage: "trash")
+                }
+            }
+        }
+        actions.downloadItems(
+            pinned: model.downloads.isPinned(playlist),
+            state: model.downloads.state(playlist),
+            download: { Task { await model.setPlaylistPinned(playlist, true) } },
+            remove: { model.downloads.unpin(playlist) }
+        )
+    }
+}
+
+/// The Add to Playlist submenu every artist, album and track menu
+/// carries: one entry per regular playlist (a smart playlist can't be
+/// added to) and "New Playlist…" last. The tracks are fetched in the
+/// action, the way Play does, with no vetoes applied: they apply when
+/// the playlist plays. Hidden offline, like Download.
+struct AddToPlaylistMenu: View {
+    let model: AppModel
+    /// The playlist the tracks are already in, left out of the list.
+    var excluding: PlexPlaylist? = nil
+    let tracks: () async -> [PlexTrack]
+    @Environment(AudioPlayer.self) private var player
+    @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
+
+    private var offline: Bool { model.library?.isOffline ?? false }
+
+    var body: some View {
+        if !offline {
+            let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
+            let regular = AlbumView.artist.sorted(model.playlists.filter { !$0.smart && $0.ratingKey != excluding?.ratingKey })
+            Section {
+                Menu {
+                    ForEach(regular) { playlist in
+                        Button(playlist.title) {
+                            Task { await actions.add(await tracks(), to: playlist) }
+                        }
+                    }
+                    if !regular.isEmpty { Divider() }
+                    Button {
+                        Task { actions.compose(await tracks()) }
+                    } label: {
+                        Label("New Playlist…", systemImage: "plus")
+                    }
+                } label: {
+                    Label("Add to Playlist", systemImage: "music.note.list")
+                }
+            }
+        }
+    }
+}
+
 /// Where a track row sits, which decides what its menu can offer.
 enum TrackPlacement {
     /// A row in a list that can be played from that row: the album page,
     /// Favorites. `siblings` is the list, in its order.
     case list(siblings: [PlexTrack])
+    /// A row of a playlist's page: plays like `.list`, and on a regular
+    /// playlist the item can be removed from it. `siblings` is the page's
+    /// rows, in order.
+    case playlistItem(PlaylistItem, in: PlexPlaylist, siblings: [PlexTrack])
     /// A row of Up Next: the queue actions move it instead of copying it.
     case queued(PlayQueue<PlexTrack>.Entry)
     /// The track playing now: the art in Now Playing, the mini player.
@@ -334,7 +501,7 @@ struct TrackMenu: View {
             }
         }
         switch placement {
-        case .list(let siblings):
+        case .list(let siblings), .playlistItem(_, _, let siblings):
             // The siblings are the album's tracks or an already-filtered
             // list, so only a sibling's own veto can drop it; this track
             // stays whatever hides it, it was tapped.
@@ -389,13 +556,35 @@ struct TrackMenu: View {
                 }
             }
         }
+        // The playlist a row already sits in is left out of the list.
+        if case .playlistItem(_, let playlist, _) = placement {
+            AddToPlaylistMenu(model: model, excluding: playlist) { [track] }
+        } else {
+            AddToPlaylistMenu(model: model) { [track] }
+        }
         ListenersMenu(model: model, scope: VetoScope(track: track))
-        if case .queued(let entry) = placement {
+        switch placement {
+        case .queued(let entry):
             Section {
                 Button(role: .destructive) { player.remove(entry) } label: {
                     Label("Remove from Queue", systemImage: "trash")
                 }
             }
+        case .playlistItem(let item, let playlist, _):
+            // A smart playlist's items are the server's; a regular one's
+            // go by their item id. The page reloads on the generation the
+            // write bumps, so the row leaves when the server agrees.
+            if !offline, !playlist.smart, item.playlistItemID != nil {
+                Section {
+                    Button(role: .destructive) {
+                        Task { await model.remove(item, from: playlist) }
+                    } label: {
+                        Label("Remove from Playlist", systemImage: "text.badge.minus")
+                    }
+                }
+            }
+        case .list, .playing:
+            EmptyView()
         }
     }
 }

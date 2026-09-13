@@ -1,0 +1,230 @@
+{
+    "MediaContainer": {
+        "size": 3,
+        "composite": "/playlists/437/composite/1768097512",
+        "leafCount": 0,
+        "playlistType": "audio",
+        "ratingKey": "437",
+        "smart": true,
+        "title": "Recently Added",
+        "Metadata": [
+            {
+                "ratingKey": "3531",
+                "key": "/library/metadata/3531",
+                "parentRatingKey": "3530",
+                "grandparentRatingKey": "2469",
+                "guid": "plex://track/5d07cdd0403c640290f771dc",
+                "parentGuid": "plex://album/5d07c17b403c64029084a4c2",
+                "grandparentGuid": "plex://artist/5d07bbfd403c6402904a65ee",
+                "parentStudio": "Verve",
+                "type": "track",
+                "title": "Sunday Morning",
+                "grandparentKey": "/library/metadata/2469",
+                "parentKey": "/library/metadata/3530",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "The Velvet Underground",
+                "parentTitle": "The Velvet Underground & Nico",
+                "originalTitle": "The Velvet Underground & Nico",
+                "summary": "",
+                "index": 1,
+                "parentIndex": 1,
+                "ratingCount": 1197478,
+                "viewCount": 2,
+                "lastViewedAt": 1789225994,
+                "parentYear": 1967,
+                "thumb": "/library/metadata/3530/thumb/1789158635",
+                "art": "/library/metadata/2469/art/1789199553",
+                "parentThumb": "/library/metadata/3530/thumb/1789158635",
+                "grandparentThumb": "/library/metadata/2469/thumb/1789199553",
+                "grandparentArt": "/library/metadata/2469/art/1789199553",
+                "duration": 173609,
+                "addedAt": 1789158634,
+                "updatedAt": 1789158635,
+                "Media": [
+                    {
+                        "id": 3002,
+                        "duration": 173609,
+                        "bitrate": 320,
+                        "audioChannels": 2,
+                        "audioCodec": "mp3",
+                        "container": "mp3",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 3101,
+                                "key": "/library/parts/3101/1789172992/file.mp3",
+                                "duration": 173609,
+                                "file": "/Users/colby/Media/Music/The Velvet Underground, Nico/The Velvet Underground & Nico (45th Anni/The Velvet Underground, Nico - 01. Sunday Morning.mp3",
+                                "size": 6998302,
+                                "container": "mp3",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Sunday Morning",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/2469/thumb/1789199553"
+                    },
+                    {
+                        "alt": "Sunday Morning",
+                        "type": "background",
+                        "url": "/library/metadata/2469/art/1789199553"
+                    }
+                ],
+                "Genre": [
+                    {
+                        "tag": "Pop/Rock"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "3532",
+                "key": "/library/metadata/3532",
+                "parentRatingKey": "3530",
+                "grandparentRatingKey": "2469",
+                "guid": "plex://track/5d07cdeb403c640290fa0d59",
+                "parentGuid": "plex://album/5d07c17b403c64029084a4c2",
+                "grandparentGuid": "plex://artist/5d07bbfd403c6402904a65ee",
+                "parentStudio": "Verve",
+                "type": "track",
+                "title": "I’m Waiting for the Man",
+                "grandparentKey": "/library/metadata/2469",
+                "parentKey": "/library/metadata/3530",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "The Velvet Underground",
+                "parentTitle": "The Velvet Underground & Nico",
+                "summary": "",
+                "index": 2,
+                "parentIndex": 1,
+                "ratingCount": 824665,
+                "viewCount": 1,
+                "lastViewedAt": 1789226335,
+                "parentYear": 1967,
+                "thumb": "/library/metadata/3530/thumb/1789158635",
+                "art": "/library/metadata/2469/art/1789199553",
+                "parentThumb": "/library/metadata/3530/thumb/1789158635",
+                "grandparentThumb": "/library/metadata/2469/thumb/1789199553",
+                "grandparentArt": "/library/metadata/2469/art/1789199553",
+                "duration": 277916,
+                "addedAt": 1789158634,
+                "updatedAt": 1789158635,
+                "Media": [
+                    {
+                        "id": 3003,
+                        "duration": 277916,
+                        "bitrate": 320,
+                        "audioChannels": 2,
+                        "audioCodec": "mp3",
+                        "container": "mp3",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 3102,
+                                "key": "/library/parts/3102/1789172992/file.mp3",
+                                "duration": 277916,
+                                "file": "/Users/colby/Media/Music/The Velvet Underground, Nico/The Velvet Underground & Nico (45th Anni/The Velvet Underground, Nico - 02. I'm Waiting For The M.mp3",
+                                "size": 11170589,
+                                "container": "mp3",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "I’m Waiting for the Man",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/2469/thumb/1789199553"
+                    },
+                    {
+                        "alt": "I’m Waiting for the Man",
+                        "type": "background",
+                        "url": "/library/metadata/2469/art/1789199553"
+                    }
+                ],
+                "Genre": [
+                    {
+                        "tag": "Latin"
+                    },
+                    {
+                        "tag": "Jazz"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "3533",
+                "key": "/library/metadata/3533",
+                "parentRatingKey": "3530",
+                "grandparentRatingKey": "2469",
+                "guid": "plex://track/5d07cdeb403c640290fa0582",
+                "parentGuid": "plex://album/5d07c17b403c64029084a4c2",
+                "grandparentGuid": "plex://artist/5d07bbfd403c6402904a65ee",
+                "parentStudio": "Verve",
+                "type": "track",
+                "title": "Femme Fatale",
+                "grandparentKey": "/library/metadata/2469",
+                "parentKey": "/library/metadata/3530",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 3,
+                "librarySectionKey": "/library/sections/3",
+                "grandparentTitle": "The Velvet Underground",
+                "parentTitle": "The Velvet Underground & Nico",
+                "originalTitle": "The Velvet Underground & Nico",
+                "summary": "",
+                "index": 3,
+                "parentIndex": 1,
+                "ratingCount": 1187193,
+                "parentYear": 1967,
+                "thumb": "/library/metadata/3530/thumb/1789158635",
+                "art": "/library/metadata/2469/art/1789199553",
+                "parentThumb": "/library/metadata/3530/thumb/1789158635",
+                "grandparentThumb": "/library/metadata/2469/thumb/1789199553",
+                "grandparentArt": "/library/metadata/2469/art/1789199553",
+                "duration": 157126,
+                "addedAt": 1789158634,
+                "updatedAt": 1789158635,
+                "Media": [
+                    {
+                        "id": 3004,
+                        "duration": 157126,
+                        "bitrate": 320,
+                        "audioChannels": 2,
+                        "audioCodec": "mp3",
+                        "container": "mp3",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 3103,
+                                "key": "/library/parts/3103/1789172992/file.mp3",
+                                "duration": 157126,
+                                "file": "/Users/colby/Media/Music/The Velvet Underground, Nico/The Velvet Underground & Nico (45th Anni/The Velvet Underground, Nico - 03. Femme Fatale.mp3",
+                                "size": 6338970,
+                                "container": "mp3",
+                                "hasThumbnail": "1"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Femme Fatale",
+                        "type": "coverPoster",
+                        "url": "/library/metadata/2469/thumb/1789199553"
+                    },
+                    {
+                        "alt": "Femme Fatale",
+                        "type": "background",
+                        "url": "/library/metadata/2469/art/1789199553"
+                    }
+                ]
+            }
+        ]
+    }
+}

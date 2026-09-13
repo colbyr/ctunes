@@ -4,11 +4,14 @@ import Foundation
 struct MediaContainerResponse<Item: Decodable & Sendable>: Decodable, Sendable {
     struct Container: Decodable, Sendable {
         let size: Int?
+        /// On the answer to a playlist append: how many of the tracks
+        /// sent were new to it. The server drops the rest silently.
+        let leafCountAdded: Int?
         let metadata: [Item]?
         let directory: [Item]?
 
         enum CodingKeys: String, CodingKey {
-            case size
+            case size, leafCountAdded
             case metadata = "Metadata"
             case directory = "Directory"
         }
@@ -228,6 +231,112 @@ extension Array where Element == PlexTrack {
     }
 }
 
+/// One entry of `/playlists?playlistType=audio`. `composite` is a server
+/// path the photo transcoder renders as a grid of covers, and its stamp
+/// changes with every edit, so the tile's art refetches by path alone.
+public struct PlexPlaylist: Codable, Sendable, Identifiable, Hashable {
+    public let ratingKey: String
+    public let title: String
+    public let summary: String?
+    /// A saved filter: the items are the server's and can't be edited.
+    public let smart: Bool
+    public let composite: String?
+    /// Milliseconds, the whole playlist. Stale for a smart playlist
+    /// (measured off by up to half), so the app shows it only for a
+    /// regular one. Absent, like `composite`, when the playlist is empty.
+    public let duration: Int?
+    public let leafCount: Int?
+    public let addedAt: Int?
+    public let updatedAt: Int?
+    public let lastViewedAt: Int?
+    public let viewCount: Int?
+
+    public var id: String { ratingKey }
+
+    public init(
+        ratingKey: String,
+        title: String,
+        summary: String? = nil,
+        smart: Bool = false,
+        composite: String? = nil,
+        duration: Int? = nil,
+        leafCount: Int? = nil,
+        addedAt: Int? = nil,
+        updatedAt: Int? = nil,
+        lastViewedAt: Int? = nil,
+        viewCount: Int? = nil
+    ) {
+        self.ratingKey = ratingKey
+        self.title = title
+        self.summary = summary
+        self.smart = smart
+        self.composite = composite
+        self.duration = duration
+        self.leafCount = leafCount
+        self.addedAt = addedAt
+        self.updatedAt = updatedAt
+        self.lastViewedAt = lastViewedAt
+        self.viewCount = viewCount
+    }
+
+    /// `smart` is a real JSON bool on the wire, unlike `hasThumbnail`;
+    /// a playlist saved before it was read decodes as regular.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ratingKey = try c.decode(String.self, forKey: .ratingKey)
+        title = try c.decode(String.self, forKey: .title)
+        summary = try c.decodeIfPresent(String.self, forKey: .summary)
+        smart = try c.decodeIfPresent(Bool.self, forKey: .smart) ?? false
+        composite = try c.decodeIfPresent(String.self, forKey: .composite)
+        duration = try c.decodeIfPresent(Int.self, forKey: .duration)
+        leafCount = try c.decodeIfPresent(Int.self, forKey: .leafCount)
+        addedAt = try c.decodeIfPresent(Int.self, forKey: .addedAt)
+        updatedAt = try c.decodeIfPresent(Int.self, forKey: .updatedAt)
+        lastViewedAt = try c.decodeIfPresent(Int.self, forKey: .lastViewedAt)
+        viewCount = try c.decodeIfPresent(Int.self, forKey: .viewCount)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case ratingKey, title, summary, smart, composite, duration, leafCount
+        case addedAt, updatedAt, lastViewedAt, viewCount
+    }
+}
+
+/// A track's place in a playlist. `playlistItemID` is what removal and
+/// reordering address on a regular playlist, and the row identity there;
+/// a smart playlist's items have none (measured), and the page keys
+/// those rows by position. The track stays a plain `PlexTrack` so the
+/// queue, hearts and downloads keep comparing tracks by value.
+public struct PlaylistItem: Codable, Sendable, Hashable {
+    public let playlistItemID: Int?
+    public let track: PlexTrack
+
+    public init(playlistItemID: Int?, track: PlexTrack) {
+        self.playlistItemID = playlistItemID
+        self.track = track
+    }
+
+    /// Both come off the same JSON object: the item id beside the track's
+    /// own keys.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        playlistItemID = try c.decodeIfPresent(Int.self, forKey: .playlistItemID)
+        track = try PlexTrack(from: decoder)
+    }
+
+    /// The track's keys then the id, so a saved item list round-trips
+    /// through the same shape the server sends.
+    public func encode(to encoder: Encoder) throws {
+        try track.encode(to: encoder)
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(playlistItemID, forKey: .playlistItemID)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case playlistItemID
+    }
+}
+
 public struct PlexMedia: Codable, Sendable, Hashable {
     public let audioCodec: String?
     public let container: String?
@@ -347,6 +456,8 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public let favorites: [PlexTrack]
     /// The section's recent plays, so On Rotation ranks the same offline.
     public let history: [PlayHistoryEntry]
+    /// The section's playlists as last listed, for the Playlists subject.
+    public let playlists: [PlexPlaylist]
     public let savedAt: Date
     /// The connection the snapshot was taken over, so offline artwork can
     /// ask the image cache for the same URLs it saw online. No token.
@@ -361,6 +472,7 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
         artists: [PlexArtist],
         favorites: [PlexTrack],
         history: [PlayHistoryEntry] = [],
+        playlists: [PlexPlaylist] = [],
         savedAt: Date = Date(),
         baseURL: URL? = nil
     ) {
@@ -372,11 +484,13 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
         self.artists = artists
         self.favorites = favorites
         self.history = history
+        self.playlists = playlists
         self.savedAt = savedAt
         self.baseURL = baseURL
     }
 
-    /// Snapshots written before `history` existed still load, with none.
+    /// Snapshots written before `history` or `playlists` existed still
+    /// load, with none.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         server = try c.decode(String.self, forKey: .server)
@@ -387,6 +501,7 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
         artists = try c.decode([PlexArtist].self, forKey: .artists)
         favorites = try c.decode([PlexTrack].self, forKey: .favorites)
         history = try c.decodeIfPresent([PlayHistoryEntry].self, forKey: .history) ?? []
+        playlists = try c.decodeIfPresent([PlexPlaylist].self, forKey: .playlists) ?? []
         savedAt = try c.decode(Date.self, forKey: .savedAt)
         baseURL = try c.decodeIfPresent(URL.self, forKey: .baseURL)
     }

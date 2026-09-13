@@ -23,6 +23,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
     private let artistsList = CPListTemplate(title: "Artists", sections: [])
     private let recentList = CPListTemplate(title: "Recently Added", sections: [])
     private let favoritesList = CPListTemplate(title: "Favorites", sections: [])
+    private let playlistsList = CPListTemplate(title: "Playlists", sections: [])
     private var tabBar: CPTabBarTemplate?
 
     private var albums: [PlexAlbum] = []
@@ -73,9 +74,19 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         artistsList.tabImage = UIImage(systemName: "music.microphone")
         recentList.tabImage = UIImage(systemName: "clock")
         favoritesList.tabImage = UIImage(systemName: "heart.fill")
-        for list in [rotationList, artistsList, recentList, favoritesList] {
+        playlistsList.tabImage = UIImage(systemName: "music.note.list")
+        for list in tabs {
             list.emptyViewTitleVariants = ["Loading…"]
         }
+    }
+
+    /// Five tabs when the car shows five; when it shows four, Playlists
+    /// takes Recently Added's slot, since On Rotation already covers
+    /// what's new to me.
+    private var tabs: [CPListTemplate] {
+        CPTabBarTemplate.maximumTabCount >= 5
+            ? [rotationList, artistsList, recentList, favoritesList, playlistsList]
+            : [rotationList, artistsList, playlistsList, favoritesList]
     }
 
     /// Re-evaluates the root on every state, library, section or veto
@@ -89,7 +100,8 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
                     state: model.state,
                     generation: model.libraryGeneration,
                     section: model.selectedSection?.key,
-                    hidden: model.roster.hidden
+                    hidden: model.roster.hidden,
+                    playlists: model.playlists
                 )
             }
             for await change in changes {
@@ -147,7 +159,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
             tabBar = nil
             interface.setRootTemplate(messageTemplate(title: title, subtitle: subtitle, retry: retry), animated: true, completion: nil)
         case .library:
-            let bar = CPTabBarTemplate(templates: [rotationList, artistsList, recentList, favoritesList])
+            let bar = CPTabBarTemplate(templates: tabs)
             tabBar = bar
             interface.setRootTemplate(bar, animated: true, completion: nil)
         }
@@ -175,20 +187,25 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
 
     // MARK: - Library
 
-    /// The same four fetches the browse root and Favorites make. A failure
-    /// runs the usual rediscovery; the lists keep whatever they had.
+    /// The same fetches the browse root and Favorites make, the playlist
+    /// list through the model since a car can launch the app with no
+    /// window to load it. A failure runs the usual rediscovery; the
+    /// lists keep whatever they had.
     private func reload(generation: Int) {
         loading?.cancel()
         guard let library = model.library, let section = model.selectedSection else { return }
+        let model = model
         loading = Task { @MainActor [weak self] in
             do {
                 async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
                 async let favorites = library.favoriteTracks(inSection: section.key)
                 async let artists = library.artists(inSection: section.key)
+                async let playlists: () = model.loadPlaylists()
                 let albums = try await library.albums(inSection: section.key)
                 // Optional: On Rotation falls back to play counts without it.
                 let history = (try? await plays) ?? []
                 let (favoriteTracks, artistList) = try await (favorites, artists)
+                await playlists
                 guard let self, !Task.isCancelled else { return }
                 self.albums = albums
                 self.artists = artistList
@@ -225,6 +242,12 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         favoritesList.emptyViewTitleVariants = ["No favorites yet"]
         favoritesList.emptyViewSubtitleVariants = ["Heart a track on your iPhone and it shows up here."]
         favoritesList.updateSections(favoriteSections(hearted))
+
+        // A to Z: the car has no arrange chip.
+        let playlists = AlbumView.artist.sorted(model.playlists).prefix(Int(CPListTemplate.maximumItemCount))
+        playlistsList.emptyViewTitleVariants = ["No playlists"]
+        playlistsList.emptyViewSubtitleVariants = ["Make one on your iPhone and it shows up here."]
+        playlistsList.updateSections(playlists.isEmpty ? [] : [CPListSection(items: playlists.map(playlistItem))])
     }
 
     /// Alphabetical, one section per initial with an index letter, capped
@@ -314,6 +337,25 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         push(list)
     }
 
+    /// The playlist's tracks under Play and Shuffle, every veto dropped.
+    private func showPlaylist(_ playlist: PlexPlaylist) async {
+        let tracks = await tracks(of: playlist)
+        var sections: [CPListSection] = []
+        if !tracks.isEmpty {
+            sections.append(CPListSection(items: [
+                actionItem("Play", symbol: "play.fill") { [weak self] in self?.play(tracks) },
+                actionItem("Shuffle", symbol: "shuffle") { [weak self] in self?.shuffle(tracks) },
+            ]))
+            let rows = tracks.prefix(Int(CPListTemplate.maximumItemCount) - 2).map { track in
+                trackItem(track, detail: track.trackArtist ?? track.grandparentTitle, in: tracks)
+            }
+            sections.append(CPListSection(items: rows))
+        }
+        let list = CPListTemplate(title: playlist.title, sections: sections)
+        list.emptyViewTitleVariants = [offline ? "Nothing here is downloaded." : "Nothing to play."]
+        push(list)
+    }
+
     /// What follows the current track. A tap jumps the queue there and
     /// returns to Now Playing.
     private func showUpNext() {
@@ -360,6 +402,19 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
             }
         }
         loadArtwork(album.thumb, into: item)
+        return item
+    }
+
+    private func playlistItem(_ playlist: PlexPlaylist) -> CPListItem {
+        let item = CPListItem(text: playlist.title, detailText: playlist.subtitle)
+        item.accessoryType = .disclosureIndicator
+        item.handler = { [weak self] _, completion in
+            Task { @MainActor in
+                await self?.showPlaylist(playlist)
+                completion()
+            }
+        }
+        loadArtwork(playlist.composite, into: item)
         return item
     }
 
@@ -500,6 +555,22 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
             await model.rememberTracks(tracks, inAlbum: album)
             let hidden = model.roster.hidden
             return tracks.filter { !hidden.hides($0, within: .album) }
+        } catch {
+            await model.connectionLost(error)
+            return []
+        }
+    }
+
+    /// Every track of a playlist, remembered for offline like a browsed
+    /// page, minus whatever the active listeners veto by any means: the
+    /// playlist is a mixed bag, so every veto applies.
+    private func tracks(of playlist: PlexPlaylist) async -> [PlexTrack] {
+        guard let library = model.library else { return [] }
+        do {
+            let items = try await library.items(inPlaylist: playlist.ratingKey)
+            await model.rememberItems(items, inPlaylist: playlist)
+            let hidden = model.roster.hidden
+            return items.map(\.track).filter { !hidden.hides($0) }
         } catch {
             await model.connectionLost(error)
             return []

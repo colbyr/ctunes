@@ -568,6 +568,134 @@ struct OfflineStoreTests {
         #expect(inventory.state(of: inventory.albums[0].album) == .complete(undownloadable: 0))
     }
 
+    // MARK: - Playlists
+
+    private func playlist(_ key: String, smart: Bool = false) -> PlexPlaylist {
+        PlexPlaylist(ratingKey: key, title: "Playlist \(key)", smart: smart, composite: "/playlists/\(key)/composite/1", leafCount: 2)
+    }
+
+    private func items(_ tracks: [PlexTrack]) -> [PlaylistItem] {
+        tracks.enumerated().map { PlaylistItem(playlistItemID: 100 + $0.offset, track: $0.element) }
+    }
+
+    @Test("a browsed playlist's items are remembered, an empty list included, and count as available once a file is cached")
+    func browsedPlaylist() async throws {
+        let (store, cache, _) = try makeStore()
+        let items = items(tracks([1, 2], album: "9"))
+        #expect(await store.items(inPlaylist: "p", server: Self.server) == nil)
+        await store.saveItems(items, inPlaylist: "p", server: Self.server)
+        #expect(await store.items(inPlaylist: "p", server: Self.server) == items)
+        #expect(await store.availablePlaylists(server: Self.server).isEmpty)
+
+        try await cache.download(sources(items[1].track)!)
+        #expect(await store.availablePlaylists(server: Self.server) == ["p"])
+        let inventory = await store.inventory(server: Self.server)
+        #expect(inventory.state(ofPlaylist: playlist("p")) == .none, "browsed, not pinned: the file is in the cache root")
+        #expect(inventory.playlistStatuses["p"] == .init(known: 2))
+        #expect(!inventory.isPlaylistPinned("p"))
+
+        // Pruned to nothing reads as empty, not as it last was.
+        await store.saveItems([], inPlaylist: "p", server: Self.server)
+        #expect(await store.items(inPlaylist: "p", server: Self.server) == [])
+        #expect(try await OfflineLibrary(snapshot: Self.fixtureSnapshot(), store: store).items(inPlaylist: "p") == [])
+    }
+
+    @Test("pinning a playlist downloads it in order, shares files with an album pin, and unpinning narrows nothing else")
+    func pinPlaylist() async throws {
+        let (store, cache, counter) = try makeStore()
+        let shared = Support.track(id: 1, album: "9", artist: "A")
+        let only = Support.track(id: 2, album: "8", artist: "B")
+        let list = items([only, shared])
+        await pin(store, album("9"), [shared])
+        try await cache.drain()
+        #expect(counter.count == 1)
+
+        await store.pinPlaylist(playlist("p"), items: list, server: Self.server,
+                                art: { _ in Support.base.appending(path: "/photo/:/transcode") }, sources: sources)
+        try await cache.drain()
+
+        #expect(counter.count == 2, "the shared file was already down")
+        #expect(counter.requests.last == only.part!.key)
+        #expect(cache.isPinned(server: Self.server, part: only.part!))
+        #expect(store.artURL("/playlists/p/composite/1", server: Self.server) != nil, "the composite is saved")
+        var inventory = await store.inventory(server: Self.server)
+        #expect(inventory.playlists.map(\.id) == ["p"])
+        #expect(inventory.playlists[0].playlist == playlist("p"))
+        #expect(inventory.isPlaylistPinned("p"))
+        #expect(inventory.state(ofPlaylist: playlist("p")) == .complete(undownloadable: 0))
+        #expect(inventory.playlistStatuses["p"] == .init(done: 2, known: 2, bytes: 2048, pinned: true))
+        #expect(inventory.wanted.contains(path(2)))
+        #expect(!inventory.isTrackPinned(only), "a playlist is a group, not a track pin")
+        #expect(inventory.albums.map(\.id) == ["9"], "the album pin is untouched")
+
+        await store.unpinPlaylist("p", server: Self.server)
+
+        inventory = await store.inventory(server: Self.server)
+        #expect(inventory.playlists.isEmpty)
+        #expect(!cache.isPinned(server: Self.server, part: only.part!))
+        #expect(cache.localURL(server: Self.server, part: only.part!) != nil, "back in the cache root")
+        #expect(cache.isPinned(server: Self.server, part: shared.part!), "the album still wants it")
+        #expect(inventory.albums.map(\.id) == ["9"])
+        #expect(await store.items(inPlaylist: "p", server: Self.server) == list, "the list outlives the pin")
+        #expect(inventory.state(ofPlaylist: playlist("p")) == .partial(done: 1, total: 2), "the shared file is still in the pinned root")
+    }
+
+    @Test("replacing a pinned playlist's items pins the new and unpins the dropped")
+    func playlistItemsDiff() async throws {
+        let (store, cache, counter) = try makeStore()
+        let a = Support.track(id: 1, album: "9", artist: "A")
+        let b = Support.track(id: 2, album: "9", artist: "A")
+        let c = Support.track(id: 3, album: "9", artist: "A")
+        // Not pinned: a plain save, nothing fetched.
+        await store.setPlaylistItems(items([a]), inPlaylist: "p", server: Self.server, sources: sources)
+        try await cache.drain()
+        #expect(counter.count == 0)
+
+        await store.pinPlaylist(playlist("p"), items: items([a, b]), server: Self.server, art: { _ in nil }, sources: sources)
+        try await cache.drain()
+        #expect(counter.count == 2)
+
+        await store.setPlaylistItems(items([b, c]), inPlaylist: "p", server: Self.server, sources: sources)
+        try await cache.drain()
+
+        #expect(counter.count == 3)
+        #expect(!cache.isPinned(server: Self.server, part: a.part!))
+        #expect(cache.isPinned(server: Self.server, part: b.part!))
+        #expect(cache.isPinned(server: Self.server, part: c.part!))
+        #expect(await store.items(inPlaylist: "p", server: Self.server) == items([b, c]))
+        #expect(await store.pinnedTracks(server: Self.server) == [b, c])
+    }
+
+    @Test("a manifest from before playlist pins still reads, and playlists survive a snapshot")
+    func playlistManifestMigration() async throws {
+        let (store, cache, _) = try makeStore()
+        let old = """
+        {"albums":{},"favoritesPinned":true}
+        """
+        try FileManager.default.createDirectory(at: store.directory.appending(path: "M"), withIntermediateDirectories: true)
+        try Data(old.utf8).write(to: store.directory.appending(path: "M/manifest.json"))
+        let fresh = OfflineStore(directory: store.directory, cache: cache)
+        let inventory = await fresh.inventory(server: Self.server)
+        #expect(inventory.playlists.isEmpty)
+        #expect(inventory.favoritesPinned)
+
+        let base = try Self.fixtureSnapshot()
+        let playlists = try JSONDecoder().decode(MediaContainerResponse<PlexPlaylist>.self, from: Fixture.data("playlists")).items
+        let snapshot = LibrarySnapshot(
+            server: base.server, serverName: base.serverName, sections: base.sections, section: base.section,
+            albums: base.albums, artists: base.artists, favorites: base.favorites, playlists: playlists,
+            savedAt: base.savedAt, baseURL: base.baseURL
+        )
+        try await fresh.save(snapshot)
+        let loaded = try #require(await fresh.snapshot(server: Self.server, section: "1"))
+        #expect(loaded.playlists == playlists)
+        #expect(try await OfflineLibrary(snapshot: loaded, store: fresh).playlists(inSection: "1") == playlists)
+        // A snapshot from before playlists still loads, with none.
+        #expect(base.playlists.isEmpty)
+        let data = try JSONEncoder().encode(base)
+        #expect(try JSONDecoder().decode(LibrarySnapshot.self, from: data).playlists.isEmpty)
+    }
+
     @Test("the inventory tells a download in flight from one that stalled, per track")
     func inventoryProgress() async throws {
         let (store, cache, _) = try makeStore { request in

@@ -198,6 +198,33 @@ being found must ask again once it answers. Offline, the same word-prefix
 match runs over the tracks on disk. Tapping a song plays its album from
 that song; its `···` is the track menu with the song as its only sibling.
 
+**Playlists** (`PlaylistView.swift`, `notes/playlists.md`) are the third
+browse subject beside Albums and Artists, not a hero card, so the grid,
+the list layout, the sorts (A to Z, Recently Updated by `updatedAt`, Most
+Played by `viewCount`, Back Catalog) and the Downloaded filter come for
+free; the CarPlay tab bar gets a Playlists tab (Recently Added's slot
+when the car shows four). `AppModel.playlists` is the section's list
+(`/playlists?playlistType=audio&sectionID=`), fetched with the browse
+root's other requests and after every write, so the Add to Playlist
+submenu is synchronous; `playlistGeneration` bumps on every write and
+the page's `.task(id:)` keys on it, so an add from another screen's menu
+lands on the page behind it. The page is the Favorites page's shape (a
+`List` under Play and Shuffle cards, the composite as its ground), rows
+keyed by `playlistItemID` where the server gives one and by position on
+a smart playlist, whose items have none. **A smart playlist's list
+counts are stale** (measured off by up to half): the tile says "Smart
+playlist" and the page counts what it fetched. **Vetoes apply when a
+playlist plays, never when it is built**: every veto (`hides(track)`
+with no container), since the playlist is a mixed bag. Edits (Edit
+mode reorder, swipe to remove, Rename, Delete, Add to Playlist, New
+Playlist…) are regular playlists only, online only, optimistic and
+reverted by a reload on failure, never queued; the name and delete
+prompts are `LibraryNavigator.composing/renaming/deleting`, hosted by
+`LibraryView` since the menus sit on tiles. Offline the snapshot holds
+the list and `OfflineStore` the items of every playlist opened
+(`<server>/playlists/<rk>.json`); a pinned playlist is a group beside
+the favorites, never a node in the pin tree.
+
 **Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu` and
 `TrackMenu` are the one place an artist, album or track's actions live.
 Every tile, row, cover and name gets one as a long-press `.contextMenu`,
@@ -368,6 +395,21 @@ appears to offer.
   the sum of `0.5^(age/60d)` over its plays divided by `sqrt(leafCount)`
   (dividing by the count itself put every single on top), and falls back to
   `viewCount` when there is no history.
+- **Playlists: `/playlists?playlistType=audio&sectionID={key}` filters by
+  section** (an audiobook playlist never shows under Music); `smart` is a
+  real JSON bool; `composite` is a path the photo transcoder renders as a
+  2×2 of covers and its stamp changes with every edit. `/playlists/{rk}/items`
+  decodes as tracks plus `playlistItemID`, absent on a smart playlist;
+  fetch whole, the 1,221-track one is 1.9 MB. **The list entry's
+  `duration` is milliseconds; the items container's is seconds.** The
+  list's `leafCount`/`duration` are stale for smart playlists. Writes:
+  `POST /playlists?type=audio&smart=0&title=…&uri=server://{machineIdentifier}/com.plexapp.plugins.library/library/metadata/{k1,k2}`
+  answers with the new entry (a bare `uri` with no keys makes an empty
+  playlist; no `uri` at all is a 400); `PUT /playlists/{rk}/items?uri=…`
+  answers with `leafCountAdded` on the container and **silently drops
+  tracks already in the playlist**; `PUT …/items/{id}/move[?after={id}]`
+  (no `after` is the top); `DELETE …/items/{id}`; `PUT /playlists/{rk}?title=`;
+  `DELETE /playlists/{rk}` is a 204. Titles go through the strict encoder.
 
 ## Concurrency hazards hit here
 
@@ -416,7 +458,8 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
-| `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track |
+| `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
+| `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
 | `CTUNES_DEV_MIX` | `artist` or `album` pushes that mix builder; `artist:2899,649` also preselects those ratingKeys, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on

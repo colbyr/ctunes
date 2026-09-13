@@ -25,6 +25,12 @@ struct LibraryView: View {
     /// Routes and notices posted by the item menus, which sit on screens
     /// with no path of their own.
     @State private var navigator = LibraryNavigator()
+    /// The name field of the New Playlist and Rename alerts, and what
+    /// they act on, captured when the request lands so the alert's
+    /// action still has it after the presentation clears the request.
+    @State private var playlistName = ""
+    @State private var composingTracks: [PlexTrack] = []
+    @State private var editingPlaylist: PlexPlaylist?
     @Environment(AudioPlayer.self) private var player
     /// Compact is a phone, where Now Playing covers the screen with its
     /// header scrolling; regular but too narrow for the column (an iPad in
@@ -108,6 +114,7 @@ struct LibraryView: View {
             switch route {
             case .artist(let artist): path.append(artist)
             case .album(let album): path.append(album)
+            case .playlist(let playlist): path.append(playlist)
             }
             navigator.requested = nil
         }
@@ -116,6 +123,80 @@ struct LibraryView: View {
             set: { if !$0 { navigator.notice = nil } }
         )) {
             Button("OK") {}
+        }
+        // "New Playlist…" from any menu, or the root's plus: a name, then
+        // the new playlist's page. Rename and Delete come the same way,
+        // since the menus that offer them sit on tiles with no host.
+        .onChange(of: navigator.composing) { _, tracks in
+            guard let tracks else { return }
+            composingTracks = tracks
+            playlistName = ""
+        }
+        .onChange(of: navigator.renaming) { _, playlist in
+            guard let playlist else { return }
+            editingPlaylist = playlist
+            playlistName = playlist.title
+        }
+        .onChange(of: navigator.deleting) { _, playlist in
+            if let playlist { editingPlaylist = playlist }
+        }
+        .alert("New Playlist", isPresented: Binding(
+            get: { navigator.composing != nil },
+            set: { if !$0 { navigator.composing = nil } }
+        )) {
+            TextField("Name", text: $playlistName)
+            Button("Create") {
+                let title = playlistName.trimmingCharacters(in: .whitespaces)
+                let tracks = composingTracks
+                Task {
+                    if let created = await model.createPlaylist(title: title, tracks: tracks) {
+                        path.append(created)
+                    } else {
+                        navigator.notice = "Couldn't create the playlist."
+                    }
+                }
+            }
+            .disabled(playlistName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            let count = composingTracks.count
+            Text(count == 0 ? "Add tracks from any track, album or artist's menu." : "Starts with \(PlexPlaylist.trackCount(count)).")
+        }
+        .alert("Rename Playlist", isPresented: Binding(
+            get: { navigator.renaming != nil },
+            set: { if !$0 { navigator.renaming = nil } }
+        )) {
+            TextField("Name", text: $playlistName)
+            Button("Rename") {
+                let title = playlistName.trimmingCharacters(in: .whitespaces)
+                guard let playlist = editingPlaylist, title != playlist.title else { return }
+                Task {
+                    if await !model.rename(playlist, to: title) {
+                        navigator.notice = "Couldn't rename \(playlist.title)."
+                    }
+                }
+            }
+            .disabled(playlistName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Delete “\(editingPlaylist?.title ?? "")”?",
+            isPresented: Binding(
+                get: { navigator.deleting != nil },
+                set: { if !$0 { navigator.deleting = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Playlist", role: .destructive) {
+                guard let playlist = editingPlaylist else { return }
+                Task {
+                    if await !model.delete(playlist) {
+                        navigator.notice = "Couldn't delete \(playlist.title)."
+                    }
+                }
+            }
+        } message: {
+            Text("The playlist is removed from your Plex account. Nothing is removed from your library.")
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             self.width = width
@@ -185,6 +266,16 @@ struct LibraryView: View {
             if ProcessInfo.processInfo.environment["CTUNES_DEV_FAVORITES"] == "1" {
                 path.append(FavoritesRoute())
             }
+            // `list` switches the root to the Playlists subject; a
+            // `ratingKey|title` pushes that playlist's page.
+            if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_PLAYLIST"], !raw.isEmpty {
+                if raw == "list" {
+                    UserDefaults.standard.set(BrowseSubject.playlists.rawValue, forKey: "browseSubject")
+                } else {
+                    let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+                    path.append(PlexPlaylist(ratingKey: parts[0], title: parts.count > 1 ? parts[1] : "Playlist"))
+                }
+            }
             if let seed = ProcessInfo.processInfo.environment["CTUNES_DEV_SEARCH"], !seed.isEmpty {
                 try? await Task.sleep(for: .seconds(3))
                 searching = true
@@ -225,6 +316,9 @@ struct LibraryView: View {
                 if let section = model.selectedSection {
                     FavoritesView(model: model, section: section)
                 }
+            }
+            .navigationDestination(for: PlexPlaylist.self) { playlist in
+                PlaylistView(model: model, playlist: playlist)
             }
             .navigationDestination(for: SearchRoute.self) { _ in
                 if let section = model.selectedSection {

@@ -27,6 +27,7 @@ struct StorageList: View {
         List {
             overviewSection
             favoritesSection
+            if !inventory.playlists.isEmpty { playlistsSection }
             if downloads.isEmpty { emptySection } else { pinsSection; removeSection }
             cacheSection
             clearCacheSection
@@ -91,9 +92,43 @@ struct StorageList: View {
 
     private var emptySection: some View {
         Section {
-            Text("Long-press an artist, album or track and choose Download to keep it offline.")
+            Text("Long-press an artist, album, playlist or track and choose Download to keep it offline.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The playlists kept offline, newest pin first. A group like the
+    /// favorites: removing one leaves every other pin's files alone.
+    private var playlistsSection: some View {
+        Section {
+            ForEach(inventory.playlists.reversed()) { pin in
+                let status = inventory.playlistStatuses[pin.id]
+                DownloadRow(
+                    art: model.library?.artworkURL(pin.playlist.composite),
+                    round: false,
+                    title: pin.playlist.title,
+                    subtitle: DownloadText.summary(
+                        state: downloads.state(pin.playlist),
+                        bytes: status?.bytes ?? 0,
+                        unit: "track", count: status?.known ?? pin.playlist.leafCount
+                    ),
+                    detail: "Playlist"
+                )
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) { downloads.unpin(pin.playlist) } label: {
+                        Label("Remove", systemImage: "trash")
+                    }
+                    .tint(.red)
+                }
+                .contextMenu {
+                    Button(role: .destructive) { downloads.unpin(pin.playlist) } label: {
+                        Label("Remove Download", systemImage: "trash")
+                    }
+                }
+            }
+        } header: {
+            Text("Playlists")
         }
     }
 

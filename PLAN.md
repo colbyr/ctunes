@@ -35,6 +35,7 @@ launches on a device.
 | M8 track cache | done | `TrackCache` tests; simulator run showed the next three tracks downloading in order and a track transition playing from disk with no part request (`notes/track-cache.md`) |
 | M9 offline | done | `OfflineStoreTests`; simulator run pinned an album into Application Support with nothing in Caches, relaunched with `CTUNES_DEV_OFFLINE=1` to the banner, dimmed grid and the pinned album playing from disk (`notes/offline.md`) |
 | M10 downloads v1 | done | `OfflineStoreTests` cover artist and track pins, narrowing and the state rollups; simulator run pinned an artist (`CTUNES_DEV_PIN=artist`) and a single track, showed the complete, partial and portrait badges, and the manager listed a v1 album pin migrated in place (`notes/downloads.md`) |
+| M11 playlists | done | fixtures captured from the real server; `PlexLibraryTests` cover the reads and every write URL, `OfflineStoreTests` the saved items and the playlist pin group; simulator run showed the seven Music playlists (`CTUNES_DEV_PLAYLIST=list`), the regular and the 1,221-track smart pages with the hidden line, a pin landing in the pinned root and the offline relaunch playing it (`notes/playlists.md`). Edits are unit-tested at the URL level; the interactive flows (Add to Playlist, New Playlist…, reorder, Rename, Delete) are for a hand check |
 
 All six milestones are verified, background audio and lock screen controls
 included, the latter on a real device where the simulator cannot test them.
@@ -232,4 +233,4 @@ no shuffle mode of its own and doesn't need one for this. The lock-screen
 
 ## Explicitly out of scope
 
-Gapless and crossfade, sonic-analysis radio (M7's mixes are plain unions of picked artists or albums, not similarity), loudness leveling, waveform scrubbing, playlists (CarPlay landed after M7; see `notes/carplay.md`). Gapless in particular is not a weekend item — `AVQueuePlayer` handles it poorly and doing it properly means a custom `AVAudioEngine` pipeline, which is the single largest piece of work in a Plexamp-class client.
+Gapless and crossfade, sonic-analysis radio (M7's mixes are plain unions of picked artists or albums, not similarity), loudness leveling, waveform scrubbing, smart playlist filters and collaborative playlists (M11 browses, plays, edits and pins regular ones; CarPlay landed after M7; see `notes/carplay.md`). Gapless in particular is not a weekend item — `AVQueuePlayer` handles it poorly and doing it properly means a custom `AVAudioEngine` pipeline, which is the single largest piece of work in a Plexamp-class client.

@@ -255,6 +255,150 @@ struct PlexLibraryTests {
         #expect(calls[1].hasSuffix("rating=-1"))
     }
 
+    // MARK: - Playlists
+
+    /// The fixture is the section-filtered list: a regular playlist with
+    /// counts, smart ones, and an empty one with no composite or duration.
+    @Test("decodes the section's playlists, smart as a real bool")
+    func playlists() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("playlists")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        let playlists = try await library.playlists(inSection: "3")
+        let url = try #require(seen.get())
+        #expect(url.hasSuffix("/playlists?playlistType=audio&sectionID=3"))
+        #expect(playlists.count == 7)
+
+        let regular = try #require(playlists.first { $0.ratingKey == "1251" })
+        #expect(regular.title == "A Gentle Introduction to Laura Stevenson")
+        #expect(!regular.smart)
+        #expect(regular.leafCount == 7)
+        #expect(regular.duration == 1_669_000)
+        #expect(regular.composite == "/playlists/1251/composite/1756333152")
+        #expect(regular.updatedAt == 1_756_333_152)
+        #expect(regular.viewCount == 14)
+
+        let smart = try #require(playlists.first { $0.ratingKey == "440" })
+        #expect(smart.smart)
+        #expect(smart.composite?.isEmpty == false)
+
+        let empty = try #require(playlists.first { $0.ratingKey == "437" })
+        #expect(empty.smart)
+        #expect(empty.composite == nil)
+        #expect(empty.duration == nil)
+        #expect(empty.leafCount == 0)
+    }
+
+    @Test("a regular playlist's items carry their item id and the track's part")
+    func playlistItems() async throws {
+        let seen = Locked<String?>(nil)
+        let body = try Fixture.string("playlist-items")
+        let library = library { request in
+            seen.set(request.url?.absoluteString)
+            return .json(body)
+        }
+
+        let items = try await library.items(inPlaylist: "1251")
+        #expect(seen.get()?.hasSuffix("/playlists/1251/items") == true)
+        #expect(items.count == 7)
+        // The playlist's order, not the ids': handles, not positions.
+        #expect(items.prefix(3).map(\.playlistItemID) == [398, 399, 391])
+        let first = items[0]
+        #expect(first.track.ratingKey == "1212")
+        #expect(first.track.title == "#1")
+        #expect(first.track.grandparentTitle == "Laura Stevenson")
+        #expect(first.track.parentRatingKey == "1138")
+        #expect(first.track.part?.key == "/library/parts/1183/1750999050/file.flac")
+        #expect(first.track.isFavorite)
+    }
+
+    @Test("a smart playlist's items have no item id")
+    func smartPlaylistItems() async throws {
+        let body = try Fixture.string("smart-playlist-items")
+        let items = try await library { _ in .json(body) }.items(inPlaylist: "437")
+        #expect(items.count == 3)
+        #expect(items.allSatisfy { $0.playlistItemID == nil })
+        #expect(items[0].track.title == "Sunday Morning")
+        #expect(items[0].track.part != nil)
+    }
+
+    @Test("a playlist item round-trips through JSON in the server's shape")
+    func playlistItemRoundTrip() throws {
+        let items = try JSONDecoder().decode(
+            MediaContainerResponse<PlaylistItem>.self, from: Fixture.data("playlist-items")
+        ).items
+        let data = try JSONEncoder().encode(items)
+        let decoded = try JSONDecoder().decode([PlaylistItem].self, from: data)
+        #expect(decoded == items)
+        // The id sits beside the track's own keys, not under a wrapper.
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]]).first
+        #expect(object?["playlistItemID"] as? Int == 398)
+        #expect(object?["ratingKey"] as? String == "1212")
+    }
+
+    @Test("create POSTs the title and the tracks' uri and returns the new entry")
+    func createPlaylist() async throws {
+        let seen = Locked<[String]>([])
+        let body = try Fixture.string("playlists")
+        let library = library { request in
+            seen.set(seen.get() + ["\(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")"])
+            return .json(body)
+        }
+
+        let playlist = try await library.createPlaylist(title: "ctunes scratch & test+1", trackKeys: ["1212", "609"])
+        let call = try #require(seen.get().first)
+        #expect(call.hasPrefix("POST https://example.plex.direct:32400/playlists?type=audio&smart=0"))
+        // The strict encoder: a space, an ampersand and a plus all encoded.
+        #expect(call.contains("title=ctunes%20scratch%20%26%20test%2B1"))
+        #expect(call.hasSuffix("uri=server://M/com.plexapp.plugins.library/library/metadata/1212,609"))
+        #expect(playlist.ratingKey == "440")
+    }
+
+    @Test("append PUTs the tracks' uri and reads how many were new")
+    func addToPlaylist() async throws {
+        let seen = Locked<[String]>([])
+        let library = library { request in
+            seen.set(seen.get() + ["\(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")"])
+            return .json(#"{"MediaContainer":{"size":1,"leafCountAdded":1,"leafCountRequested":2}}"#)
+        }
+
+        let added = try await library.add(trackKeys: ["580", "1212"], toPlaylist: "1251")
+        #expect(added == 1)
+        let call = try #require(seen.get().first)
+        #expect(call == "PUT https://example.plex.direct:32400/playlists/1251/items?uri=server://M/com.plexapp.plugins.library/library/metadata/580,1212")
+
+        // Nothing to add is no request.
+        #expect(try await library.add(trackKeys: [], toPlaylist: "1251") == 0)
+        #expect(seen.get().count == 1)
+    }
+
+    @Test("remove, move, rename and delete address the item and the playlist")
+    func playlistEdits() async throws {
+        let seen = Locked<[String]>([])
+        let library = library { request in
+            seen.set(seen.get() + ["\(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")"])
+            return .init(body: Data())
+        }
+
+        try await library.remove(item: 398, fromPlaylist: "1251")
+        try await library.move(item: 391, after: 399, inPlaylist: "1251")
+        try await library.move(item: 391, after: nil, inPlaylist: "1251")
+        try await library.renamePlaylist("1251", title: "Road Trip")
+        try await library.deletePlaylist("1251")
+
+        #expect(seen.get() == [
+            "DELETE https://example.plex.direct:32400/playlists/1251/items/398",
+            "PUT https://example.plex.direct:32400/playlists/1251/items/391/move?after=399",
+            "PUT https://example.plex.direct:32400/playlists/1251/items/391/move",
+            "PUT https://example.plex.direct:32400/playlists/1251?title=Road%20Trip",
+            "DELETE https://example.plex.direct:32400/playlists/1251",
+        ])
+    }
+
     @Test("timeline reports carry state, progress and a session id")
     func reportTimeline() async throws {
         let tracksBody = try Fixture.string("tracks")

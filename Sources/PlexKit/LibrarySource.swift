@@ -22,6 +22,19 @@ public protocol LibrarySource: Sendable {
     /// matches a word prefix in the title, the album or the artist.
     func searchTracks(inSection section: String, query: String) async throws -> [PlexTrack]
     func setFavorite(_ ratingKey: String, _ favorite: Bool) async throws
+    /// The section's playlists and one playlist's items; offline, the
+    /// snapshot's list and the saved items of any playlist browsed.
+    func playlists(inSection section: String) async throws -> [PlexPlaylist]
+    func items(inPlaylist ratingKey: String) async throws -> [PlaylistItem]
+    /// The playlist writes, all refused offline like `setFavorite`.
+    func createPlaylist(title: String, trackKeys: [String]) async throws -> PlexPlaylist
+    /// Returns how many of the tracks were new to the playlist.
+    func add(trackKeys: [String], toPlaylist ratingKey: String) async throws -> Int
+    func remove(item playlistItemID: Int, fromPlaylist ratingKey: String) async throws
+    /// After `after`, or at the top with none.
+    func move(item playlistItemID: Int, after: Int?, inPlaylist ratingKey: String) async throws
+    func renamePlaylist(_ ratingKey: String, title: String) async throws
+    func deletePlaylist(_ ratingKey: String) async throws
     func reportTimeline(_ track: PlexTrack, state: PlaybackState, time: Double, sessionIdentifier: String) async throws
     /// Synchronous: the player picks an item URL without hopping actors.
     /// `sessionIdentifier` names the transcode session when `quality` asks

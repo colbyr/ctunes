@@ -86,6 +86,7 @@ struct SearchView: View {
         LibrarySearch.hits(
             artists: catalog.artists, albums: catalog.albums,
             tracks: trackQuery == needle ? tracks : [],
+            playlists: model.playlists,
             query: needle, hiding: hidden
         )
     }
@@ -149,7 +150,7 @@ struct SearchView: View {
         .overlay {
             if needle.isEmpty && recents.items.isEmpty {
                 ContentUnavailableView("Search Your Library", systemImage: "magnifyingglass",
-                                       description: Text("Artists, albums and songs."))
+                                       description: Text("Artists, albums, playlists and songs."))
             } else if !needle.isEmpty && settled && hits.isEmpty && completions.isEmpty {
                 ContentUnavailableView.search(text: query)
             }
@@ -240,6 +241,20 @@ struct SearchView: View {
                 path.append(album)
             } menu: {
                 AlbumMenu(model: model, album: album)
+            }
+        case .playlist(let playlist):
+            BrowseRow(
+                url: model.library?.artworkURL(playlist.composite),
+                placeholder: "music.note.list",
+                title: playlist.title,
+                subtitle: "Playlist · \(playlist.subtitle)",
+                download: model.downloads.state(playlist),
+                dimmed: offline && !model.downloads.hasDownloads(playlist)
+            ) {
+                recents.add(hit)
+                path.append(playlist)
+            } menu: {
+                PlaylistMenu(model: model, playlist: playlist)
             }
         case .track(let track):
             let downloaded = model.downloads.isDownloaded(track)

@@ -15,6 +15,8 @@ final class Downloads {
     /// cached from a play, so the grid can tell playable from not. Empty
     /// online, where the inventory covers every file that matters.
     private(set) var available: Set<String> = []
+    /// The same for playlists browsed: any with an item on disk.
+    private(set) var availablePlaylists: Set<String> = []
     /// The section's album list, for the totals an artist's badge needs:
     /// how many tracks each album has whether or not it was ever browsed.
     private(set) var albums: [PlexAlbum] = []
@@ -57,7 +59,7 @@ final class Downloads {
 
     var isEmpty: Bool {
         inventory.artists.isEmpty && inventory.albums.isEmpty && inventory.tracks.isEmpty
-            && !inventory.favoritesPinned && inventory.files.isEmpty
+            && inventory.playlists.isEmpty && !inventory.favoritesPinned && inventory.files.isEmpty
     }
 
     var usage: Int { inventory.totalBytes }
@@ -96,6 +98,20 @@ final class Downloads {
     /// with a file left from an earlier play.
     func hasDownloads(_ album: PlexAlbum) -> Bool {
         state(album).hasFiles || available.contains(album.ratingKey)
+    }
+
+    func state(_ playlist: PlexPlaylist) -> DownloadState {
+        inventory.state(ofPlaylist: playlist)
+    }
+
+    func isPinned(_ playlist: PlexPlaylist) -> Bool {
+        inventory.isPlaylistPinned(playlist.ratingKey)
+    }
+
+    /// Something to play: a saved item down under any pin, or offline,
+    /// one with a file left from an earlier play.
+    func hasDownloads(_ playlist: PlexPlaylist) -> Bool {
+        state(playlist).hasFiles || availablePlaylists.contains(playlist.ratingKey)
     }
 
     /// Whether the file is in the pinned root right now.
@@ -195,6 +211,16 @@ final class Downloads {
         }
     }
 
+    /// Drops a playlist pin; a track also under an album pin or the
+    /// favorites keeps its file.
+    func unpin(_ playlist: PlexPlaylist) {
+        guard let server else { return }
+        Task {
+            await store.unpinPlaylist(playlist.ratingKey, server: server)
+            refresh()
+        }
+    }
+
     func removeAll() {
         Task {
             await store.clear()
@@ -228,6 +254,7 @@ final class Downloads {
         guard let server else {
             inventory = DownloadInventory()
             available = []
+            availablePlaylists = []
             generation += 1
             return
         }
@@ -247,9 +274,11 @@ final class Downloads {
             }
             let inventory = await store.inventory(server: server)
             let available = offline ? await store.availableAlbums(server: server) : []
+            let availablePlaylists = offline ? await store.availablePlaylists(server: server) : []
             guard self.server == server else { return }
             self.inventory = inventory
             self.available = available
+            self.availablePlaylists = availablePlaylists
             generation += 1
         }
     }

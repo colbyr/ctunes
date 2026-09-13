@@ -8,6 +8,9 @@ struct Artwork: View {
     /// Fixed edge length, or nil to fill the available width as a square.
     var size: CGFloat? = 52
     var corner: CGFloat = 6
+    /// The glyph on the parchment while there is no image: a note for a
+    /// cover, a list for a playlist with no composite yet.
+    var placeholder = "music.note"
 
     @State private var image: UIImage?
 
@@ -24,7 +27,7 @@ struct Artwork: View {
                     Rectangle()
                         .fill(.quaternary)
                         .overlay(
-                            Image(systemName: "music.note")
+                            Image(systemName: placeholder)
                                 .font(.system(size: (size ?? 80) * 0.35))
                                 .foregroundStyle(.secondary)
                         )

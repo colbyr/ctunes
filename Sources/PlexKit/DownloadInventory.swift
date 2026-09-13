@@ -35,6 +35,19 @@ public struct DownloadInventory: Sendable, Equatable {
         }
     }
 
+    /// A playlist kept offline: a group beside the favorites, never part
+    /// of the artist/album/track tree.
+    public struct PlaylistPin: Sendable, Equatable, Identifiable {
+        public let playlist: PlexPlaylist
+        public let pinnedAt: Date
+        public var id: String { playlist.ratingKey }
+
+        public init(playlist: PlexPlaylist, pinnedAt: Date) {
+            self.playlist = playlist
+            self.pinnedAt = pinnedAt
+        }
+    }
+
     /// Artist pins, oldest first.
     public var artists: [ArtistPin] = []
     /// Album pins, oldest first. Disjoint from the artist pins: pinning an
@@ -47,9 +60,14 @@ public struct DownloadInventory: Sendable, Equatable {
     public var favoritesPinned = false
     /// The favorites group, whether or not the pin is on.
     public var favorites: [PlexTrack] = []
+    /// Playlist pins, oldest first.
+    public var playlists: [PlaylistPin] = []
     /// By album ratingKey: every album with a saved track list, a file in
     /// the pinned root or a pin still coming down.
     public var statuses: [String: AlbumDownloadStatus] = [:]
+    /// By playlist ratingKey: every playlist with a saved item list.
+    /// `pinned` is the playlist pin; the counts are over its items.
+    public var playlistStatuses: [String: AlbumDownloadStatus] = [:]
     /// Bytes on disk in the pinned root, by cache path.
     public var files: [String: Int] = [:]
     /// Cache paths any pin wants, on disk or not.
@@ -98,6 +116,17 @@ public struct DownloadInventory: Sendable, Equatable {
         if tracks.contains(where: { $0.ratingKey == track.ratingKey }) { return true }
         guard let album = track.parentRatingKey else { return false }
         return isAlbumPinned(album)
+    }
+
+    public func isPlaylistPinned(_ key: String) -> Bool {
+        playlists.contains { $0.id == key }
+    }
+
+    /// The playlist's download, from what is on disk of its saved items
+    /// and what the pin still wants. `leafCount` fills in the total for
+    /// a playlist never opened, the way an album's does.
+    public func state(ofPlaylist playlist: PlexPlaylist) -> DownloadState {
+        DownloadState(playlistStatuses[playlist.ratingKey]?.rollup(trackCount: playlist.smart ? nil : playlist.leafCount) ?? .init())
     }
 
     /// Bytes on disk and the file count for a list of tracks.
