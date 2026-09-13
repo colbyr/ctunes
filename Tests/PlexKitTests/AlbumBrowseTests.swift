@@ -47,10 +47,10 @@ struct AlbumBrowseTests {
         #expect(soulmate.genres.isEmpty)
     }
 
-    @Test("each view sorts its way, missing keys last, titles breaking ties", arguments: [
+    @Test("each view sorts its way, missing keys last (first for release order), titles breaking ties", arguments: [
         (AlbumView.recentlyAdded, ["Soulmate Stuff", "Demos", "Rubber Soul", "Revolver"]),
         (.mostPlayed, ["Revolver", "Rubber Soul", "Soulmate Stuff", "Demos"]),
-        (.artist, ["Soulmate Stuff", "Revolver", "Rubber Soul", "Demos"]),
+        (.artist, ["Demos", "Soulmate Stuff", "Revolver", "Rubber Soul"]),
     ])
     func sorting(view: AlbumView, expected: [String]) {
         #expect(view.sort.sorted(Self.albums).map(\.title) == expected)
@@ -139,6 +139,62 @@ struct AlbumBrowseTests {
         #expect(AlbumBrowse.search(Self.albums, query: "  ", view: .artist).isEmpty)
         let hits = AlbumBrowse.search(Self.albums, query: " beatles ", view: .artist)
         #expect(hits.map(\.title) == ["Revolver", "Rubber Soul"])
+    }
+    @Test("the Artists view reads as its sort over artists and over one artist's albums")
+    func scopedTitles() {
+        #expect(AlbumView.artist.title(in: .albums) == "Artists")
+        #expect(AlbumView.artist.title(in: .artists) == "A to Z")
+        #expect(AlbumView.artist.title(in: .discography) == "Release Date")
+        #expect(AlbumView.backCatalog.title(in: .artists) == "Back Catalog")
+        #expect(BrowseSubject.artists.scope == .artists)
+        #expect(AlbumView.cases(in: .discography).first == .artist)
+        #expect(AlbumView.cases(in: .albums) == AlbumView.allCases)
+    }
+
+    @Test("a discography under the Artists view is one flat group in release order")
+    func discographyIsFlat() {
+        let beatles = Self.albums.filter { $0.parentTitle == "The Beatles" }
+        let groups = AlbumBrowse.groups(beatles, view: .artist, scope: .discography)
+        #expect(groups.map(\.name) == [""])
+        #expect(groups[0].albums.map(\.title) == ["Revolver", "Rubber Soul"])
+        // The other groupings still apply on a discography.
+        #expect(AlbumBrowse.groups(beatles, view: .backCatalog, scope: .discography, now: Self.now).map(\.name)
+            == ["Last 6 Months", "Last Week"])
+    }
+
+    static let artists = [
+        PlexArtist(ratingKey: "b", title: "The Beatles", addedAt: 10, lastViewedAt: Self.ago(2), viewCount: 111),
+        PlexArtist(ratingKey: "a", title: "Antarctigo Vespucci", addedAt: 30, lastViewedAt: Self.ago(0), viewCount: 32),
+        PlexArtist(ratingKey: "n", title: "Nobody", addedAt: 20),
+    ]
+
+    @Test("artists group flat under every view but Back Catalog, which buckets by last play")
+    func artistSubjectGroups() {
+        let flat = AlbumBrowse.groups(Self.artists, view: .artist)
+        #expect(flat.map(\.name) == [""])
+        #expect(flat[0].artists.map(\.title) == ["Antarctigo Vespucci", "Nobody", "The Beatles"])
+        #expect(AlbumBrowse.groups(Self.artists, view: .mostPlayed)[0].artists.map(\.ratingKey) == ["b", "a", "n"])
+        let buckets = AlbumBrowse.groups(Self.artists, view: .backCatalog, now: Self.now)
+        #expect(buckets.map(\.name) == ["Never Played", "Last Week", "Played Today"])
+        #expect(buckets.map { $0.artists.map(\.ratingKey) } == [["n"], ["b"], ["a"]])
+    }
+
+    @Test("hidden artists drop out of artist groups and search")
+    func artistHiding() {
+        var hidden = VetoSet()
+        hidden.artists = ["b"]
+        #expect(AlbumBrowse.groups(Self.artists, view: .artist, hiding: hidden)[0].artists.map(\.ratingKey) == ["a", "n"])
+        #expect(AlbumBrowse.search(Self.artists, query: "the", view: .artist, hiding: hidden).isEmpty)
+    }
+
+    @Test("artist search ranks prefix over word over inside, and is empty for a blank query")
+    func artistSearch() {
+        #expect(AlbumBrowse.search(Self.artists, query: "  ", view: .artist).isEmpty)
+        // "Beatles" starts a word; "Nobody" only contains it, though it
+        // sorts first by name.
+        #expect(AlbumBrowse.search(Self.artists, query: "b", view: .artist).map(\.ratingKey) == ["b", "n"])
+        #expect(AlbumBrowse.search(Self.artists, query: "no", view: .artist).map(\.ratingKey) == ["n"])
+        #expect(AlbumBrowse.search(Self.artists, query: "beat", view: .artist).map(\.ratingKey) == ["b"])
     }
 }
 
@@ -236,4 +292,5 @@ struct RotationTests {
         #expect(AlbumView.allCases.first == .mostPlayed)
         #expect(AlbumView.mostPlayed.title == "On Rotation")
     }
+
 }

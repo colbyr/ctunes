@@ -1,20 +1,70 @@
 import PlexKit
 import SwiftUI
 
+/// How a browse screen lays its items out: covers in a grid, or rows
+/// with the art at the leading edge. One setting for the whole app, under
+/// `key`: a taste for lists is about reading, not about any one page, so
+/// the root, an artist's page and the mix pools all follow it, where each
+/// keeps its own sort.
+enum BrowseLayout: String, CaseIterable {
+    case grid, list
+
+    static let key = "browseLayout"
+
+    var title: String {
+        switch self {
+        case .grid: "Grid"
+        case .list: "List"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .grid: "square.grid.2x2"
+        case .list: "list.bullet"
+        }
+    }
+}
+
+extension BrowseSubject {
+    var systemImage: String {
+        switch self {
+        case .albums: "square.stack"
+        case .artists: "person.2"
+        }
+    }
+}
+
 /// The album browser's arrange button: a 34pt circle pinned at the trailing
-/// edge of the listener chips, opening one menu with the views inline.
+/// edge of the listener chips, opening one menu: what to browse (the root
+/// alone), the sort, the layout as a row of icons, and the download filter.
 /// Picking one applies it and dismisses.
 struct ArrangeChip: View {
     @Binding var view: AlbumView
-    /// Only the main browser offers the filter; a mix pool passes nil.
+    @Binding var layout: BrowseLayout
+    /// What the sorts are over, for the Artists view's name.
+    var scope: BrowseScope = .albums
+    /// Only the root browses artists as well as albums.
+    var subject: Binding<BrowseSubject>? = nil
+    /// Only the main browser and the album pool offer the filter.
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         Menu {
-            Picker("View", selection: $view) {
-                ForEach(AlbumView.allCases, id: \.self) { Text($0.title) }
+            if let subject {
+                Picker("Browse", selection: subject) {
+                    ForEach(BrowseSubject.allCases, id: \.self) { Label($0.title, systemImage: $0.systemImage) }
+                }
+                .pickerStyle(.inline)
+            }
+            Picker("Sort", selection: $view) {
+                ForEach(AlbumView.cases(in: scope), id: \.self) { Text($0.title(in: scope)) }
             }
             .pickerStyle(.inline)
+            Picker("Layout", selection: $layout) {
+                ForEach(BrowseLayout.allCases, id: \.self) { Label($0.title, systemImage: $0.systemImage) }
+            }
+            .pickerStyle(.palette)
             if let downloadedOnly {
                 Toggle("Downloaded only", systemImage: "arrow.down.circle", isOn: downloadedOnly)
             }
@@ -27,22 +77,25 @@ struct ArrangeChip: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Viewing \(view.title)")
+        .accessibilityLabel("Viewing \(view.title(in: scope)) as a \(layout.title.lowercased())")
     }
 }
 
 /// The chips plus the arrange button as one row. Each screen keeps its own
-/// stored view; only the roster is shared.
+/// stored sort; the roster and the layout are shared.
 struct AlbumBrowserControls: View {
     let model: AppModel
     /// Every artist in the library, for the Listeners sheet the chips open.
     let artists: [AlbumGroup]
     @Binding var view: AlbumView
+    @Binding var layout: BrowseLayout
+    var scope: BrowseScope = .albums
+    var subject: Binding<BrowseSubject>? = nil
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         ListenerChips(model: model, artists: artists) {
-            ArrangeChip(view: $view, downloadedOnly: downloadedOnly)
+            ArrangeChip(view: $view, layout: $layout, scope: scope, subject: subject, downloadedOnly: downloadedOnly)
         }
     }
 }
@@ -120,13 +173,17 @@ struct HiddenCount: Equatable {
     }
 }
 
-/// One group's heading over its grid. Shared by the main screen and the
-/// album mix pool so a group reads the same on both.
+/// One group's heading over its items. Shared by the main screen, under
+/// either subject, and the album mix pool so a group reads the same on
+/// both.
 struct AlbumGroupHeader: View {
-    let group: AlbumGroup
+    let name: String
+
+    init(name: String) { self.name = name }
+    init(group: AlbumGroup) { name = group.name }
 
     var body: some View {
-        Text(group.name)
+        Text(name)
             .font(.title3.weight(.semibold))
             // The palette's ink, not the system primary: on dark that is
             // pure white against every other cream label on the page.

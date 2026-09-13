@@ -10,8 +10,10 @@ struct ArtistRoute: Hashable {
 }
 
 /// One artist: portrait, who on the roster hears them, play and shuffle
-/// over everything of theirs, and their albums newest first. Reached from
-/// the artist name in Now Playing, on an album, or from the Artists view.
+/// over everything of theirs, then the listener chips and the arrange
+/// button over their albums, newest release first until arranged
+/// otherwise. Reached from the artist name in Now Playing, on an album,
+/// or from the Artists view.
 struct ArtistView: View {
     let model: AppModel
     let section: PlexSection
@@ -22,6 +24,9 @@ struct ArtistView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var albums: [PlexAlbum] = []
+    /// Every artist in the section as the listener sheet wants them, for
+    /// the chips; empty until the section's albums land.
+    @State private var libraryArtists: [AlbumGroup] = []
     /// The portrait, looked up in the section's artist list; nil until it
     /// lands or when the artist has none, when the first cover stands in.
     @State private var portrait: String?
@@ -32,6 +37,11 @@ struct ArtistView: View {
     @State private var actionsVisible = true
     @State private var scrollPosition = ScrollPosition()
     @State private var nothingToPlay = false
+    /// The page's own sort, release order by default; the layout is the
+    /// app's. No play history is fetched here, so On Rotation reads the
+    /// server's play counts.
+    @AppStorage("artistView") private var view: AlbumView = .artist
+    @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
 
     private var offline: Bool { model.library?.isOffline ?? false }
     private var hidden: VetoSet { model.roster.hidden }
@@ -45,28 +55,38 @@ struct ArtistView: View {
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: sizeClass == .regular ? 180 : 100), spacing: 12, alignment: .top)]
     }
+    /// Nothing hidden: an album a listening rider vetoed stays on the
+    /// page, dimmed, since the page was opened on purpose.
+    private var groups: [AlbumGroup] {
+        AlbumBrowse.groups(albums, view: view, scope: .discography)
+    }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 header
                     .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    ForEach(albums) { album in
-                        // An album a listening rider vetoed stays in the
-                        // grid, dimmed: the page was opened on purpose.
-                        let hiddenNow = hidden.hides(album, within: .artist)
-                        Button { path.append(album) } label: {
-                            AlbumTile(model: model, album: album, showArtist: false)
+                Rectangle()
+                    .fill(Color.divider)
+                    .frame(height: 1)
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                AlbumBrowserControls(model: model, artists: libraryArtists, view: $view, layout: $layout, scope: .discography)
+                    .padding(.top, 16)
+                HiddenLine(model: model, count: hiddenCount)
+                    .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                ForEach(groups) { group in
+                    Section {
+                        items(group.albums)
+                            .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    } header: {
+                        if !group.name.isEmpty {
+                            AlbumGroupHeader(group: group)
+                                .padding(.leading, Self.margin)
+                                .padding(.top, 14)
+                                .padding(.bottom, 6)
                         }
-                        .buttonStyle(.plain)
-                        .opacity(hiddenNow ? 0.4 : 1)
-                        .accessibilityHint(hiddenNow ? "Hidden for a listener" : "")
-                        // Every tile here is theirs, so no Go to Artist.
-                        .contextMenu { AlbumMenu(model: model, album: album, showArtist: false) }
                     }
                 }
-                .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
             }
         }
         .artworkBackground(artworkURL)
@@ -126,13 +146,56 @@ struct ArtistView: View {
         }
     }
 
+    /// Every album is theirs, so no Go to Artist in the menu. An album a
+    /// listening rider vetoed stays on the page, dimmed.
+    @ViewBuilder private func items(_ albums: [PlexAlbum]) -> some View {
+        switch layout {
+        case .grid:
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                ForEach(albums) { album in
+                    Button { path.append(album) } label: {
+                        AlbumTile(model: model, album: album, showArtist: false)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { AlbumMenu(model: model, album: album, showArtist: false) }
+                    .modifier(HiddenDim(hidden: hidden.hides(album, within: .artist)))
+                }
+            }
+        case .list:
+            BrowseList(items: albums) { album in
+                AlbumRow(model: model, album: album, showArtist: false) { path.append(album) } menu: {
+                    AlbumMenu(model: model, album: album, showArtist: false)
+                }
+                .modifier(HiddenDim(hidden: hidden.hides(album, within: .artist)))
+            }
+        }
+    }
+
+    private struct HiddenDim: ViewModifier {
+        let hidden: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .opacity(hidden ? 0.4 : 1)
+                .accessibilityHint(hidden ? "Hidden for a listener" : "")
+        }
+    }
+
+    /// What the active listeners veto among these albums. They stay on
+    /// the page dimmed, so the line says how many rather than what went.
+    private var hiddenCount: HiddenCount {
+        HiddenCount(albums: albums.filter { hidden.hides($0, within: .artist) }.count)
+    }
+
     /// The fetch: on appear, on a library swap, and on pull to refresh.
+    /// The section's albums come too, for the listener sheet the chips
+    /// open, which lists every artist with an album count.
     private func load() async {
         guard let library = model.library else { return }
         async let artists = library.artists(inSection: section.key)
+        async let sectionAlbums = library.albums(inSection: section.key)
         do {
-            let fetched = try await library.albums(forArtist: route.ratingKey, inSection: section.key)
-            albums = AlbumView.artist.sorted(fetched)
+            albums = try await library.albums(forArtist: route.ratingKey, inSection: section.key)
         } catch {
             await model.connectionLost(error)
             if model.library?.isOffline != true { albums = [] }
@@ -140,6 +203,7 @@ struct ArtistView: View {
         }
         loaded = true
         portrait = (try? await artists)?.first { $0.ratingKey == route.ratingKey }?.thumb
+        libraryArtists = AlbumBrowse.groups((try? await sectionAlbums) ?? [], view: .artist)
     }
 
     private var header: some View {

@@ -74,8 +74,10 @@ struct MixBuilderView: View {
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// Per builder rather than the root's key: arranging a pool by play
-    /// count shouldn't reorder the album grid behind it.
+    /// count shouldn't reorder the album grid behind it. The layout is
+    /// the app's.
     @AppStorage private var view: AlbumView
+    @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
     /// Album pool only; there is no per-artist download state.
     @AppStorage private var downloadedOnly: Bool
     /// Comma-joined ratingKeys, so the last mix is waiting next time.
@@ -214,7 +216,7 @@ struct MixBuilderView: View {
                     if picks.isEmpty {
                         emptySelection
                     } else {
-                        grid(picks, selected: true)
+                        items(picks, selected: true)
                     }
                 }
                 .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
@@ -222,14 +224,15 @@ struct MixBuilderView: View {
                     .fill(Color.divider)
                     .frame(height: 1)
                     .padding(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
+                AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: $view, layout: $layout,
+                                     scope: kind == .artist ? .artists : .albums, downloadedOnly: kind == .album ? $downloadedOnly : nil)
                     .padding(.top, 16)
                 HiddenLine(model: model, count: hiddenCount)
                     .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 if kind == .album && needle.isEmpty {
                     ForEach(poolGroups) { group in
                         Section {
-                            grid(group.albums.map(item), selected: false)
+                            items(group.albums.map(item), selected: false)
                                 .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
                         } header: {
                             if !group.name.isEmpty {
@@ -241,7 +244,7 @@ struct MixBuilderView: View {
                         }
                     }
                 } else {
-                    grid(rest, selected: false)
+                    items(rest, selected: false)
                         .padding(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
                 }
             }
@@ -316,37 +319,62 @@ struct MixBuilderView: View {
         rotation = Rotation(history: history, albums: albums)
     }
 
-    /// Stands in for the selected grid, sized by an invisible tile in the
-    /// same columns so the pool doesn't jump when the first pick lands.
+    /// Stands in for the selected items, sized by an invisible tile in the
+    /// same columns, or one invisible row, so the pool doesn't jump when
+    /// the first pick lands.
     private var emptySelection: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-            MixTile(kind: kind, item: Item(id: "", title: " ", subtitle: " ", thumb: nil, vetoed: false), selected: false, url: nil)
-                .hidden()
-        }
-        .overlay {
-            Text("Mix all \(kind.noun), or pick specific ones below.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-        }
+        let blank = Item(id: "", title: " ", subtitle: " ", thumb: nil, vetoed: false)
+        return items([blank], selected: false)
+            .hidden()
+            .overlay {
+                Text("Mix all \(kind.noun), or pick specific ones below.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
     }
 
-    private func grid(_ items: [Item], selected isSelected: Bool) -> some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-            ForEach(items) { item in
-                Button { toggle(item.id) } label: {
-                    MixTile(kind: kind, item: item, selected: isSelected, url: model.library?.artworkURL(item.thumb))
+    @ViewBuilder private func items(_ items: [Item], selected isSelected: Bool) -> some View {
+        switch layout {
+        case .grid:
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                ForEach(items) { item in
+                    self.item(item, selected: isSelected) {
+                        MixTile(kind: kind, item: item, selected: isSelected, url: model.library?.artworkURL(item.thumb))
+                    }
                 }
-                .buttonStyle(.plain)
+            }
+        case .list:
+            BrowseList(items: items) { item in
+                BrowseRow(url: model.library?.artworkURL(item.thumb), round: kind == .artist, title: item.title,
+                          subtitle: item.subtitle, download: item.download, dimmed: item.vetoed || item.unavailable) {
+                    toggle(item.id)
+                } accessory: {
+                    // A pick's mark, or the plus that adds one; the ring
+                    // color from the tiles, gray once vetoed.
+                    Image(systemName: isSelected ? "xmark.circle.fill" : "plus.circle")
+                        .font(.title3)
+                        .foregroundStyle(isSelected ? (item.vetoed ? .gray : kind.accent) : .secondary)
+                } menu: {
+                    menu(for: item)
+                }
                 .accessibilityLabel(isSelected ? "Remove \(item.title)" : "Add \(item.title)")
                 .accessibilityHint(item.vetoed ? "Hidden for a listener, so it won't be played" : "")
-                .contextMenu { menu(for: item) }
             }
         }
     }
 
-    /// A tap picks; a long press gets the same menu the tile has elsewhere.
+    /// One tile: a tap toggles it, a long press gets the same menu the
+    /// tile has elsewhere.
+    private func item(_ item: Item, selected isSelected: Bool, @ViewBuilder label: () -> some View) -> some View {
+        Button { toggle(item.id) } label: { label() }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isSelected ? "Remove \(item.title)" : "Add \(item.title)")
+            .accessibilityHint(item.vetoed ? "Hidden for a listener, so it won't be played" : "")
+            .contextMenu { menu(for: item) }
+    }
+
     @ViewBuilder private func menu(for item: Item) -> some View {
         switch kind {
         case .artist:

@@ -1,9 +1,10 @@
 import PlexKit
 import SwiftUI
 
-/// Browse root: every album in the library, sorted and grouped however the
-/// arrange button last left it. The query from the floating search pill switches to
-/// a flat grid ranked by match quality.
+/// Browse root: every album in the library, or every artist, sorted,
+/// grouped and laid out however the arrange button last left it. The query
+/// from the floating search pill switches to a flat list ranked by match
+/// quality.
 struct MusicView: View {
     let model: AppModel
     let section: PlexSection
@@ -12,6 +13,9 @@ struct MusicView: View {
     @Environment(AudioPlayer.self) private var player
 
     @State private var albums: [PlexAlbum] = []
+    /// Every artist in the section, for the Artists subject: the portraits
+    /// and the artists' own play dates, which the albums don't carry.
+    @State private var libraryArtists: [PlexArtist] = []
     /// Scored once when the plays land; `.none` before then or when the
     /// request fails, which leaves On Rotation on the server's play counts.
     @State private var rotation: Rotation = .none
@@ -28,6 +32,8 @@ struct MusicView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage("albumView") private var view: AlbumView = .mostPlayed
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
+    @AppStorage("browseSubject") private var subject: BrowseSubject = .albums
+    @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
 
     private var offline: Bool { model.state == .offline }
     private var hidden: VetoSet { model.roster.hidden }
@@ -42,25 +48,157 @@ struct MusicView: View {
     private var results: [PlexAlbum] {
         AlbumBrowse.search(browsable, query: query, view: view, hiding: hidden, rotation: rotation)
     }
+    /// The Artists subject's list. Under Downloaded only, the artists with
+    /// a downloaded album, read off the album list rather than rolling up
+    /// every artist's state.
+    private var browsableArtists: [PlexArtist] {
+        guard downloadedOnly else { return libraryArtists }
+        let downloaded = Set(browsable.map(\.artistKey))
+        return libraryArtists.filter { downloaded.contains($0.ratingKey) }
+    }
+    private var artistGroups: [ArtistGroup] {
+        AlbumBrowse.groups(browsableArtists, view: view, hiding: hidden, rotation: rotation)
+    }
+    private var artistResults: [PlexArtist] {
+        AlbumBrowse.search(browsableArtists, query: query, view: view, hiding: hidden, rotation: rotation)
+    }
+    /// How many albums each artist has in the section, for the line under
+    /// their name.
+    private var albumCounts: [String: Int] {
+        albums.reduce(into: [:]) { $0[$1.artistKey, default: 0] += 1 }
+    }
     /// Every artist in the library, for the listeners sheet.
     private var artists: [AlbumGroup] {
         AlbumBrowse.groups(albums, view: .artist)
     }
     /// Counted over this section's albums, so a veto from another
-    /// section doesn't count here.
-    private var hiddenCount: HiddenCount { .over(albums, hidden: hidden) }
+    /// section doesn't count here. Browsing artists, only the artists.
+    private var hiddenCount: HiddenCount {
+        switch subject {
+        case .albums: .over(albums, hidden: hidden)
+        case .artists: HiddenCount(artists: libraryArtists.filter { hidden.artists.contains($0.ratingKey) }.count)
+        }
+    }
+    /// Whether the browser has nothing to show under the filter.
+    private var filteredOut: Bool {
+        switch subject {
+        case .albums: groups.isEmpty
+        case .artists: artistGroups.isEmpty
+        }
+    }
+    private var noResults: Bool {
+        switch subject {
+        case .albums: results.isEmpty
+        case .artists: artistResults.isEmpty
+        }
+    }
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: tileMinimum), spacing: 12, alignment: .top)]
+    }
 
     /// Tiles push onto the path by hand: a NavigationLink in a List row makes
     /// the whole row a link too, so one tap pushed two albums and back landed
     /// on the wrong one.
-    private func grid(_ albums: [PlexAlbum], spacing: CGFloat, showArtist: Bool) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: tileMinimum), spacing: spacing, alignment: .top)], alignment: .leading, spacing: spacing) {
-            ForEach(albums) { album in
-                Button { path.append(album) } label: {
-                    AlbumTile(model: model, album: album, showArtist: showArtist)
+    @ViewBuilder private func albumItems(_ albums: [PlexAlbum], showArtist: Bool) -> some View {
+        switch layout {
+        case .grid:
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                ForEach(albums) { album in
+                    Button { path.append(album) } label: {
+                        AlbumTile(model: model, album: album, showArtist: showArtist)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { AlbumMenu(model: model, album: album) }
                 }
-                .buttonStyle(.plain)
-                .contextMenu { AlbumMenu(model: model, album: album) }
+            }
+        case .list:
+            BrowseList(items: albums) { album in
+                AlbumRow(model: model, album: album, showArtist: showArtist) { path.append(album) } menu: {
+                    AlbumMenu(model: model, album: album)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func artistItems(_ artists: [PlexArtist]) -> some View {
+        let counts = albumCounts
+        switch layout {
+        case .grid:
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                ForEach(artists) { artist in
+                    Button { path.append(ArtistRoute(ratingKey: artist.ratingKey, title: artist.title)) } label: {
+                        ArtistTile(model: model, artist: artist, subtitle: Self.albumCount(counts[artist.ratingKey]))
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { ArtistMenu(model: model, ratingKey: artist.ratingKey, title: artist.title) }
+                }
+            }
+        case .list:
+            BrowseList(items: artists) { artist in
+                ArtistRow(model: model, artist: artist, subtitle: Self.albumCount(counts[artist.ratingKey])) {
+                    path.append(ArtistRoute(ratingKey: artist.ratingKey, title: artist.title))
+                } menu: {
+                    ArtistMenu(model: model, ratingKey: artist.ratingKey, title: artist.title)
+                }
+            }
+        }
+    }
+
+    /// "12 albums"; nil for an artist with none in the section.
+    private static func albumCount(_ count: Int?) -> String? {
+        count.map { "\($0) album\($0 == 1 ? "" : "s")" }
+    }
+
+    /// The group headings and their items, either subject. Under the
+    /// Artists view an album heading is the artist, and opens their page.
+    @ViewBuilder private var sections: some View {
+        switch subject {
+        case .albums:
+            ForEach(groups) { group in
+                Section {
+                    albumItems(group.albums, showArtist: view != .artist)
+                        .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                } header: {
+                    if !group.name.isEmpty {
+                        if view == .artist, let key = group.albums.first?.parentRatingKey {
+                            Button { path.append(ArtistRoute(ratingKey: key, title: group.name)) } label: {
+                                HStack(spacing: 6) {
+                                    AlbumGroupHeader(group: group)
+                                    Image(systemName: "chevron.right")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open \(group.name)")
+                            .contextMenu { ArtistMenu(model: model, ratingKey: key, title: group.name) }
+                            .padding(.leading, Self.margin)
+                            .padding(.top, 14)
+                            .padding(.bottom, 6)
+                        } else {
+                            AlbumGroupHeader(group: group)
+                                .padding(.leading, Self.margin)
+                                .padding(.top, 14)
+                                .padding(.bottom, 6)
+                        }
+                    }
+                }
+            }
+        case .artists:
+            ForEach(artistGroups) { group in
+                Section {
+                    artistItems(group.artists)
+                        .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                } header: {
+                    if !group.name.isEmpty {
+                        AlbumGroupHeader(name: group.name)
+                            .padding(.leading, Self.margin)
+                            .padding(.top, 14)
+                            .padding(.bottom, 6)
+                    }
+                }
             }
         }
     }
@@ -84,8 +222,13 @@ struct MusicView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if !query.isEmpty {
-                    grid(results, spacing: 12, showArtist: true)
-                        .padding(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
+                    Group {
+                        switch subject {
+                        case .albums: albumItems(results, showArtist: true)
+                        case .artists: artistItems(artistResults)
+                        }
+                    }
+                    .padding(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin))
                 } else {
                     if offline {
                         OfflineBanner(reconnecting: model.reconnecting) {
@@ -125,51 +268,20 @@ struct MusicView: View {
                         .fill(Color.divider)
                         .frame(height: 1)
                         .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    AlbumBrowserControls(model: model, artists: artists, view: $view, downloadedOnly: $downloadedOnly)
+                    AlbumBrowserControls(model: model, artists: artists, view: $view, layout: $layout,
+                                         scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
                         .padding(.top, 16)
                     HiddenLine(model: model, count: hiddenCount)
                         .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     // In the stack rather than an overlay, so it sits under the
                     // cards and the controls instead of over them.
-                    if loaded, !albums.isEmpty, groups.isEmpty, downloadedOnly {
+                    if loaded, !albums.isEmpty, filteredOut, downloadedOnly {
                         ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
                                                description: Text("Turn off Downloaded only to see the whole library."))
                             .frame(maxWidth: .infinity)
                             .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     }
-                    ForEach(groups) { group in
-                        Section {
-                            grid(group.albums, spacing: 12, showArtist: view != .artist)
-                                .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                        } header: {
-                            if !group.name.isEmpty {
-                                // Under the Artists view the heading is the
-                                // artist, and opens their page.
-                                if view == .artist, let key = group.albums.first?.parentRatingKey {
-                                    Button { path.append(ArtistRoute(ratingKey: key, title: group.name)) } label: {
-                                        HStack(spacing: 6) {
-                                            AlbumGroupHeader(group: group)
-                                            Image(systemName: "chevron.right")
-                                                .font(.subheadline.weight(.semibold))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .contentShape(.rect)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("Open \(group.name)")
-                                    .contextMenu { ArtistMenu(model: model, ratingKey: key, title: group.name) }
-                                    .padding(.leading, Self.margin)
-                                    .padding(.top, 14)
-                                    .padding(.bottom, 6)
-                                } else {
-                                    AlbumGroupHeader(group: group)
-                                        .padding(.leading, Self.margin)
-                                        .padding(.top, 14)
-                                        .padding(.bottom, 6)
-                                }
-                            }
-                        }
-                    }
+                    sections
                 }
             }
         }
@@ -188,7 +300,7 @@ struct MusicView: View {
                 ProgressView()
             } else if albums.isEmpty {
                 ContentUnavailableView("No albums", systemImage: "square.stack")
-            } else if !query.isEmpty && results.isEmpty {
+            } else if !query.isEmpty && noResults {
                 ContentUnavailableView.search(text: query)
             }
         }
@@ -246,10 +358,13 @@ struct MusicView: View {
             async let favoriteTracks = library.favoriteTracks(inSection: section.key)
             // Optional: the grid falls back to play counts without it.
             async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
+            // Optional too: the Artists subject is empty until it lands.
+            async let artistList = library.artists(inSection: section.key)
             albums = try await library.albums(inSection: section.key)
             loaded = true
             history = (try? await plays) ?? []
             rotation = Rotation(history: history, albums: albums)
+            libraryArtists = (try? await artistList) ?? []
             favorites = try? await favoriteTracks
         } catch {
             await model.connectionLost(error)
@@ -315,37 +430,6 @@ struct MusicView: View {
             player.play(playable.spreadShuffled(), startingAt: 0, library: library)
             nowPlaying.isShown = true
         }
-    }
-}
-
-/// One cover with its title and either the artist or the year under it.
-/// Shared with the artist page, so an album reads the same on both.
-struct AlbumTile: View {
-    let model: AppModel
-    let album: PlexAlbum
-    let showArtist: Bool
-
-    var body: some View {
-        let state = model.downloads.state(album)
-        let playable = model.downloads.hasDownloads(album)
-        let offline = model.state == .offline
-        VStack(alignment: .leading, spacing: 6) {
-            Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
-                .artworkShadow()
-                .overlay(alignment: .bottomTrailing) { DownloadBadge(state: state) }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(album.title)
-                    .font(.footnote)
-                    .lineLimit(1)
-                Text(showArtist ? (album.parentTitle ?? "—") : (album.year.map(String.init) ?? "—"))
-                    .font(.caption2).foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Browsable but not playable: still in the grid, clearly dimmed.
-        .opacity(offline && !playable ? 0.35 : 1)
-        .contentShape(.rect)
     }
 }
 

@@ -162,6 +162,20 @@ shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
 
+**Browsing** (`AlbumBrowse.swift`, `AlbumBrowserControls.swift`,
+`BrowseItems.swift`): the arrange chip's menu holds what to browse
+(`BrowseSubject`, albums or artists, root only), the sort (`AlbumView`),
+the layout (`BrowseLayout`, grid or list) and the download filter. The
+sort is per screen (`albumView`, `artistView`, `mixView.<kind>`); the
+layout is one app-wide key, `browseLayout`, since a taste for lists is
+about reading, not any one page. The four sorts apply to every scope
+and only the Artists view's name changes with it (`title(in:)`): "A to
+Z" over artists, "Release Date" on an artist's page, where
+`AlbumBrowse.groups(scope: .discography)` keeps it flat. `AlbumTile`,
+`ArtistTile`, `AlbumRow`, `ArtistRow` and `BrowseRow` are the one
+drawing of an item; `BrowseList` is the list layout's stack, a
+`LazyVStack` with hairlines, never a `List`.
+
 **Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu` and
 `TrackMenu` are the one place an artist, album or track's actions live.
 Every tile, row, cover and name gets one as a long-press `.contextMenu`,
