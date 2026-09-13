@@ -120,7 +120,7 @@ struct MixBuilderView: View {
         var download: DownloadState = .none
     }
 
-    private var hidden: Set<String> { model.roster.hiddenArtistKeys }
+    private var hidden: VetoSet { model.roster.hidden }
     private var needle: String { query.trimmingCharacters(in: .whitespaces) }
     /// The album pool after the Downloaded only filter. Picks come from the
     /// unfiltered list, so turning the filter on never drops a selection.
@@ -134,7 +134,7 @@ struct MixBuilderView: View {
         case .artist:
             return view.sorted(artists, rotation: rotation).map {
                 Item(id: $0.ratingKey, title: $0.title, subtitle: nil, thumb: $0.thumb,
-                     vetoed: hidden.contains($0.ratingKey), download: model.downloads.state(artist: $0.ratingKey))
+                     vetoed: hidden.artists.contains($0.ratingKey), download: model.downloads.state(artist: $0.ratingKey))
             }
         case .album:
             let list = view.sorted(albums, rotation: rotation)
@@ -150,7 +150,7 @@ struct MixBuilderView: View {
             title: album.title,
             subtitle: view == .artist ? (album.year.map(String.init) ?? "—") : album.parentTitle,
             thumb: album.thumb,
-            vetoed: hidden.contains(album.artistKey),
+            vetoed: hidden.hides(album),
             unavailable: model.state == .offline && !model.downloads.hasDownloads(album),
             download: model.downloads.state(album)
         )
@@ -190,10 +190,10 @@ struct MixBuilderView: View {
         }
     }
 
-    private var hiddenCount: Int {
+    private var hiddenCount: HiddenCount {
         switch kind {
-        case .artist: artists.filter { hidden.contains($0.ratingKey) }.count
-        case .album: Set(albums.map(\.artistKey).filter { hidden.contains($0) }).count
+        case .artist: HiddenCount(artists: artists.filter { hidden.artists.contains($0.ratingKey) }.count)
+        case .album: .over(albums, hidden: hidden)
         }
     }
 
@@ -224,7 +224,7 @@ struct MixBuilderView: View {
                     .padding(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
                 AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: $view, downloadedOnly: kind == .album ? $downloadedOnly : nil)
                     .padding(.top, 16)
-                HiddenArtistsLine(model: model, count: hiddenCount)
+                HiddenLine(model: model, count: hiddenCount)
                     .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 if kind == .album && needle.isEmpty {
                     ForEach(poolGroups) { group in
@@ -410,10 +410,11 @@ struct MixBuilderView: View {
                     return all
                 }
             }
-            // Offline, only what's on disk can go in the queue.
+            // A pick's vetoed albums and tracks drop out here; offline,
+            // only what's on disk can go in the queue.
             let offline = model.state == .offline
             let playable = tracks.filter {
-                !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isAvailable($0))
+                !hidden.hides($0) && (!offline || model.downloads.isAvailable($0))
             }
             guard !playable.isEmpty else {
                 nothingToPlay = true

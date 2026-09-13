@@ -31,16 +31,24 @@ private struct LibraryActions {
 
     var offline: Bool { model.library?.isOffline ?? false }
 
-    /// Offline, only a track with a file can enter the queue.
-    func playable(_ tracks: [PlexTrack]) -> [PlexTrack] {
-        offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
+    /// What can enter the queue from a collection: offline, only a track
+    /// with a file; and never a track the active listeners hide inside
+    /// the collection (`within`), so an album skips its vetoed tracks and
+    /// an artist their vetoed albums. The one track a menu was opened on
+    /// is always kept: it was chosen on purpose.
+    func playable(_ tracks: [PlexTrack], within container: VetoKind?, keeping chosen: PlexTrack? = nil) -> [PlexTrack] {
+        let hidden = model.roster.hidden
+        return tracks.filter {
+            ($0.id == chosen?.id || !hidden.hides($0, within: container))
+                && (!offline || model.downloads.isAvailable($0))
+        }
     }
 
     /// The whole list from the top, or from one of its tracks. Nothing
     /// to play is a notice, never silence.
-    func play(_ tracks: [PlexTrack], from track: PlexTrack? = nil) {
+    func play(_ tracks: [PlexTrack], within container: VetoKind?, from track: PlexTrack? = nil) {
         guard let library = model.library else { return }
-        let tracks = playable(tracks)
+        let tracks = playable(tracks, within: container, keeping: track)
         guard !tracks.isEmpty else { return nothingToPlay() }
         let start = track.flatMap { track in tracks.firstIndex { $0.id == track.id } } ?? 0
         player.play(tracks, startingAt: start, library: library)
@@ -49,21 +57,21 @@ private struct LibraryActions {
 
     /// Every shuffle in the app is the spread shuffle. With a leading
     /// track it plays first and the rest of the list follows shuffled.
-    func shuffle(_ tracks: [PlexTrack], leading track: PlexTrack? = nil) {
-        guard let track else { return play(tracks.spreadShuffled()) }
+    func shuffle(_ tracks: [PlexTrack], within container: VetoKind?, leading track: PlexTrack? = nil) {
+        guard let track else { return play(tracks.spreadShuffled(), within: container) }
         let rest = tracks.filter { $0.id != track.id }.spreadShuffled()
-        play([track] + rest)
+        play([track] + rest, within: container, from: track)
     }
 
     /// Whole albums front to back, the album order shuffled, the way the
     /// artist page's Mix Albums does it.
-    func mixAlbums(_ tracks: [PlexTrack]) {
-        play(tracks.albumShuffled())
+    func mixAlbums(_ tracks: [PlexTrack], within container: VetoKind?) {
+        play(tracks.albumShuffled(), within: container)
     }
 
-    func enqueue(_ tracks: [PlexTrack], next: Bool) {
+    func enqueue(_ tracks: [PlexTrack], within container: VetoKind?, next: Bool) {
         guard let library = model.library else { return }
-        let tracks = playable(tracks)
+        let tracks = playable(tracks, within: container)
         guard !tracks.isEmpty else { return nothingToPlay() }
         next ? player.playNext(tracks, library: library)
              : player.addToQueue(tracks, library: library)
@@ -192,12 +200,12 @@ struct ArtistMenu: View {
         if showPlayback {
             Section {
                 Button {
-                    Task { actions.mixAlbums(await actions.tracks(ofArtist: ratingKey)) }
+                    Task { actions.mixAlbums(await actions.tracks(ofArtist: ratingKey), within: .artist) }
                 } label: {
                     Label("Mix Albums", systemImage: "square.on.square")
                 }
                 Button {
-                    Task { actions.shuffle(await actions.tracks(ofArtist: ratingKey)) }
+                    Task { actions.shuffle(await actions.tracks(ofArtist: ratingKey), within: .artist) }
                 } label: {
                     Label("Shuffle", systemImage: "shuffle")
                 }
@@ -209,7 +217,7 @@ struct ArtistMenu: View {
             download: { Task { await actions.downloadArtist(key: ratingKey, title: title) } },
             remove: { model.downloads.unpinArtist(ratingKey) }
         )
-        ListenersMenu(model: model, artistKey: ratingKey, artist: title)
+        ListenersMenu(model: model, scope: VetoScope(artistKey: ratingKey, title: title))
     }
 }
 
@@ -251,23 +259,23 @@ struct AlbumMenu: View {
             Section {
                 if showAlbum {
                     Button {
-                        Task { actions.play(await actions.tracks(of: album, known: tracks)) }
+                        Task { actions.play(await actions.tracks(of: album, known: tracks), within: .album) }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
                     Button {
-                        Task { actions.shuffle(await actions.tracks(of: album, known: tracks)) }
+                        Task { actions.shuffle(await actions.tracks(of: album, known: tracks), within: .album) }
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
                     }
                 }
                 Button {
-                    Task { actions.enqueue(await actions.tracks(of: album, known: tracks), next: true) }
+                    Task { actions.enqueue(await actions.tracks(of: album, known: tracks), within: .album, next: true) }
                 } label: {
                     Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
                 Button {
-                    Task { actions.enqueue(await actions.tracks(of: album, known: tracks), next: false) }
+                    Task { actions.enqueue(await actions.tracks(of: album, known: tracks), within: .album, next: false) }
                 } label: {
                     Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
                 }
@@ -281,9 +289,7 @@ struct AlbumMenu: View {
             download: { Task { await actions.download(album, known: tracks) } },
             remove: { model.downloads.unpin(album) }
         )
-        if let key = album.parentRatingKey {
-            ListenersMenu(model: model, artistKey: key, artist: album.parentTitle)
-        }
+        ListenersMenu(model: model, scope: VetoScope(album: album))
     }
 }
 
@@ -329,18 +335,21 @@ struct TrackMenu: View {
         }
         switch placement {
         case .list(let siblings):
+            // The siblings are the album's tracks or an already-filtered
+            // list, so only a sibling's own veto can drop it; this track
+            // stays whatever hides it, it was tapped.
             if playable {
                 Section {
-                    Button { actions.play(siblings, from: track) } label: {
+                    Button { actions.play(siblings, within: .album, from: track) } label: {
                         Label("Play", systemImage: "play.fill")
                     }
-                    Button { actions.shuffle(siblings, leading: track) } label: {
+                    Button { actions.shuffle(siblings, within: .album, leading: track) } label: {
                         Label("Shuffle", systemImage: "shuffle")
                     }
-                    Button { actions.enqueue([track], next: true) } label: {
+                    Button { actions.enqueue([track], within: .track, next: true) } label: {
                         Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                     }
-                    Button { actions.enqueue([track], next: false) } label: {
+                    Button { actions.enqueue([track], within: .track, next: false) } label: {
                         Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
                     }
                 }
@@ -380,9 +389,7 @@ struct TrackMenu: View {
                 }
             }
         }
-        if let key = track.grandparentRatingKey {
-            ListenersMenu(model: model, artistKey: key, artist: track.grandparentTitle)
-        }
+        ListenersMenu(model: model, scope: VetoScope(track: track))
         if case .queued(let entry) = placement {
             Section {
                 Button(role: .destructive) { player.remove(entry) } label: {
@@ -394,22 +401,32 @@ struct TrackMenu: View {
 }
 
 /// The Listeners submenu: one check per listener, on while they hear this
-/// artist. Off is a veto, the same one the avatars on the album and artist
-/// pages toggle. Works offline; the roster never leaves the phone.
+/// artist, album or track. Off is a veto, the same one the avatars on the
+/// album and artist pages toggle. A listener whose wider veto already
+/// covers the item (the album's artist, say) shows off and disabled with
+/// the reason, since flipping it here couldn't change what they hear.
+/// Works offline; the roster never leaves the phone.
 struct ListenersMenu: View {
     let model: AppModel
-    let artistKey: String
-    let artist: String?
+    let scope: VetoScope
 
     var body: some View {
         Menu {
-            Section(artist.map { "Who hears \($0)" } ?? "Who hears this artist") {
+            Section("Who hears \(scope.veto.title)") {
                 ForEach(model.roster.listeners) { listener in
-                    Toggle(isOn: Binding(
-                        get: { !listener.vetoedArtistKeys.contains(artistKey) },
-                        set: { _ in model.toggleVeto(artistKey: artistKey, for: listener.id) }
-                    )) {
-                        Text(listener.name)
+                    if let covering = scope.covering(listener) {
+                        Toggle(isOn: .constant(false)) {
+                            Text(listener.name)
+                            Text("All of \(covering.title) is hidden")
+                        }
+                        .disabled(true)
+                    } else {
+                        Toggle(isOn: Binding(
+                            get: { !listener.vetoes(scope.veto.target) },
+                            set: { _ in model.toggleVeto(scope.veto, for: listener.id) }
+                        )) {
+                            Text(listener.name)
+                        }
                     }
                 }
             }

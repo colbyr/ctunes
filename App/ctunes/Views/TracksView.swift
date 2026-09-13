@@ -18,6 +18,8 @@ struct TracksView: View {
     @Environment(NowPlayingPresentation.self) private var nowPlaying
 
     private var offline: Bool { model.library?.isOffline ?? false }
+    private var hidden: VetoSet { model.roster.hidden }
+    private var scope: VetoScope { VetoScope(album: album) }
 
     /// Debug hooks so playback can be started and inspected in a simulator,
     /// where there is no way to tap a row.
@@ -286,10 +288,8 @@ struct TracksView: View {
                 }
                 .contextMenu { AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false) }
                 .padding(.bottom, 8)
-            if let artistKey = album.parentRatingKey {
-                ListenerVetoes(model: model, artistKey: artistKey)
-                HiddenRightNowLabel(model: model, artistKey: artistKey)
-            }
+            ListenerVetoes(model: model, scope: scope)
+            HiddenRightNowLabel(model: model, scope: scope)
             HStack(spacing: 12) {
                 MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
                               enabled: !playableTracks.isEmpty, loading: false, tint: nil, action: play)
@@ -313,13 +313,19 @@ struct TracksView: View {
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
+        // A track a listening rider vetoed on its own: still a row, dimmed
+        // and named, since the album was opened on purpose. A veto on the
+        // whole album or artist is the header's to explain.
+        let hiddenFor = model.roster.active.filter { $0.vetoes(.track(track.ratingKey)) }
         // The ··· sits beside the tappable part rather than inside it, so
         // its tap is never also a tap on the row. The menu it opens is the
         // long press's, minus Go to Album: this is the album.
         return HStack(spacing: 4) {
             Button {
                 guard let library = model.library, playable else { return }
-                player.play(tracks, startingAt: index, library: library)
+                // The album from this row, minus the other hidden tracks.
+                let queue = tracks.filter { $0.id == track.id || !hidden.hides($0, within: .album) }
+                player.play(queue, startingAt: queue.firstIndex { $0.id == track.id } ?? 0, library: library)
                 nowPlaying.isShown = true
             } label: {
                 HStack(spacing: 12) {
@@ -331,6 +337,12 @@ struct TracksView: View {
                         Text(track.title)
                         if let artist = track.trackArtist {
                             Text(artist)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        if !hiddenFor.isEmpty {
+                            Label("Hidden for \(ListenerRoster.joinNames(hiddenFor.map { $0.isOwner ? "you" : $0.name }))", systemImage: "eye.slash")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -359,7 +371,7 @@ struct TracksView: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .opacity(playable ? 1 : 0.35)
+            .opacity(!playable ? 0.35 : hiddenFor.isEmpty ? 1 : 0.5)
             .foregroundStyle(player.currentTrack?.id == track.id ? AnyShapeStyle(Color.accentText) : AnyShapeStyle(.primary))
             MoreButton { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
         }
@@ -368,8 +380,11 @@ struct TracksView: View {
     }
 
 
+    /// Play and Shuffle skip the tracks hidden on their own; the album
+    /// itself plays even when a listener hides all of it, since the page
+    /// was opened on purpose.
     private var playableTracks: [PlexTrack] {
-        offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
+        tracks.filter { !hidden.hides($0, within: .album) && (!offline || model.downloads.isAvailable($0)) }
     }
 
     private func play() {
@@ -391,19 +406,21 @@ struct TracksView: View {
     }
 }
 
-/// One avatar per listener beside the artist name, the owner included.
-/// Tapping strikes the listener out: "not for Laura". A veto is per
-/// artist, not per album. Shared by the album and artist pages.
+/// One avatar per listener under the art, the owner included. Tapping
+/// strikes the listener out: "not for Laura". The veto is the page's own
+/// item, the artist on the artist page and the album on the album page;
+/// a wider veto that also hides the page is the label's below to
+/// explain, not the avatar's to show. Shared by the album and artist pages.
 struct ListenerVetoes: View {
     let model: AppModel
-    let artistKey: String
+    let scope: VetoScope
 
     var body: some View {
         HStack(spacing: 6) {
             ForEach(model.roster.listeners) { listener in
-                let vetoed = listener.vetoedArtistKeys.contains(artistKey)
+                let vetoed = listener.vetoes(scope.veto.target)
                 Button {
-                    withAnimation(.snappy) { model.toggleVeto(artistKey: artistKey, for: listener.id) }
+                    withAnimation(.snappy) { model.toggleVeto(scope.veto, for: listener.id) }
                 } label: {
                     ListenerAvatar(listener: listener, size: 28, struck: vetoed)
                         .opacity(vetoed ? 0.35 : 1)
@@ -416,19 +433,22 @@ struct ListenerVetoes: View {
 }
 
 /// "Hidden right now — Laura is listening" under the vetoes, only while a
-/// listening rider has the artist vetoed. Nothing otherwise, so the header
-/// doesn't reserve a line for it.
+/// listening rider hides the page's item; "all of Radiohead is hidden for
+/// Laura" when it is a wider veto doing it, which the avatars don't show.
+/// Nothing otherwise, so the header doesn't reserve a line for it.
 struct HiddenRightNowLabel: View {
     let model: AppModel
-    let artistKey: String
+    let scope: VetoScope
 
     var body: some View {
-        let listening = model.roster.active.filter { $0.vetoedArtistKeys.contains(artistKey) }
+        let listening = model.roster.active.filter { $0.vetoes(scope.veto.target) || scope.covering($0) != nil }
         if !listening.isEmpty {
-            let names = listening.map { $0.isOwner ? "you" : $0.name }
+            let names = ListenerRoster.joinNames(listening.map { $0.isOwner ? "you" : $0.name })
             let verb = listening.count == 1 && !listening[0].isOwner ? "is" : "are"
+            let wider = listening.compactMap(scope.covering).first
             Label(
-                "Hidden right now — \(ListenerRoster.joinNames(names)) \(verb) listening",
+                wider.map { "Hidden right now — all of \($0.title) is hidden for \(names)" }
+                    ?? "Hidden right now — \(names) \(verb) listening",
                 systemImage: "eye.slash"
             )
             .font(.footnote)

@@ -65,15 +65,15 @@ struct FavoritesView: View {
     @AppStorage("favoritesSort") private var sort: FavoritesSort = .recent
 
     private var offline: Bool { model.library?.isOffline ?? false }
-    private var hidden: Set<String> { model.roster.hiddenArtistKeys }
+    private var hidden: VetoSet { model.roster.hidden }
 
     /// Still hearted as far as this session knows: an unheart from a row
     /// or Now Playing drops the track without a refetch.
     private var hearted: [PlexTrack] { tracks.filter { model.isFavorite($0) } }
 
-    /// The rows: hearted, not by a hidden artist, in the chosen order.
+    /// The rows: hearted, not hidden by any veto, in the chosen order.
     private var rows: [PlexTrack] {
-        sort.sorted(hearted.filter { !hidden.contains($0.grandparentRatingKey ?? "") })
+        sort.sorted(hearted.filter { !hidden.hides($0) })
     }
 
     /// Offline, only tracks with a file are worth queueing.
@@ -81,9 +81,7 @@ struct FavoritesView: View {
         offline ? rows.filter { model.downloads.isAvailable($0) } : rows
     }
 
-    private var hiddenCount: Int {
-        Set(hearted.compactMap(\.grandparentRatingKey).filter { hidden.contains($0) }).count
-    }
+    private var hiddenCount: HiddenCount { .over(hearted, hidden: hidden) }
 
     private static let margin: CGFloat = 16
 
@@ -127,7 +125,7 @@ struct FavoritesView: View {
             .listRowInsets(.init(top: 16, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
-            HiddenArtistsLine(model: model, count: hiddenCount)
+            HiddenLine(model: model, count: hiddenCount)
                 .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)

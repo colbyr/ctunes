@@ -188,11 +188,11 @@ public enum AlbumBrowse {
     public static func groups(
         _ albums: [PlexAlbum],
         view: AlbumView,
-        hiding hidden: Set<String> = [],
+        hiding hidden: VetoSet = VetoSet(),
         rotation: Rotation = .none,
         now: Date = .now
     ) -> [AlbumGroup] {
-        let sorted = view.sort.sorted(albums.filter { !hidden.contains($0.artistKey) }, rotation: rotation)
+        let sorted = view.sort.sorted(albums.filter { !hidden.hides($0) }, rotation: rotation)
         var order: [String] = []
         var members: [String: [PlexAlbum]] = [:]
         var names: [String: String] = [:]
@@ -244,13 +244,13 @@ public enum AlbumBrowse {
         _ albums: [PlexAlbum],
         query: String,
         view: AlbumView,
-        hiding hidden: Set<String> = [],
+        hiding hidden: VetoSet = VetoSet(),
         rotation: Rotation = .none
     ) -> [PlexAlbum] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty else { return [] }
         let ranked: [(rank: Int, album: PlexAlbum)] = view.sort.sorted(albums, rotation: rotation).compactMap { album in
-            guard !hidden.contains(album.artistKey) else { return nil }
+            guard !hidden.hides(album) else { return nil }
             let title = MatchQuality(album.title, needle)
             let artist = MatchQuality(album.parentTitle ?? "", needle)
             guard let best = [title.map { $0.rawValue * 2 }, artist.map { $0.rawValue * 2 + 1 }]

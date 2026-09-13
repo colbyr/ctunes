@@ -79,7 +79,7 @@ the seed:
 - Style Jaccard overlap with the seed artists' styles: medium.
 - Mood Jaccard overlap: weak. Moods are numerous and generic ("Energetic").
 - Genre: tie-break only.
-- Listener vetoes (`roster.hiddenArtistKeys`) exclude outright. Seed artists themselves
+- Listener vetoes (`roster.hidden`, artists, albums and tracks) exclude outright. Seed artists themselves
   are allowed but penalised, so an evening of Jeff Rosenstock does not become only Jeff
   Rosenstock. Artists picked in the last N batches are penalised the same way.
 

@@ -59,7 +59,9 @@ Apple's approval first. CarPlay is one of them.
   browse root and Favorites make (`albums`, `artists`, `favoriteTracks`,
   `playHistory` scored by `Rotation`), minus the active listeners' vetoes.
   An album drills to Play, Shuffle and its tracks; an artist to Mix Albums,
-  Shuffle and their albums by release date; Favorites has Shuffle Favorites
+  Shuffle and their albums by release date; there is no dimmed row in the
+  car, so a vetoed album is left out of its artist's list and a vetoed
+  track out of its album's, and the play actions skip them the same way; Favorites has Shuffle Favorites
   and Play over the tracks, newest heart first. Every shuffle is the spread
   shuffle. A tap on a track plays its list from that row and pushes Now
   Playing, whose Up Next button lists the queue (a tap jumps there) and

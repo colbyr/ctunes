@@ -145,7 +145,7 @@ struct SettingsSheet: View {
                 }
             }
         } footer: {
-            Text("Each listener can hide artists. Choose who's listening from the Music screen.")
+            Text("Each listener can hide artists, albums and tracks. Choose who's listening from the Music screen.")
         }
     }
 

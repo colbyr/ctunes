@@ -87,12 +87,15 @@ struct AlbumBrowseTests {
         #expect(groups[2].albums.map(\.title) == ["Revolver", "Rubber Soul"])
     }
 
-    @Test("hidden artists drop out of groups and search")
+    @Test("hidden artists and albums drop out of groups and search")
     func hiding() {
-        let groups = AlbumBrowse.groups(Self.albums, view: .artist, hiding: ["The Beatles"])
+        let beatles = VetoSet(artists: ["The Beatles"])
+        let groups = AlbumBrowse.groups(Self.albums, view: .artist, hiding: beatles)
         #expect(groups.map(\.name) == ["Antarctigo Vespucci", "Nobody"])
-        let hits = AlbumBrowse.search(Self.albums, query: "soul", view: .artist, hiding: ["The Beatles"])
+        let hits = AlbumBrowse.search(Self.albums, query: "soul", view: .artist, hiding: beatles)
         #expect(hits.map(\.title) == ["Soulmate Stuff"])
+        let revolver = VetoSet(albums: ["The Beatles/Revolver"])
+        #expect(AlbumBrowse.groups(Self.albums, view: .artist, hiding: revolver)[2].albums.map(\.title) == ["Rubber Soul"])
     }
 
     @Test("flat views are one nameless group in sort order")

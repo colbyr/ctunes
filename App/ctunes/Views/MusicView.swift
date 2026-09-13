@@ -30,7 +30,7 @@ struct MusicView: View {
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
 
     private var offline: Bool { model.state == .offline }
-    private var hidden: Set<String> { model.roster.hiddenArtistKeys }
+    private var hidden: VetoSet { model.roster.hidden }
     /// Filtered before the pure grouping and search, so those stay pure.
     /// Anything with a file to play, so an album still downloading shows.
     private var browsable: [PlexAlbum] {
@@ -42,13 +42,13 @@ struct MusicView: View {
     private var results: [PlexAlbum] {
         AlbumBrowse.search(browsable, query: query, view: view, hiding: hidden, rotation: rotation)
     }
-    /// Every artist in the library, for the listeners sheet and the count
-    /// under the title. Unfiltered, so a veto from another section doesn't
-    /// count here.
+    /// Every artist in the library, for the listeners sheet.
     private var artists: [AlbumGroup] {
         AlbumBrowse.groups(albums, view: .artist)
     }
-    private var hiddenCount: Int { artists.filter { hidden.contains($0.id) }.count }
+    /// Counted over this section's albums, so a veto from another
+    /// section doesn't count here.
+    private var hiddenCount: HiddenCount { .over(albums, hidden: hidden) }
 
     /// Tiles push onto the path by hand: a NavigationLink in a List row makes
     /// the whole row a link too, so one tap pushed two albums and back landed
@@ -127,7 +127,7 @@ struct MusicView: View {
                         .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     AlbumBrowserControls(model: model, artists: artists, view: $view, downloadedOnly: $downloadedOnly)
                         .padding(.top, 16)
-                    HiddenArtistsLine(model: model, count: hiddenCount)
+                    HiddenLine(model: model, count: hiddenCount)
                         .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     // In the stack rather than an overlay, so it sits under the
                     // cards and the controls instead of over them.
@@ -226,7 +226,7 @@ struct MusicView: View {
         .alert("Nothing to shuffle", isPresented: $everyFavoriteHidden) {
             Button("OK") {}
         } message: {
-            Text("Every favorite is by an artist hidden for \(ListenerRoster.joinNames(model.roster.activeNames)).")
+            Text("Every favorite is hidden for \(ListenerRoster.joinNames(model.roster.activeNames)).")
         }
         .sheet(isPresented: $showingListeners) {
             ListenersSheet(model: model, artists: artists)
@@ -276,7 +276,7 @@ struct MusicView: View {
     /// never enter the queue.
     private func allowed(_ tracks: [PlexTrack]) -> [PlexTrack] {
         tracks.filter {
-            !hidden.contains($0.grandparentRatingKey ?? "") && (!offline || model.downloads.isAvailable($0))
+            !hidden.hides($0) && (!offline || model.downloads.isAvailable($0))
         }
     }
 

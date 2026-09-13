@@ -47,18 +47,76 @@ struct AlbumBrowserControls: View {
     }
 }
 
-/// "2 artists hidden for Laura & Kids" under the chips, or "Everything"
-/// when nothing is, so the grid doesn't jump as listeners toggle.
-struct HiddenArtistsLine: View {
+/// "2 artists & 1 album hidden for Laura & Kids" under the chips, or
+/// "Everything" when nothing is, so the grid doesn't jump as listeners
+/// toggle.
+struct HiddenLine: View {
     let model: AppModel
-    let count: Int
+    let count: HiddenCount
 
     var body: some View {
-        Text(count > 0
-            ? "\(count) artist\(count == 1 ? "" : "s") hidden for \(ListenerRoster.joinNames(model.roster.activeNames))"
-            : "Everything")
+        Text(count.isEmpty
+            ? "Everything"
+            : "\(count.description) hidden for \(ListenerRoster.joinNames(model.roster.activeNames))")
             .font(.footnote)
             .foregroundStyle(.secondary)
+    }
+}
+
+/// What a list lost to the active listeners' vetoes, counted at the
+/// widest level: an album under a hidden artist counts toward the artist,
+/// not as an album, so the line says what was vetoed rather than how
+/// many rows went.
+struct HiddenCount: Equatable {
+    var artists = 0
+    var albums = 0
+    var tracks = 0
+
+    var isEmpty: Bool { artists == 0 && albums == 0 && tracks == 0 }
+
+    /// "2 artists, 1 album & 3 tracks".
+    var description: String {
+        var parts: [String] = []
+        if artists > 0 { parts.append("\(artists) artist\(artists == 1 ? "" : "s")") }
+        if albums > 0 { parts.append("\(albums) album\(albums == 1 ? "" : "s")") }
+        if tracks > 0 { parts.append("\(tracks) track\(tracks == 1 ? "" : "s")") }
+        return ListenerRoster.joinNames(parts)
+    }
+
+    /// Over an album list: the artists with an album in it, then the
+    /// albums under an artist that isn't hidden.
+    static func over(_ albums: [PlexAlbum], hidden: VetoSet) -> HiddenCount {
+        var count = HiddenCount()
+        var artists: Set<String> = []
+        for album in albums {
+            if hidden.artists.contains(album.artistKey) {
+                artists.insert(album.artistKey)
+            } else if hidden.albums.contains(album.ratingKey) {
+                count.albums += 1
+            }
+        }
+        count.artists = artists.count
+        return count
+    }
+
+    /// Over a track list: the artists and albums with a track in it, then
+    /// the tracks hidden on their own.
+    static func over(_ tracks: [PlexTrack], hidden: VetoSet) -> HiddenCount {
+        var count = HiddenCount()
+        var artists: Set<String> = []
+        var albums: Set<String> = []
+        for track in tracks {
+            if let artist = track.grandparentRatingKey, hidden.artists.contains(artist) {
+                artists.insert(artist)
+            } else if let album = track.parentRatingKey, hidden.albums.contains(album) {
+                albums.insert(album)
+            } else if hidden.tracks.contains(track.ratingKey) {
+                count.tracks += 1
+            }
+        }
+        count.artists = artists.count
+        count.albums = albums.count
+        return count
     }
 }
 

@@ -34,6 +34,8 @@ struct ArtistView: View {
     @State private var nothingToPlay = false
 
     private var offline: Bool { model.library?.isOffline ?? false }
+    private var hidden: VetoSet { model.roster.hidden }
+    private var scope: VetoScope { VetoScope(artistKey: route.ratingKey, title: route.title) }
     private var artworkURL: URL? {
         model.library?.artworkURL(portrait ?? albums.first?.thumb, size: 600)
     }
@@ -51,10 +53,15 @@ struct ArtistView: View {
                     .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ForEach(albums) { album in
+                        // An album a listening rider vetoed stays in the
+                        // grid, dimmed: the page was opened on purpose.
+                        let hiddenNow = hidden.hides(album, within: .artist)
                         Button { path.append(album) } label: {
                             AlbumTile(model: model, album: album, showArtist: false)
                         }
                         .buttonStyle(.plain)
+                        .opacity(hiddenNow ? 0.4 : 1)
+                        .accessibilityHint(hiddenNow ? "Hidden for a listener" : "")
                         // Every tile here is theirs, so no Go to Artist.
                         .contextMenu { AlbumMenu(model: model, album: album, showArtist: false) }
                     }
@@ -152,8 +159,8 @@ struct ArtistView: View {
                 }
                 .contextMenu { ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false) }
                 .padding(.bottom, 8)
-            ListenerVetoes(model: model, artistKey: route.ratingKey)
-            HiddenRightNowLabel(model: model, artistKey: route.ratingKey)
+            ListenerVetoes(model: model, scope: scope)
+            HiddenRightNowLabel(model: model, scope: scope)
             HStack(spacing: 12) {
                 MixActionCard(systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
                               enabled: !albums.isEmpty && loading == nil, loading: loading == .playAlbums, tint: nil) { play(.playAlbums) }
@@ -174,7 +181,9 @@ struct ArtistView: View {
         Task {
             defer { loading = nil }
             let fetched = (try? await library.tracks(forArtist: route.ratingKey, inSection: section.key)) ?? []
-            let playable = offline ? fetched.filter { model.downloads.isAvailable($0) } : fetched
+            // The artist plays even when hidden whole; their vetoed
+            // albums and tracks are skipped.
+            let playable = fetched.filter { !hidden.hides($0, within: .artist) && (!offline || model.downloads.isAvailable($0)) }
             guard !playable.isEmpty else {
                 nothingToPlay = true
                 return

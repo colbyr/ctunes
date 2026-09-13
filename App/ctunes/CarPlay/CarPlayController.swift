@@ -89,7 +89,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
                     state: model.state,
                     generation: model.libraryGeneration,
                     section: model.selectedSection?.key,
-                    hidden: model.roster.hiddenArtistKeys
+                    hidden: model.roster.hidden
                 )
             }
             for await change in changes {
@@ -203,12 +203,12 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         }
     }
 
-    /// Fills the four tabs from what was fetched, minus the artists the
-    /// active listeners veto. Cheap enough to run again when a veto flips.
+    /// Fills the four tabs from what was fetched, minus what the active
+    /// listeners veto. Cheap enough to run again when a veto flips.
     private func render() {
         guard loadedGeneration != nil else { return }
-        let hidden = model.roster.hiddenArtistKeys
-        let visible = albums.filter { !hidden.contains($0.artistKey) }
+        let hidden = model.roster.hidden
+        let visible = albums.filter { !hidden.hides($0) }
 
         let onRotation = AlbumView.mostPlayed.sorted(visible, rotation: rotation).prefix(Self.albumLimit)
         rotationList.emptyViewTitleVariants = ["Nothing played yet"]
@@ -219,9 +219,9 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         recentList.updateSections([CPListSection(items: recent.map(albumItem))])
 
         artistsList.emptyViewTitleVariants = ["No artists"]
-        artistsList.updateSections(artistSections(artists.filter { !hidden.contains($0.ratingKey) }))
+        artistsList.updateSections(artistSections(artists.filter { !hidden.artists.contains($0.ratingKey) }))
 
-        let hearted = favorites.filter { !hidden.contains($0.grandparentRatingKey ?? "") }
+        let hearted = favorites.filter { !hidden.hides($0) }
         favoritesList.emptyViewTitleVariants = ["No favorites yet"]
         favoritesList.emptyViewSubtitleVariants = ["Heart a track on your iPhone and it shows up here."]
         favoritesList.updateSections(favoriteSections(hearted))
@@ -291,9 +291,12 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
             await model.connectionLost(error)
             return
         }
-        let hidden = model.roster.hiddenArtistKeys
+        // The car has no dimmed tile, so a vetoed album is left out of the
+        // artist's list rather than shown; the tracks are filtered too.
+        let hidden = model.roster.hidden
+        let shown = albums.filter { !hidden.hides($0, within: .artist) }
         var sections: [CPListSection] = []
-        if !albums.isEmpty, !hidden.contains(ratingKey) {
+        if !shown.isEmpty, !hidden.artists.contains(ratingKey) {
             sections.append(CPListSection(items: [
                 actionItem("Mix Albums", symbol: "square.on.square") { [weak self] in
                     guard let self else { return }
@@ -304,7 +307,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
                     self.shuffle(await self.tracks(ofArtist: ratingKey))
                 },
             ]))
-            sections.append(CPListSection(items: AlbumView.artist.sorted(albums).map(albumItem)))
+            sections.append(CPListSection(items: AlbumView.artist.sorted(shown).map(albumItem)))
         }
         let list = CPListTemplate(title: title, sections: sections)
         list.emptyViewTitleVariants = ["No albums"]
@@ -488,23 +491,28 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         interface.presentTemplate(alert, animated: true, completion: nil)
     }
 
-    /// Every track of an album, remembered for offline like a browsed page.
+    /// Every track of an album, remembered for offline like a browsed
+    /// page, minus the tracks the active listeners veto on their own.
     private func tracks(of album: PlexAlbum) async -> [PlexTrack] {
         guard let library = model.library else { return [] }
         do {
             let tracks = try await library.tracks(inAlbum: album.ratingKey)
             await model.rememberTracks(tracks, inAlbum: album)
-            return tracks
+            let hidden = model.roster.hidden
+            return tracks.filter { !hidden.hides($0, within: .album) }
         } catch {
             await model.connectionLost(error)
             return []
         }
     }
 
+    /// Every track of an artist, minus their vetoed albums and tracks.
     private func tracks(ofArtist key: String) async -> [PlexTrack] {
         guard let library = model.library, let section = model.selectedSection else { return [] }
         do {
-            return try await library.tracks(forArtist: key, inSection: section.key)
+            let tracks = try await library.tracks(forArtist: key, inSection: section.key)
+            let hidden = model.roster.hidden
+            return tracks.filter { !hidden.hides($0, within: .artist) }
         } catch {
             await model.connectionLost(error)
             return []

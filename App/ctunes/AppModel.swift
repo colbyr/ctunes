@@ -468,8 +468,13 @@ final class AppModel {
         saveRoster()
     }
 
-    func toggleVeto(artistKey: String, for id: Listener.ID) {
-        roster.toggleVeto(artistKey: artistKey, for: id)
+    func toggleVeto(_ veto: Veto, for id: Listener.ID) {
+        roster.toggleVeto(veto, for: id)
+        saveRoster()
+    }
+
+    func removeVeto(_ target: VetoTarget, for id: Listener.ID) {
+        roster.removeVeto(target, for: id)
         saveRoster()
     }
 
@@ -547,7 +552,8 @@ final class AppModel {
     /// Puts two listeners on an empty roster so the chips show up in a
     /// simulator without tapping through setup. The value is an artist
     /// ratingKey Laura vetoes, so the hidden line and the album header can
-    /// be checked too; `1` seeds without a veto. Compiled out of release.
+    /// be checked too, or `album:<key>` / `track:<key>` for the narrower
+    /// vetoes; `1` seeds without a veto. Compiled out of release.
     private func seedDevelopmentListeners() {
         #if DEBUG
         guard let value = ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS"],
@@ -555,7 +561,17 @@ final class AppModel {
         let laura = addListener(name: "Laura")
         _ = addListener(name: "Kids")
         toggleListening(laura.id)
-        if value != "1" { toggleVeto(artistKey: value, for: laura.id) }
+        guard value != "1" else { return }
+        for value in value.split(separator: ",").map(String.init) {
+            let veto: Veto = if value.hasPrefix("album:") {
+                Veto(.album(String(value.dropFirst(6))), title: "")
+            } else if value.hasPrefix("track:") {
+                Veto(.track(String(value.dropFirst(6))), title: "")
+            } else {
+                Veto(artistKey: value, title: "")
+            }
+            toggleVeto(veto, for: laura.id)
+        }
         #endif
     }
 
