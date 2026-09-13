@@ -67,12 +67,18 @@ final class Downloads {
 
     // MARK: - State
 
+    /// Offline nothing is being fetched, so a pin still coming down reads
+    /// as waiting rather than in flight; every state read goes through here.
+    private func settled(_ state: DownloadState) -> DownloadState {
+        offline ? state.waiting : state
+    }
+
     func state(_ album: PlexAlbum) -> DownloadState {
-        inventory.state(of: album)
+        settled(inventory.state(of: album))
     }
 
     func state(artist key: String) -> DownloadState {
-        inventory.state(ofArtist: key, albums: albums)
+        settled(inventory.state(ofArtist: key, albums: albums))
     }
 
     /// An album pin, or an artist pin covering it.
@@ -101,7 +107,7 @@ final class Downloads {
     }
 
     func state(_ playlist: PlexPlaylist) -> DownloadState {
-        inventory.state(ofPlaylist: playlist)
+        settled(inventory.state(ofPlaylist: playlist))
     }
 
     func isPinned(_ playlist: PlexPlaylist) -> Bool {
@@ -124,6 +130,20 @@ final class Downloads {
     func isDownloading(_ track: PlexTrack) -> Bool {
         guard let server else { return false }
         return inventory.isDownloading(track, server: server)
+    }
+
+    /// Downloading, but nothing is being fetched: the last try failed and
+    /// the cache is waiting out its backoff, or the server is away.
+    func isWaiting(_ track: PlexTrack) -> Bool {
+        guard let server, inventory.isDownloading(track, server: server) else { return false }
+        return offline || inventory.isFailed(track, server: server)
+    }
+
+    /// The row glyph's state for one track, so a track reads like an album.
+    func state(_ track: PlexTrack) -> DownloadState {
+        if isDownloaded(track) { return .complete(undownloadable: 0) }
+        if isDownloading(track) { return .downloading(done: 0, total: 1, stalled: isWaiting(track)) }
+        return .none
     }
 
     func bytes(_ track: PlexTrack) -> Int? {

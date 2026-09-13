@@ -202,6 +202,7 @@ struct LibraryView: View {
         } message: {
             Text("The playlist is removed from your Plex account. Nothing is removed from your library.")
         }
+        .removeDownloadConfirmation(Bindable(navigator).removing)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             self.width = width
             let column = width >= Self.columnThreshold

@@ -66,19 +66,27 @@ inventory keeps a status for every browsed album, even with nothing down, so the
 rollup counts its tracks; an album known only through a heart and never browsed has no
 entry once the heart is gone.
 
-`DownloadBadge(state:)` draws a white arrow on a glass disc tinted dark (so it holds up
-on white art), with a ring that fills as the download does: dotted while downloading (an
-exclamation mark once stalled), half for partial, whole for complete. It sits on every
-album tile, the album cover, the artist portrait and both mix pools. The cover and the
-portrait show a bare white arrow with a shadow instead when nothing is down; tapping it
-downloads, and Stop and Remove stay in the menu. Track rows keep `arrow.down.circle.fill`,
-dotted while the file is on its way.
+`DownloadMark(state:size:)` is the one drawing, white on a glass disc tinted dark (so it
+holds up on white art): a bare arrow with nothing down; a stop square inside a ring that
+fills clockwise (done over total) while downloading; a dotted ring around the arrow while
+waiting, which is stalled (every missing file in the backoff) or offline (`Downloads`
+maps in-flight to waiting while the server is away); the arrow inside the ring at how far
+it got for partial; a check mark inside the whole ring for complete. `DownloadBadge`
+puts it on every album tile, the artist portrait and both mix pools, nothing at all with
+nothing down; `DownloadOverlay` on the cover and portrait makes it the button, and a tap
+does what the mark shows: arrow downloads (partial too), stop stops, dotted asks then cancels, check
+asks then removes. Track rows carry the SF Symbol counterparts (`TrackDownloadGlyph`):
+`arrow.down.circle`, `.dotted`, `checkmark.circle.fill`.
 
 ## Menus and the manager
 
-`LibraryActions.downloadItems` is the one shape for artists and albums: Download when not
-pinned; Stop while downloading; Retry and Remove once stalled; Remove when complete or
-partial-by-intent. Tracks get Download or Stop/Remove beside the heart. `AppModel.
+`LibraryActions.downloadItems` is the one shape for artists, albums, playlists and tracks:
+Download (`arrow.down.circle`) when not pinned; Stop (`stop.circle`) while downloading;
+Retry and Cancel (`xmark.circle`) while waiting; Remove Download (`xmark.circle`,
+destructive) once down. Cancel and Remove always ask first; Stop doesn't: the menu posts a `DownloadRemoval` to
+`LibraryNavigator.removing` and `LibraryView` hosts the dialog, closing a Now Playing
+cover first so it has somewhere to land. The Storage page's context menus and page
+buttons confirm the same way with their own state; its swipes stay immediate. `AppModel.
 downloadArtist` fetches the album list and the artist's tracks in one go each and files
 the tracks per album.
 

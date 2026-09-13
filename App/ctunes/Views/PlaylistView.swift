@@ -304,8 +304,6 @@ struct PlaylistView: View {
 
     private func row(_ row: Row, siblings: [PlexTrack]) -> some View {
         let track = row.track
-        let downloaded = model.downloads.isDownloaded(track)
-        let downloading = !downloaded && model.downloads.isDownloading(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
@@ -334,11 +332,7 @@ struct PlaylistView: View {
                     // Keeps its slot when off, so the duration column doesn't
                     // shift as files come and go. Dotted while a pin is
                     // still fetching the file.
-                    Image(systemName: downloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .opacity(downloaded || downloading ? 1 : 0)
-                        .accessibilityHidden(!(downloaded || downloading))
+                    TrackDownloadGlyph(state: model.downloads.state(track))
                     if let seconds = track.durationSeconds {
                         Text(TracksView.duration(seconds))
                             .font(.caption.monospacedDigit())

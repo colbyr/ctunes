@@ -53,6 +53,7 @@ struct FavoritesView: View {
     let section: PlexSection
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
 
     @State private var tracks: [PlexTrack] = []
     /// For the Listeners sheet's veto lists, which cover the whole library.
@@ -168,15 +169,15 @@ struct FavoritesView: View {
                     if !offline {
                         if model.isFavoritesPinned {
                             Button(role: .destructive) {
-                                Task { await model.setFavoritesPinned(false) }
+                                navigator.removing = DownloadRemoval { Task { await model.setFavoritesPinned(false) } }
                             } label: {
-                                Label("Remove Download", systemImage: "trash")
+                                Label("Remove Download", systemImage: "xmark.circle")
                             }
                         } else {
                             Button {
                                 Task { await model.setFavoritesPinned(true) }
                             } label: {
-                                Label("Keep Offline", systemImage: "arrow.down.circle")
+                                Label("Download", systemImage: "arrow.down.circle")
                             }
                         }
                     }
@@ -233,8 +234,6 @@ struct FavoritesView: View {
     }
 
     private func row(_ track: PlexTrack, at index: Int) -> some View {
-        let downloaded = model.downloads.isDownloaded(track)
-        let downloading = !downloaded && model.downloads.isDownloading(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
@@ -260,11 +259,7 @@ struct FavoritesView: View {
                     // Keeps its slot when off, so the duration column doesn't
                     // shift as files come and go. Dotted while a pin is
                     // still fetching the file.
-                    Image(systemName: downloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .opacity(downloaded || downloading ? 1 : 0)
-                        .accessibilityHidden(!(downloaded || downloading))
+                    TrackDownloadGlyph(state: model.downloads.state(track))
                     if let seconds = track.durationSeconds {
                         Text(TracksView.duration(seconds))
                             .font(.caption.monospacedDigit())

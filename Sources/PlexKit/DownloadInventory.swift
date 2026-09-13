@@ -280,4 +280,25 @@ public enum DownloadState: Sendable, Equatable {
         if case .complete = self { return true }
         return false
     }
+
+    /// How far along the ring on the art should read: tracks down over
+    /// tracks wanted while a pin is coming down or once it has been cut
+    /// short, whole once every track is down, none with nothing on disk.
+    public var progress: Double? {
+        switch self {
+        case .none: nil
+        case .downloading(let done, let total, _), .partial(let done, let total):
+            total > 0 ? min(1, Double(done) / Double(total)) : 0
+        case .complete: 1
+        }
+    }
+
+    /// The same download, read as waiting rather than in flight: offline,
+    /// where nothing can be fetched until the server answers.
+    public var waiting: DownloadState {
+        if case .downloading(let done, let total, false) = self {
+            return .downloading(done: done, total: total, stalled: true)
+        }
+        return self
+    }
 }

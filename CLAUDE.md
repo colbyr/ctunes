@@ -313,12 +313,18 @@ counts by `leafCount`. Offline, a file in either root is playable, so an
 album half-played before the server went away still lists and plays those
 tracks; artwork falls back to the online URL so `ImageLoader`'s disk cache
 can answer. `Downloads` (app target) mirrors the inventory onto the main
-actor from `cache.events`, coalescing refreshes. `DownloadBadge` is the one
-mark on art: a white arrow on a dark-tinted glass disc with a ring that
-fills as the download does, dotted while downloading (an exclamation mark
-once stalled), half for partial, whole for complete. The album cover and
-artist portrait show a bare arrow instead when nothing is down, and
-tapping it downloads (`DownloadOverlay`). The manager is the Storage page
+actor from `cache.events`, coalescing refreshes. `DownloadMark` is the one
+drawing of a download's state, on the art badge (`DownloadBadge`), the
+cover's button (`DownloadOverlay`) and, as SF Symbols, the menus and
+track rows (`TrackDownloadGlyph`): a bare arrow to download, a stop
+square inside a ring that fills clockwise while downloading (tap stops),
+a dotted ring around the arrow while waiting (the server away or every
+fetch in backoff; tap asks then cancels, the menu also offers Retry), the arrow
+inside the ring at how far it got for partial (tap downloads the rest),
+a check mark for complete (tap asks, then removes). Remove Download is
+`xmark.circle` everywhere and, like Cancel, always confirms: a menu posts a
+`DownloadRemoval` to `LibraryNavigator.removing`, which `LibraryView`
+hosts as the one dialog; the Storage page hosts its own. The manager is the Storage page
 of Settings (`StorageView.swift`): a bar of downloads and play cache
 against the phone's capacity, then favorites, artist → album → track pins
 each removable by swipe, then the play cache with its size, a per-device

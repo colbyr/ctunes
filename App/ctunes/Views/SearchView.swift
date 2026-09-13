@@ -257,14 +257,11 @@ struct SearchView: View {
                 PlaylistMenu(model: model, playlist: playlist)
             }
         case .track(let track):
-            let downloaded = model.downloads.isDownloaded(track)
-            let downloading = !downloaded && model.downloads.isDownloading(track)
             BrowseRow(
                 url: model.library?.artworkURL(track.thumb),
                 title: track.title,
                 subtitle: Self.subtitle("Song", track.trackArtist ?? track.grandparentTitle),
-                download: downloaded ? .complete(undownloadable: 0)
-                    : downloading ? .downloading(done: 0, total: 1, stalled: false) : .none,
+                download: model.downloads.state(track),
                 dimmed: offline && !model.downloads.isAvailable(track)
             ) {
                 recents.add(hit)

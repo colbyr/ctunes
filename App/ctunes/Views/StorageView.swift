@@ -16,6 +16,7 @@ struct StorageList: View {
     let model: AppModel
     @Environment(AudioPlayer.self) private var player
     @State private var confirmingRemoveAll = false
+    @State private var removing: DownloadRemoval?
     /// Bytes in the cache root; nil until read.
     @State private var cacheUsage: Int?
 
@@ -41,6 +42,7 @@ struct StorageList: View {
         } message: {
             Text("Everything kept offline will stream again. Nothing is removed from your library.")
         }
+        .removeDownloadConfirmation($removing)
         .task { downloads.refresh() }
         // The cache moves as tracks play and as pins come and go, since a
         // pinned file leaves it and a removed one returns.
@@ -117,13 +119,13 @@ struct StorageList: View {
                 )
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) { downloads.unpin(pin.playlist) } label: {
-                        Label("Remove", systemImage: "trash")
+                        Label("Remove", systemImage: "xmark.circle")
                     }
                     .tint(.red)
                 }
                 .contextMenu {
-                    Button(role: .destructive) { downloads.unpin(pin.playlist) } label: {
-                        Label("Remove Download", systemImage: "trash")
+                    Button(role: .destructive) { removing = DownloadRemoval { downloads.unpin(pin.playlist) } } label: {
+                        Label("Remove Download", systemImage: "xmark.circle")
                     }
                 }
             }
@@ -227,13 +229,13 @@ struct StorageList: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
-                Label("Remove", systemImage: "trash")
+                Label("Remove", systemImage: "xmark.circle")
             }
             .tint(.red)
         }
         .contextMenu {
-            Button(role: .destructive) { downloads.unpinArtist(pin.key) } label: {
-                Label("Remove Download", systemImage: "trash")
+            Button(role: .destructive) { removing = DownloadRemoval { downloads.unpinArtist(pin.key) } } label: {
+                Label("Remove Download", systemImage: "xmark.circle")
             }
         }
     }
@@ -257,13 +259,13 @@ struct StorageList: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { downloads.unpin(album) } label: {
-                Label("Remove", systemImage: "trash")
+                Label("Remove", systemImage: "xmark.circle")
             }
             .tint(.red)
         }
         .contextMenu {
-            Button(role: .destructive) { downloads.unpin(album) } label: {
-                Label("Remove Download", systemImage: "trash")
+            Button(role: .destructive) { removing = DownloadRemoval { downloads.unpin(album) } } label: {
+                Label("Remove Download", systemImage: "xmark.circle")
             }
         }
     }
@@ -288,7 +290,7 @@ struct StorageList: View {
     private var removeSection: some View {
         Section {
             Button(role: .destructive) { confirmingRemoveAll = true } label: {
-                Label("Remove All Downloads", systemImage: "trash")
+                Label("Remove All Downloads", systemImage: "xmark.circle")
             }
             .foregroundStyle(.red)
         }
@@ -304,6 +306,7 @@ struct DownloadedArtistPage: View {
     let model: AppModel
     let key: String
     @Environment(\.dismiss) private var dismiss
+    @State private var removing: DownloadRemoval?
 
     private var downloads: Downloads { model.downloads }
     private var pin: DownloadInventory.ArtistPin? {
@@ -322,8 +325,10 @@ struct DownloadedArtistPage: View {
                 }
                 Section {
                     Button("Remove Download", role: .destructive) {
-                        downloads.unpinArtist(pin.key)
-                        dismiss()
+                        removing = DownloadRemoval {
+                            downloads.unpinArtist(pin.key)
+                            dismiss()
+                        }
                     }
                     .foregroundStyle(.red)
                 }
@@ -332,6 +337,7 @@ struct DownloadedArtistPage: View {
         .settingsBackground()
         .navigationTitle(pin?.title ?? "Artist")
         .navigationSubtitle(pin.map { DownloadText.bytes(bytes(of: $0.albums)) } ?? "")
+        .removeDownloadConfirmation($removing)
         .navigationBarTitleDisplayMode(.inline)
         // Narrowing the pin turns it into album pins, which live on the
         // list above; there is nothing left to show here.
@@ -356,7 +362,7 @@ struct DownloadedArtistPage: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { downloads.unpin(album) } label: {
-                Label("Remove", systemImage: "trash")
+                Label("Remove", systemImage: "xmark.circle")
             }
             .tint(.red)
         }
@@ -373,6 +379,7 @@ struct DownloadedAlbumPage: View {
     let model: AppModel
     let album: PlexAlbum
     @Environment(\.dismiss) private var dismiss
+    @State private var removing: DownloadRemoval?
     @State private var tracks: [PlexTrack] = []
 
     private var downloads: Downloads { model.downloads }
@@ -394,8 +401,10 @@ struct DownloadedAlbumPage: View {
             if downloads.isPinned(album) {
                 Section {
                     Button("Remove Download", role: .destructive) {
-                        downloads.unpin(album)
-                        dismiss()
+                        removing = DownloadRemoval {
+                            downloads.unpin(album)
+                            dismiss()
+                        }
                     }
                     .foregroundStyle(.red)
                 }
@@ -408,6 +417,7 @@ struct DownloadedAlbumPage: View {
             unit: "track", count: album.leafCount ?? downloads.inventory.statuses[album.ratingKey]?.known
         ))
         .navigationBarTitleDisplayMode(.inline)
+        .removeDownloadConfirmation($removing)
         .task(id: downloads.generation) {
             tracks = await downloads.tracks(inAlbum: album)
         }
@@ -420,6 +430,7 @@ private struct DownloadedTrackRow: View {
     let model: AppModel
     let track: PlexTrack
     let showAlbum: Bool
+    @State private var removing: DownloadRemoval?
 
     private var downloads: Downloads { model.downloads }
 
@@ -455,29 +466,26 @@ private struct DownloadedTrackRow: View {
         .swipeActions(edge: .trailing) {
             if downloads.isPinned(track) {
                 Button(role: .destructive) { downloads.unpin(track) } label: {
-                    Label("Remove", systemImage: "trash")
+                    Label("Remove", systemImage: "xmark.circle")
                 }
                 .tint(.red)
             }
         }
         .contextMenu {
             if downloads.isPinned(track) {
-                Button(role: .destructive) { downloads.unpin(track) } label: {
-                    Label("Remove Download", systemImage: "trash")
+                Button(role: .destructive) { removing = DownloadRemoval { downloads.unpin(track) } } label: {
+                    Label("Remove Download", systemImage: "xmark.circle")
                 }
             }
         }
+        .removeDownloadConfirmation($removing)
     }
 
     @ViewBuilder private var trailing: some View {
         if let bytes = downloads.bytes(track) {
             Text(DownloadText.bytes(bytes))
         } else if downloads.isDownloading(track) {
-            if let server = downloads.server, downloads.inventory.isFailed(track, server: server) {
-                Image(systemName: "exclamationmark.circle")
-            } else {
-                Image(systemName: "arrow.down.circle.dotted")
-            }
+            Image(systemName: TrackDownloadGlyph.symbol(downloads.state(track)))
         } else if track.part?.cacheKey == nil {
             Image(systemName: "nosign")
         } else {
@@ -665,7 +673,7 @@ enum DownloadText {
         "\(n) \(unit)\(n == 1 ? "" : "s")"
     }
 
-    /// "12 tracks · 96 MB", "Downloading 3 of 12 · 24 MB", "Stalled at 3
+    /// "12 tracks · 96 MB", "Downloading 3 of 12 · 24 MB", "Waiting at 3
     /// of 12", "4 of 12 tracks · 30 MB". `count` stands in for the total
     /// when the state has none, as with an artist row counting albums.
     static func summary(state: DownloadState, bytes: Int, unit: String, count: Int?) -> String {
@@ -674,7 +682,7 @@ enum DownloadText {
         case .none:
             return count.map { "\(Self.count($0, unit)) · \(size)" } ?? size
         case .downloading(let done, let total, let stalled):
-            return stalled ? "Stalled at \(done) of \(total) · \(size)" : "Downloading \(done) of \(total) · \(size)"
+            return stalled ? "Waiting at \(done) of \(total) · \(size)" : "Downloading \(done) of \(total) · \(size)"
         case .partial(let done, let total):
             return "\(done) of \(total) tracks · \(size)"
         case .complete(let undownloadable):

@@ -278,8 +278,8 @@ struct TracksView: View {
         let state = model.downloads.state(album)
         return VStack(spacing: 12) {
             // The cover carries the download mark the grid tiles do, or
-            // an arrow that starts the download; Stop and Remove live in
-            // the menu, a long press away.
+            // an arrow that starts the download; a tap does what the mark
+            // shows, and the menu is a long press away.
             Artwork(url: artworkURL, size: 240, corner: 12)
                 .artworkShadow()
                 .overlay(alignment: .bottomTrailing) {
@@ -312,8 +312,6 @@ struct TracksView: View {
 
     private func row(_ track: PlexTrack, at index: Int) -> some View {
         let favorite = model.isFavorite(track)
-        let downloaded = model.downloads.isDownloaded(track)
-        let downloading = !downloaded && model.downloads.isDownloading(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
         let playable = !offline || model.downloads.isAvailable(track)
@@ -354,13 +352,8 @@ struct TracksView: View {
                     }
                     Spacer()
                     // Both marks keep their slot when off, so the duration column
-                    // doesn't shift as hearts and files come and go. Dotted
-                    // while a pin is still fetching the file.
-                    Image(systemName: downloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .opacity(downloaded || downloading ? 1 : 0)
-                        .accessibilityHidden(!(downloaded || downloading))
+                    // doesn't shift as hearts and files come and go.
+                    TrackDownloadGlyph(state: model.downloads.state(track))
                     Image(systemName: "heart.fill")
                         .font(.caption)
                         .foregroundStyle(Color.heart)
@@ -465,6 +458,3 @@ struct HiddenRightNowLabel: View {
     }
 }
 
-/// The album's download state as one circular button: an arrow to pin, a
-/// ring filling as tracks land, a check when every file is down. Tapping a
-/// pinned album asks before removing it.

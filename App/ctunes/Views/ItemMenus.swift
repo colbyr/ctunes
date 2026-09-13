@@ -17,6 +17,8 @@ final class LibraryNavigator {
     var renaming: PlexPlaylist?
     /// A playlist to delete; the host confirms first.
     var deleting: PlexPlaylist?
+    /// A download to remove; the host confirms first.
+    var removing: DownloadRemoval?
 
     func open(_ route: LibraryRoute) { requested = route }
 }
@@ -172,33 +174,47 @@ private struct LibraryActions {
         }
     }
 
-    /// The download items an artist or album menu offers, given whether
-    /// it is pinned and how far along: Download when it isn't; while a pin
-    /// is coming down, Stop, and once it has stalled, Retry beside Remove.
+    /// The download items every menu offers, given whether the item is
+    /// pinned and how far along, the same glyphs as the mark on its art:
+    /// Download when it isn't pinned (partial included, since the arrow
+    /// finishes the job); while a pin is coming down, Stop; while it
+    /// waits, Retry and Cancel; once it is down, Remove. Cancel and Remove
+    /// ask first; Stop is the one that doesn't, since it is in flight.
     @ViewBuilder
-    func downloadItems(pinned: Bool, state: DownloadState, download: @escaping () -> Void, remove: @escaping () -> Void) -> some View {
+    func downloadItems(pinned: Bool, state: DownloadState, download: @escaping () -> Void, remove: @escaping @MainActor () -> Void) -> some View {
         if !offline {
             Section {
                 if !pinned {
                     Button(action: download) {
                         Label("Download", systemImage: "arrow.down.circle")
                     }
-                } else {
-                    if state.isStalled {
-                        Button {
-                            model.downloads.retry { await model.resumeDownloads() }
-                        } label: {
-                            Label("Retry Download", systemImage: "arrow.trianglehead.2.clockwise")
-                        }
+                } else if state.isStalled {
+                    Button {
+                        model.downloads.retry { await model.resumeDownloads() }
+                    } label: {
+                        Label("Retry Download", systemImage: "arrow.clockwise")
                     }
-                    Button(role: .destructive, action: remove) {
-                        state.isDownloading && !state.isStalled
-                            ? Label("Stop Download", systemImage: "stop.circle")
-                            : Label("Remove Download", systemImage: "trash")
+                    Button(role: .destructive) { removeDownload(remove, cancels: true) } label: {
+                        Label("Cancel Download", systemImage: "xmark.circle")
+                    }
+                } else if state.isDownloading {
+                    Button(action: remove) {
+                        Label("Stop Download", systemImage: "stop.circle")
+                    }
+                } else {
+                    Button(role: .destructive) { removeDownload(remove) } label: {
+                        Label("Remove Download", systemImage: "xmark.circle")
                     }
                 }
             }
         }
+    }
+
+    /// Posts the remove for the host to confirm; a cover over the host
+    /// closes first so the dialog has somewhere to land.
+    func removeDownload(_ remove: @escaping @MainActor () -> Void, cancels: Bool = false) {
+        if nowPlaying.isShown, !nowPlaying.isColumn { nowPlaying.isShown = false }
+        navigator.removing = DownloadRemoval(cancels: cancels, action: remove)
     }
 
     /// Navigation from inside the Now Playing cover closes it first; the
@@ -543,17 +559,12 @@ struct TrackMenu: View {
                 } label: {
                     Label(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.slash" : "heart")
                 }
-                if model.downloads.isPinned(track) {
-                    Button(role: .destructive) { model.downloads.unpin(track) } label: {
-                        model.downloads.isDownloading(track)
-                            ? Label("Stop Download", systemImage: "stop.circle")
-                            : Label("Remove Download", systemImage: "trash")
-                    }
-                } else {
-                    Button { actions.download(track) } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                }
+                actions.downloadItems(
+                    pinned: model.downloads.isPinned(track),
+                    state: model.downloads.state(track),
+                    download: { actions.download(track) },
+                    remove: { model.downloads.unpin(track) }
+                )
             }
         }
         // The playlist a row already sits in is left out of the list.
