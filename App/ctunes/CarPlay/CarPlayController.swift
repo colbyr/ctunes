@@ -321,7 +321,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         var sections: [CPListSection] = []
         if !shown.isEmpty, !hidden.artists.contains(ratingKey) {
             sections.append(CPListSection(items: [
-                actionItem("Mix Albums", symbol: "square.on.square") { [weak self] in
+                actionItem("Mix Albums", symbol: "square.stack") { [weak self] in
                     guard let self else { return }
                     self.mixAlbums(await self.tracks(ofArtist: ratingKey))
                 },

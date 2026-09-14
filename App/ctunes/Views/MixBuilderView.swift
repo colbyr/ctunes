@@ -277,7 +277,7 @@ struct MixBuilderView: View {
             // The cards' actions follow you down the pool as icons.
             if !actionsVisible {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Mix Albums", systemImage: "square.on.square") { play(.playAlbums) }
+                    Button("Mix Albums", systemImage: "square.stack") { play(.playAlbums) }
                         .disabled(loadingMix != nil)
                     Button("Shuffle", systemImage: "shuffle") { play(.shuffleTracks) }
                         .disabled(loadingMix != nil)
@@ -540,7 +540,7 @@ private struct MixActions: View {
     var body: some View {
         HStack(spacing: 12) {
             MixActionCard(
-                systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
+                systemImage: "square.stack", title: "Mix Albums", subtitle: nil,
                 enabled: loading == nil || loading == .playAlbums, loading: loading == .playAlbums,
                 tint: .mix
             ) { action(.playAlbums) }

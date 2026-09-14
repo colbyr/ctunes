@@ -28,7 +28,6 @@ struct StorageList: View {
         List {
             overviewSection
             favoritesSection
-            if !inventory.playlists.isEmpty { playlistsSection }
             if downloads.isEmpty { emptySection } else { pinsSection; removeSection }
             cacheSection
             clearCacheSection
@@ -100,52 +99,21 @@ struct StorageList: View {
         }
     }
 
-    /// The playlists kept offline, newest pin first. A group like the
-    /// favorites: removing one leaves every other pin's files alone.
-    private var playlistsSection: some View {
-        Section {
-            ForEach(inventory.playlists.reversed()) { pin in
-                let status = inventory.playlistStatuses[pin.id]
-                DownloadRow(
-                    art: model.library?.artworkURL(pin.playlist.composite),
-                    round: false,
-                    title: pin.playlist.title,
-                    subtitle: DownloadText.summary(
-                        state: downloads.state(pin.playlist),
-                        bytes: status?.bytes ?? 0,
-                        unit: "track", count: status?.known ?? pin.playlist.leafCount
-                    ),
-                    detail: "Playlist"
-                )
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) { downloads.unpin(pin.playlist) } label: {
-                        Label("Remove", systemImage: "xmark.circle")
-                    }
-                    .tint(.red)
-                }
-                .contextMenu {
-                    Button(role: .destructive) { removing = DownloadRemoval { downloads.unpin(pin.playlist) } } label: {
-                        Label("Remove Download", systemImage: "xmark.circle")
-                    }
-                }
-            }
-        } header: {
-            Text("Playlists")
-        }
-    }
-
-    /// One kind of pin or another, in one list: artists and albums newest
-    /// first, then tracks newest first (their list carries no dates). The
-    /// art's shape and the first word of the subtitle say which is which.
+    /// One kind of pin or another, in one list: artists, albums and
+    /// playlists newest first, then tracks newest first (their list carries
+    /// no dates). The art's shape and the first word of the subtitle say
+    /// which is which.
     private enum Pin: Identifiable {
         case artist(DownloadInventory.ArtistPin)
         case album(DownloadInventory.AlbumPin)
+        case playlist(DownloadInventory.PlaylistPin)
         case track(PlexTrack)
 
         var id: String {
             switch self {
             case .artist(let pin): "artist/\(pin.key)"
             case .album(let pin): "album/\(pin.id)"
+            case .playlist(let pin): "playlist/\(pin.id)"
             case .track(let track): "track/\(track.ratingKey)"
             }
         }
@@ -154,6 +122,7 @@ struct StorageList: View {
     private var pins: [Pin] {
         let dated: [(Date, Pin)] = inventory.artists.map { ($0.pinnedAt, .artist($0)) }
             + inventory.albums.map { ($0.pinnedAt, .album($0)) }
+            + inventory.playlists.map { ($0.pinnedAt, .playlist($0)) }
         return dated.sorted { $0.0 > $1.0 }.map(\.1) + inventory.tracks.reversed().map { .track($0) }
     }
 
@@ -163,6 +132,7 @@ struct StorageList: View {
                 switch pin {
                 case .artist(let artist): artistLink(artist)
                 case .album(let album): albumLink(album.album)
+                case .playlist(let playlist): playlistRow(playlist)
                 case .track(let track): DownloadedTrackRow(model: model, track: track, showAlbum: true)
                 }
             }
@@ -265,6 +235,34 @@ struct StorageList: View {
         }
         .contextMenu {
             Button(role: .destructive) { removing = DownloadRemoval { downloads.unpin(album) } } label: {
+                Label("Remove Download", systemImage: "xmark.circle")
+            }
+        }
+    }
+
+    /// A playlist kept offline. A group like the favorites: removing one
+    /// leaves every other pin's files alone.
+    private func playlistRow(_ pin: DownloadInventory.PlaylistPin) -> some View {
+        let status = inventory.playlistStatuses[pin.id]
+        return DownloadRow(
+            art: model.library?.artworkURL(pin.playlist.composite),
+            round: false,
+            title: pin.playlist.title,
+            subtitle: DownloadText.summary(
+                state: downloads.state(pin.playlist),
+                bytes: status?.bytes ?? 0,
+                unit: "track", count: status?.known ?? pin.playlist.leafCount
+            ),
+            detail: "Playlist"
+        )
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) { downloads.unpin(pin.playlist) } label: {
+                Label("Remove", systemImage: "xmark.circle")
+            }
+            .tint(.red)
+        }
+        .contextMenu {
+            Button(role: .destructive) { removing = DownloadRemoval { downloads.unpin(pin.playlist) } } label: {
                 Label("Remove Download", systemImage: "xmark.circle")
             }
         }

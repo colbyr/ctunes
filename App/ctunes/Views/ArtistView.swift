@@ -120,7 +120,7 @@ struct ArtistView: View {
             // The cards' actions follow you down the grid as icons.
             if !actionsVisible {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Mix Albums", systemImage: "square.on.square") { play(.playAlbums) }
+                    Button("Mix Albums", systemImage: "square.stack") { play(.playAlbums) }
                         .disabled(albums.isEmpty || loading != nil)
                     Button("Shuffle", systemImage: "shuffle") { play(.shuffleTracks) }
                         .disabled(albums.isEmpty || loading != nil)
@@ -226,7 +226,7 @@ struct ArtistView: View {
             ListenerVetoes(model: model, scope: scope)
             HiddenRightNowLabel(model: model, scope: scope)
             HStack(spacing: 12) {
-                MixActionCard(systemImage: "square.on.square", title: "Mix Albums", subtitle: nil,
+                MixActionCard(systemImage: "square.stack", title: "Mix Albums", subtitle: nil,
                               enabled: !albums.isEmpty && loading == nil, loading: loading == .playAlbums, tint: nil) { play(.playAlbums) }
                 MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
                               enabled: !albums.isEmpty && loading == nil, loading: loading == .shuffleTracks, tint: nil) { play(.shuffleTracks) }

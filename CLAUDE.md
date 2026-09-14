@@ -204,8 +204,10 @@ that song; its `···` is the track menu with the song as its only sibling.
 Artists, so the grid, the list layout, the sorts (A to Z, Recently
 Updated by `updatedAt`, Most Played by `viewCount`, Back Catalog) and the
 Downloaded filter come for free. The root's Playlists hero tile opens
-`PlaylistsRoute`, the page that manages them: a `List` of rows with New
-Playlist in the toolbar and a swipe to delete that asks first; the CarPlay tab bar gets a Playlists tab (Recently Added's slot
+`PlaylistsRoute`, the page that manages them: the listener chips and
+arrange buttons over a grid or list (its own `playlistsView` sort and
+`playlistsDownloadedOnly` filter, the app's layout), New Playlist in the
+toolbar, delete from the item menu; the CarPlay tab bar gets a Playlists tab (Recently Added's slot
 when the car shows four). `AppModel.playlists` is the section's list
 (`/playlists?playlistType=audio&sectionID=`), fetched with the browse
 root's other requests and after every write, so the Add to Playlist

@@ -259,7 +259,7 @@ struct ArtistMenu: View {
                 Button {
                     Task { actions.mixAlbums(await actions.tracks(ofArtist: ratingKey), within: .artist) }
                 } label: {
-                    Label("Mix Albums", systemImage: "square.on.square")
+                    Label("Mix Albums", systemImage: "square.stack")
                 }
                 Button {
                     Task { actions.shuffle(await actions.tracks(ofArtist: ratingKey), within: .artist) }

@@ -243,7 +243,7 @@ struct MusicView: View {
 
     /// The mix builder and the playlists page, side by side.
     @ViewBuilder private var heroTiles: some View {
-        HeroTile(title: "Mix Builder",systemImage: "square.stack.3d.up.fill", accent: .mix) { path.append(MixRoute()) }
+        HeroTile(title: "Mix Builder",systemImage: "square.stack", accent: .mix) { path.append(MixRoute()) }
         HeroTile(title: "Playlists", systemImage: "music.note.list", accent: .playlist) { path.append(PlaylistsRoute()) }
     }
 

@@ -321,7 +321,7 @@ struct LibraryView: View {
                 }
             }
             .navigationDestination(for: PlaylistsRoute.self) { _ in
-                PlaylistsView(model: model, path: $path)
+                PlaylistsView(model: model, catalog: catalog, path: $path)
             }
             .navigationDestination(for: FavoritesRoute.self) { _ in
                 if let section = model.selectedSection {
