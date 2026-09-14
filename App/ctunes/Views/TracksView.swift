@@ -344,7 +344,7 @@ struct TracksView: View {
                                 .lineLimit(1)
                         }
                         if !hiddenFor.isEmpty {
-                            Label("Hidden for \(ListenerRoster.joinNames(hiddenFor.map { $0.isOwner ? "you" : $0.name }))", systemImage: "eye.slash")
+                            Label("Hidden for \(ListenerRoster.joinNames(hiddenFor.map(\.name)))", systemImage: "eye.slash")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -374,6 +374,15 @@ struct TracksView: View {
         }
         .padding(.init(top: 8, leading: Self.margin, bottom: 8, trailing: Self.margin - 4))
         .rowContextMenu { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
+        // The heart without the menu, as Favorites unfavorites. Hearts are
+        // read-only offline.
+        .rowSwipe(offline ? nil : RowSwipe(
+            title: favorite ? "Unfavorite" : "Favorite",
+            systemImage: favorite ? "heart.slash" : "heart",
+            tint: .heart
+        ) {
+            Task { await model.toggleFavorite(track) }
+        })
     }
 
 
@@ -403,7 +412,7 @@ struct TracksView: View {
     }
 }
 
-/// One avatar per listener under the art, the owner included. Tapping
+/// One avatar per listener under the art. Tapping
 /// strikes the listener out: "not for Laura". The veto is the page's own
 /// item, the artist on the artist page and the album on the album page;
 /// a wider veto that also hides the page is the label's below to
@@ -440,8 +449,8 @@ struct HiddenRightNowLabel: View {
     var body: some View {
         let listening = model.roster.active.filter { $0.vetoes(scope.veto.target) || scope.covering($0) != nil }
         if !listening.isEmpty {
-            let names = ListenerRoster.joinNames(listening.map { $0.isOwner ? "you" : $0.name })
-            let verb = listening.count == 1 && !listening[0].isOwner ? "is" : "are"
+            let names = ListenerRoster.joinNames(listening.map(\.name))
+            let verb = listening.count == 1 ? "is" : "are"
             let wider = listening.compactMap(scope.covering).first
             Label(
                 wider.map { "Hidden right now — all of \($0.title) is hidden for \(names)" }

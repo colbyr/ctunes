@@ -51,6 +51,16 @@ struct PlaylistsView: View {
                 PlaylistRow(model: model, playlist: playlist) { path.append(playlist) } menu: {
                     PlaylistMenu(model: model, playlist: playlist)
                 }
+                // The menu's Delete Playlist…, confirmed by the same host.
+                // A smart playlist is the server's, so its swipe says why
+                // there's no Delete. Writes are online only.
+                .rowSwipe(offline ? nil : playlist.smart
+                    ? RowSwipe(title: "Smart", systemImage: "gearshape.fill", tint: .gray) {
+                        navigator.notice = PlexPlaylist.smartEditNotice
+                    }
+                    : RowSwipe(title: "Delete", systemImage: "trash", tint: .red, role: .destructive) {
+                        navigator.deleting = playlist
+                    })
             }
         }
     }

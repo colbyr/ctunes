@@ -17,17 +17,14 @@ struct AuthView: View {
             Text("Tunes")
                 .font(.largeTitle.bold())
 
-            Text("Album focused listing for Plex")
+            Text("Your Plex library, for everyone listening")
                 .foregroundStyle(.secondary)
 
-            if case .linking(let code) = model.state {
+            if case .linking = model.state {
                 VStack(spacing: 8) {
                     ProgressView()
                     Text("Waiting for approval")
                         .font(.subheadline)
-                    Text(code)
-                        .font(.system(.title3, design: .monospaced))
-                        .foregroundStyle(.secondary)
                 }
                 .padding(.top, 8)
             } else {

@@ -21,9 +21,8 @@ enum ListenerPalette {
     }
 }
 
-/// A colored disc with the listener's initial; the owner's is the amber
-/// person instead. `struck` draws the diagonal line the album screen uses
-/// for "not for this person".
+/// A colored disc with the listener's initial. `struck` draws the diagonal
+/// line the album screen uses for "not for this person".
 struct ListenerAvatar: View {
     let listener: Listener
     var size: CGFloat = 24
@@ -31,15 +30,11 @@ struct ListenerAvatar: View {
 
     var body: some View {
         ZStack {
-            if listener.isOwner {
-                OwnerAvatar(size: size)
-            } else {
-                Circle().fill(ListenerPalette.color(listener.colorIndex))
-                // Ink, never white: the fills are the same in both appearances.
-                Text(listener.initial)
-                    .font(.system(size: size * 0.46, weight: .bold))
-                    .foregroundStyle(Color.accentInk)
-            }
+            Circle().fill(ListenerPalette.color(listener.colorIndex))
+            // Ink, never white: the fills are the same in both appearances.
+            Text(listener.initial)
+                .font(.system(size: size * 0.46, weight: .bold))
+                .foregroundStyle(Color.accentInk)
             if struck {
                 Path { path in
                     path.move(to: CGPoint(x: size * 0.18, y: size * 0.82))
@@ -47,21 +42,6 @@ struct ListenerAvatar: View {
                 }
                 .stroke(Color.ink, style: StrokeStyle(lineWidth: size * 0.09, lineCap: .round))
             }
-        }
-        .frame(width: size, height: size)
-    }
-}
-
-/// The owner's stand-in. There is no Plex username to take an initial from.
-struct OwnerAvatar: View {
-    var size: CGFloat = 24
-
-    var body: some View {
-        ZStack {
-            Circle().fill(Color.amber)
-            Image(systemName: "person.fill")
-                .font(.system(size: size * 0.5, weight: .semibold))
-                .foregroundStyle(Color.accentInk)
         }
         .frame(width: size, height: size)
     }

@@ -415,9 +415,9 @@ struct MusicView: View {
 
     private var favoritesSubtitle: String? {
         let names = model.roster.activeNames
-        let who = model.roster.others.isEmpty
+        let who = model.roster.listeners.count <= 1
             ? nil
-            : "for " + (names.isEmpty ? "no one" : names == ["you"] ? "just you" : ListenerRoster.joinNames(names))
+            : "for " + (names.isEmpty ? "no one" : ListenerRoster.joinNames(names))
         let count = favorites.map { allowed($0).count }
             .map { "\($0) track\($0 == 1 ? "" : "s")" }
         let parts = [count, who].compactMap { $0 }

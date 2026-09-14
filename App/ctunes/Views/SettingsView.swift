@@ -150,8 +150,8 @@ struct SettingsSheet: View {
     }
 
     private var listenersSummary: String {
-        let names = model.roster.others.map(\.name)
-        return names.isEmpty ? "Just you" : ListenerRoster.joinNames(["You"] + names)
+        let names = model.roster.listeners.map(\.name)
+        return names.isEmpty ? "No listeners" : ListenerRoster.joinNames(names)
     }
 
     @ViewBuilder private var storageSection: some View {

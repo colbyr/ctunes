@@ -268,10 +268,11 @@ and the `-1005` retry: the cache is an optimisation, never the only path.
 
 Listeners (`ListenerRoster`, owned by `AppModel`, `notes/listeners.md`)
 sync through `NSUbiquitousKeyValueStore` under one `listeners` key holding
-the `[Listener]` JSON, last writer wins. The owner is an entry like the
-others under the fixed `Listener.ownerID`, always first, toggled and
-vetoed the same way; a roster or cloud list from before that entry existed
-gains it on decode, listening, with no vetoes. The active set is per
+the `[Listener]` JSON, last writer wins. Every listener is the same:
+renamed, recolored, removed; there is no owner. A first launch starts with
+one, "You", listening (`ListenerRoster.starter`), under the fixed
+`Listener.starterID` so two devices set up before iCloud syncs agree on
+it; an empty roster stays empty. The active set is per
 device and never leaves `UserDefaults`, which also keeps a full copy so
 launch never waits on iCloud. The store needs the
 `ubiquity-kvstore-identifier` entitlement in `App/ctunes.entitlements` and
@@ -468,7 +469,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_ENQUEUE` | `1` appends the album to the queue again, so Up Next has duplicates |
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
 | `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura, as does `album:<ratingKey>` or `track:<ratingKey>`, comma-separated for several (seeded with no title, so the listener page reads "Unknown track") |
-| `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the page of the first listener with a veto, else the owner's |
+| `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the page of the first listener with a veto, else the first listener's |
 | `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |

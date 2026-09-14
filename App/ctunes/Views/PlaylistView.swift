@@ -54,6 +54,7 @@ struct PlaylistView: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(\.dismiss) private var dismiss
+    @Environment(LibraryNavigator.self) private var navigator
 
     @State private var items: [PlaylistItem] = []
     /// For the Listeners sheet's veto lists, which cover the whole library.
@@ -351,9 +352,17 @@ struct PlaylistView: View {
         .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
         .rowContextMenu(inset: Self.margin) { TrackMenu(model: model, track: track, placement: placement) }
         // Pruning a regular playlist deserves the shortcut, as the hearts
-        // do on Favorites. Edits are refused offline.
+        // do on Favorites. Edits are refused offline. A smart playlist's
+        // items are the server's, so its swipe says why there's no Remove.
         .swipeActions(edge: .trailing) {
-            if editable, row.item.playlistItemID != nil {
+            if !offline, current.smart {
+                Button {
+                    navigator.notice = PlexPlaylist.smartEditNotice
+                } label: {
+                    Label("Smart", systemImage: "gearshape.fill")
+                }
+                .tint(.gray)
+            } else if editable, row.item.playlistItemID != nil {
                 Button(role: .destructive) {
                     remove([row.item])
                 } label: {

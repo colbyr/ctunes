@@ -644,7 +644,7 @@ final class AppModel {
     private static func loadRoster() -> ListenerRoster {
         guard let data = UserDefaults.standard.data(forKey: rosterDefaultsKey),
               let roster = try? JSONDecoder().decode(ListenerRoster.self, from: data)
-        else { return ListenerRoster() }
+        else { return .starter(paletteSize: ListenerPalette.colors.count) }
         return roster
     }
 
@@ -720,7 +720,7 @@ final class AppModel {
     private func seedDevelopmentListeners() {
         #if DEBUG
         guard let value = ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS"],
-              !value.isEmpty, roster.others.isEmpty else { return }
+              !value.isEmpty, roster.listeners.count <= 1 else { return }
         let laura = addListener(name: "Laura")
         _ = addListener(name: "Kids")
         toggleListening(laura.id)

@@ -1,9 +1,9 @@
 import PlexKit
 import SwiftUI
 
-/// Who's in the car. Every listener toggles, the owner first among them.
-/// With nobody else on the roster a plus chip opens the Listeners sheet,
-/// so the row never reads as just one chip. An optional accessory sits
+/// Who's in the car. Every listener toggles. With one listener or none a
+/// plus chip opens the Listeners sheet, so the row never reads as just one
+/// chip. An optional accessory sits
 /// pinned at the trailing edge, outside the scroll.
 struct ListenerChips<Trailing: View>: View {
     let model: AppModel
@@ -31,7 +31,7 @@ struct ListenerChips<Trailing: View>: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
                     }
-                    if model.roster.others.isEmpty {
+                    if model.roster.listeners.count <= 1 {
                         Button {
                             showingListeners = true
                         } label: {

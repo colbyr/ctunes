@@ -175,6 +175,9 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
     let subtitle: String?
     var download: DownloadState = .none
     var dimmed = false
+    /// Off in the mix builder, where a tap picks the item and the menu
+    /// stays a long press away.
+    var showsMore = true
     let action: () -> Void
     @ViewBuilder var accessory: () -> Accessory
     @ViewBuilder var menu: () -> Menu
@@ -187,7 +190,9 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
                 content.contentShape(.rect)
             }
             .buttonStyle(.plain)
-            MoreButton { menu() }
+            if showsMore {
+                MoreButton { menu() }
+            }
         }
         .opacity(dimmed ? 0.35 : 1)
         .contextMenu { menu() } preview: {
@@ -274,6 +279,9 @@ extension PlexPlaylist {
         if let duration, duration > 0 { parts.append(Self.length(milliseconds: duration)) }
         return parts.joined(separator: " · ")
     }
+
+    /// What a swipe on a smart playlist, or one of its tracks, explains.
+    static let smartEditNotice = "Smart playlists can only be modified in Plex"
 
     static func trackCount(_ count: Int) -> String {
         "\(count) track\(count == 1 ? "" : "s")"

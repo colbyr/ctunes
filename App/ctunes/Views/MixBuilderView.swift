@@ -351,7 +351,7 @@ struct MixBuilderView: View {
         case .list:
             BrowseList(items: items) { item in
                 BrowseRow(url: model.library?.artworkURL(item.thumb), round: item.kind == .artist, title: item.title,
-                          subtitle: item.subtitle, download: item.download, dimmed: item.vetoed || item.unavailable) {
+                          subtitle: item.subtitle, download: item.download, dimmed: item.vetoed || item.unavailable, showsMore: false) {
                     toggle(item.id)
                 } accessory: {
                     // A pick's mark, or the plus that adds one; the ring

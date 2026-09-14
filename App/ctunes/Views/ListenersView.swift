@@ -46,21 +46,16 @@ struct ListenersList: View {
     @State private var added: Listener.ID?
 
     var body: some View {
-        let others = model.roster.others
+        let listeners = model.roster.listeners
         List {
-            Section("Library owner") {
-                NavigationLink(value: Listener.ownerID) {
-                    row(model.roster.owner)
-                }
-            }
             Section {
-                ForEach(others) { listener in
+                ForEach(listeners) { listener in
                     NavigationLink(value: listener.id) {
                         row(listener)
                     }
                 }
                 .onDelete { offsets in
-                    for id in offsets.map({ others[$0].id }) {
+                    for id in offsets.map({ listeners[$0].id }) {
                         model.removeListener(id)
                     }
                 }
@@ -69,8 +64,6 @@ struct ListenersList: View {
                 } label: {
                     Label("Add Listener", systemImage: "plus.circle.fill")
                 }
-            } header: {
-                Text("Other listeners")
             } footer: {
                 Text("Listeners are saved on this phone, not in Plex. Choose who's listening from the Music screen.")
             }
@@ -139,48 +132,43 @@ private struct ListenerDetail: View {
             Section {
                 VStack(spacing: 10) {
                     ListenerAvatar(listener: listener, size: 72)
-                    // The owner is the amber person, and "You" is their name.
                     // The palette is a row of dots, not a menu: a menu draws
                     // its icons as template images in the tint, so every
                     // dot came out black.
-                    if !listener.isOwner {
-                        HStack(spacing: 6) {
-                            ForEach(ListenerPalette.colors.indices, id: \.self) { index in
-                                let selected = index == listener.colorIndex
-                                Button {
-                                    withAnimation(.snappy) { model.setListenerColor(id, index: index) }
-                                } label: {
-                                    // The ring lives inside the frame; drawn
-                                    // outside it, the row clipped its top and bottom.
-                                    Circle()
-                                        .strokeBorder(Color.ink, lineWidth: 2)
-                                        .opacity(selected ? 1 : 0)
-                                        .frame(width: 34, height: 34)
-                                        .overlay {
-                                            Circle()
-                                                .fill(ListenerPalette.color(index))
-                                                .frame(width: 26, height: 26)
-                                        }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(ListenerPalette.names[index])
-                                .accessibilityAddTraits(selected ? .isSelected : [])
+                    HStack(spacing: 6) {
+                        ForEach(ListenerPalette.colors.indices, id: \.self) { index in
+                            let selected = index == listener.colorIndex
+                            Button {
+                                withAnimation(.snappy) { model.setListenerColor(id, index: index) }
+                            } label: {
+                                // The ring lives inside the frame; drawn
+                                // outside it, the row clipped its top and bottom.
+                                Circle()
+                                    .strokeBorder(Color.ink, lineWidth: 2)
+                                    .opacity(selected ? 1 : 0)
+                                    .frame(width: 34, height: 34)
+                                    .overlay {
+                                        Circle()
+                                            .fill(ListenerPalette.color(index))
+                                            .frame(width: 26, height: 26)
+                                    }
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(ListenerPalette.names[index])
+                            .accessibilityAddTraits(selected ? .isSelected : [])
                         }
-                        .padding(.top, 4)
                     }
+                    .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             }
-            if !listener.isOwner {
-                Section {
-                    HStack {
-                        Text("Name").frame(width: 64, alignment: .leading)
-                        TextField(ListenersList.newName, text: name)
-                            .focused($editingName)
-                    }
+            Section {
+                HStack {
+                    Text("Name").frame(width: 64, alignment: .leading)
+                    TextField(ListenersList.newName, text: name)
+                        .focused($editingName)
                 }
             }
             // One list, artists first, then albums, then tracks; the
@@ -188,7 +176,7 @@ private struct ListenerDetail: View {
             let vetoes = VetoKind.allCases.flatMap { listener.vetoes(of: $0) }
             Section {
                 if vetoes.isEmpty {
-                    Text(listener.isOwner ? "Nothing vetoed — you hear everything." : "Nothing vetoed — \(listener.name) hears everything.")
+                    Text("Nothing vetoed — \(listener.name) hears everything.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.center)

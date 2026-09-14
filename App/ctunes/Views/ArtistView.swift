@@ -28,8 +28,15 @@ struct ArtistView: View {
     /// the chips; empty until the section's albums land.
     @State private var libraryArtists: [AlbumGroup] = []
     /// The portrait, looked up in the section's artist list; nil until it
-    /// lands or when the artist has none, when the first cover stands in.
+    /// lands or when the artist has none.
     @State private var portrait: String?
+    /// Whether that lookup has answered. The first cover stands in only
+    /// for an artist with no portrait, never while the lookup is out, or
+    /// the cover flashed before the portrait on every visit.
+    @State private var portraitResolved = false
+    /// Portraits already looked up, so a page opened again draws its
+    /// portrait on the first frame instead of waiting on the artist list.
+    @MainActor private static var portraits: [String: String] = [:]
     @State private var loaded = false
     @State private var loading: MixMode?
     /// Whether the action cards are on screen; once they scroll away the
@@ -47,7 +54,8 @@ struct ArtistView: View {
     private var hidden: VetoSet { model.roster.hidden }
     private var scope: VetoScope { VetoScope(artistKey: route.ratingKey, title: route.title) }
     private var artworkURL: URL? {
-        model.library?.artworkURL(portrait ?? albums.first?.thumb, size: 600)
+        let known = portrait ?? Self.portraits[route.ratingKey]
+        return model.library?.artworkURL(known ?? (portraitResolved ? albums.first?.thumb : nil), size: 600)
     }
 
     private static let margin: CGFloat = 16
@@ -203,6 +211,8 @@ struct ArtistView: View {
         }
         loaded = true
         portrait = (try? await artists)?.first { $0.ratingKey == route.ratingKey }?.thumb
+        portraitResolved = true
+        if let portrait { Self.portraits[route.ratingKey] = portrait }
         libraryArtists = AlbumBrowse.groups((try? await sectionAlbums) ?? [], view: .artist)
     }
 
