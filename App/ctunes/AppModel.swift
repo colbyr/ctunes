@@ -77,9 +77,18 @@ final class AppModel {
     /// full copy so launch never waits on iCloud.
     private(set) var roster = ListenerRoster()
 
+    /// The play buttons at the top of the Music screen: mixes saved from
+    /// the builder, in their order. Synced like the listeners: the whole
+    /// list under one iCloud key, last writer wins, a copy in
+    /// `UserDefaults` so launch never waits. A first launch starts with
+    /// Shuffle Favorites; an emptied list stays empty.
+    private(set) var shortcuts: [SavedMix] = []
+
     private static let sectionDefaultsKey = "selected-section-key"
     private static let rosterDefaultsKey = "listeners"
     private static let listenersCloudKey = "listeners"
+    private static let shortcutsDefaultsKey = "shortcuts"
+    private static let shortcutsCloudKey = "shortcuts"
     private static let serverDefaultsKey = "last-server-id"
 
     private var auth: PlexAuth?
@@ -96,8 +105,9 @@ final class AppModel {
         self.offline = offline
         downloads = Downloads(store: offline, cache: cache)
         roster = Self.loadRoster()
+        shortcuts = Self.loadShortcuts()
         seedDevelopmentListeners()
-        startListenerSync()
+        startCloudSync()
     }
 
     func bootstrap() async {
@@ -655,61 +665,118 @@ final class AppModel {
         pushListenersToCloud()
     }
 
-    // MARK: Listener sync
+    // MARK: - Shortcuts
+
+    /// Saves a mix at the end of the row.
+    @discardableResult
+    func addShortcut(name: String, picks: [MixPick], style: PlayStyle) -> SavedMix {
+        let mix = SavedMix(name: name, picks: picks, style: style)
+        shortcuts.append(mix)
+        saveShortcuts()
+        return mix
+    }
+
+    func removeShortcut(_ id: SavedMix.ID) {
+        shortcuts.removeAll { $0.id == id }
+        saveShortcuts()
+    }
+
+    func moveShortcuts(from source: IndexSet, to destination: Int) {
+        shortcuts.move(fromOffsets: source, toOffset: destination)
+        saveShortcuts()
+    }
+
+    /// Any of a saved mix's parts: its name, its picks (re-saved from the
+    /// builder), how it plays.
+    func updateShortcut(_ id: SavedMix.ID, _ change: (inout SavedMix) -> Void) {
+        guard let index = shortcuts.firstIndex(where: { $0.id == id }) else { return }
+        change(&shortcuts[index])
+        saveShortcuts()
+    }
+
+    func shortcut(_ id: SavedMix.ID) -> SavedMix? {
+        shortcuts.first { $0.id == id }
+    }
+
+    private static func loadShortcuts() -> [SavedMix] {
+        guard let data = UserDefaults.standard.data(forKey: shortcutsDefaultsKey),
+              let shortcuts = try? JSONDecoder().decode([SavedMix].self, from: data)
+        else { return [.starter] }
+        return shortcuts
+    }
+
+    private func saveShortcuts() {
+        if let data = try? JSONEncoder().encode(shortcuts) {
+            UserDefaults.standard.set(data, forKey: Self.shortcutsDefaultsKey)
+        }
+        Self.push(shortcuts, toCloudKey: Self.shortcutsCloudKey)
+    }
+
+    // MARK: Cloud sync
 
     /// Adopts whatever iCloud already holds, seeds it from this device when
     /// it holds nothing, and follows later changes from other devices. The
     /// store is a local cache that iCloud syncs behind the scenes, so none
     /// of this waits on the network. The observer is never removed: one
     /// model lives as long as the process.
-    private func startListenerSync() {
+    private func startCloudSync() {
         let store = NSUbiquitousKeyValueStore.default
         NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: store,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.pullListenersFromCloud() }
+            Task { @MainActor in self?.pullFromCloud() }
         }
         store.synchronize()
         if store.data(forKey: Self.listenersCloudKey) == nil {
             pushListenersToCloud()
-        } else {
-            pullListenersFromCloud()
         }
+        if store.data(forKey: Self.shortcutsCloudKey) == nil {
+            Self.push(shortcuts, toCloudKey: Self.shortcutsCloudKey)
+        }
+        pullFromCloud()
     }
 
     /// Called when the scene comes forward so a change made on another
     /// device while this one was in the background lands right away rather
     /// than on iCloud's own schedule.
-    func refreshListeners() {
+    func refreshFromCloud() {
         NSUbiquitousKeyValueStore.default.synchronize()
-        pullListenersFromCloud()
+        pullFromCloud()
     }
 
-    private func pullListenersFromCloud() {
-        guard let data = NSUbiquitousKeyValueStore.default.data(forKey: Self.listenersCloudKey),
-              let listeners = try? JSONDecoder().decode([Listener].self, from: data),
-              listeners != roster.listeners
-        else { return }
-        roster.replaceListeners(with: listeners)
-        if let data = try? JSONEncoder().encode(roster) {
-            UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+    private func pullFromCloud() {
+        if let listeners: [Listener] = Self.cloudValue(Self.listenersCloudKey), listeners != roster.listeners {
+            roster.replaceListeners(with: listeners)
+            if let data = try? JSONEncoder().encode(roster) {
+                UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+            }
+        }
+        if let shortcuts: [SavedMix] = Self.cloudValue(Self.shortcutsCloudKey), shortcuts != self.shortcuts {
+            self.shortcuts = shortcuts
+            if let data = try? JSONEncoder().encode(shortcuts) {
+                UserDefaults.standard.set(data, forKey: Self.shortcutsDefaultsKey)
+            }
         }
     }
 
     /// Only the listeners go up; the active set is this device's alone.
-    /// Skipped when the store already matches, so toggling who is listening
-    /// doesn't churn iCloud.
     private func pushListenersToCloud() {
-        let store = NSUbiquitousKeyValueStore.default
-        guard let data = try? JSONEncoder().encode(roster.listeners) else { return }
-        if let current = store.data(forKey: Self.listenersCloudKey),
-           let listeners = try? JSONDecoder().decode([Listener].self, from: current),
-           listeners == roster.listeners {
-            return
-        }
-        store.set(data, forKey: Self.listenersCloudKey)
+        Self.push(roster.listeners, toCloudKey: Self.listenersCloudKey)
+    }
+
+    private static func cloudValue<T: Decodable>(_ key: String) -> T? {
+        guard let data = NSUbiquitousKeyValueStore.default.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
+    /// Skipped when the store already matches, so a save that changed
+    /// nothing iCloud holds (toggling who is listening) doesn't churn it.
+    private static func push<T: Codable & Equatable>(_ value: T, toCloudKey key: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        if let current: T = cloudValue(key), current == value { return }
+        NSUbiquitousKeyValueStore.default.set(data, forKey: key)
     }
 
     /// Puts two listeners on an empty roster so the chips show up in a

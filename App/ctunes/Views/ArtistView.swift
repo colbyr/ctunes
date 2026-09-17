@@ -38,7 +38,7 @@ struct ArtistView: View {
     /// portrait on the first frame instead of waiting on the artist list.
     @MainActor private static var portraits: [String: String] = [:]
     @State private var loaded = false
-    @State private var loading: MixMode?
+    @State private var loading: PlayStyle?
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
@@ -128,9 +128,9 @@ struct ArtistView: View {
             // The cards' actions follow you down the grid as icons.
             if !actionsVisible {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Mix Albums", systemImage: "square.stack") { play(.playAlbums) }
+                    Button("Mix Albums", systemImage: "square.stack") { play(.mixAlbums) }
                         .disabled(albums.isEmpty || loading != nil)
-                    Button("Shuffle", systemImage: "shuffle") { play(.shuffleTracks) }
+                    Button("Shuffle", systemImage: "shuffle") { play(.shuffle) }
                         .disabled(albums.isEmpty || loading != nil)
                 }
             }
@@ -237,9 +237,9 @@ struct ArtistView: View {
             HiddenRightNowLabel(model: model, scope: scope)
             HStack(spacing: 12) {
                 MixActionCard(systemImage: "square.stack", title: "Mix Albums", subtitle: nil,
-                              enabled: !albums.isEmpty && loading == nil, loading: loading == .playAlbums, tint: nil) { play(.playAlbums) }
+                              enabled: !albums.isEmpty && loading == nil, loading: loading == .mixAlbums, tint: nil) { play(.mixAlbums) }
                 MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
-                              enabled: !albums.isEmpty && loading == nil, loading: loading == .shuffleTracks, tint: nil) { play(.shuffleTracks) }
+                              enabled: !albums.isEmpty && loading == nil, loading: loading == .shuffle, tint: nil) { play(.shuffle) }
             }
             .padding(.top, 8)
         }
@@ -249,7 +249,7 @@ struct ArtistView: View {
     /// Every track of theirs in one request, then ordered the way the mix
     /// builder does it: whole albums in a shuffled order, or every track
     /// spread-shuffled.
-    private func play(_ mode: MixMode) {
+    private func play(_ mode: PlayStyle) {
         guard let library = model.library, loading == nil else { return }
         loading = mode
         Task {
@@ -262,11 +262,7 @@ struct ArtistView: View {
                 nothingToPlay = true
                 return
             }
-            let ordered = switch mode {
-            case .shuffleTracks: playable.spreadShuffled()
-            case .playAlbums: playable.albumShuffled()
-            }
-            player.play(ordered, startingAt: 0, library: library)
+            player.play(mode.ordered(playable), startingAt: 0, library: library)
             nowPlaying.isShown = true
         }
     }

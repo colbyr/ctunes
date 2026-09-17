@@ -37,7 +37,7 @@ struct ContentView: View {
         .environment(runtime.player)
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            model.refreshListeners()
+            model.refreshFromCloud()
             Task {
                 switch model.state {
                 case .offline: await model.reconnect()

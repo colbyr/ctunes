@@ -27,13 +27,16 @@ enum LibraryRoute: Hashable {
     case artist(ArtistRoute)
     case album(PlexAlbum)
     case playlist(PlexPlaylist)
+    /// The mix builder, on a saved mix's picks or the last selection.
+    case mix(MixRoute)
+    case favorites
 }
 
 /// The work behind the menu items. Built by each menu from the environment
 /// rather than held anywhere: it is a handful of references, and the
 /// menus are the only callers.
 @MainActor
-private struct LibraryActions {
+struct LibraryActions {
     let model: AppModel
     let player: AudioPlayer
     let nowPlaying: NowPlayingPresentation
@@ -224,7 +227,7 @@ private struct LibraryActions {
         navigator.open(route)
     }
 
-    private func nothingToPlay() {
+    func nothingToPlay() {
         navigator.notice = offline ? "Nothing here is downloaded." : "Nothing to play."
     }
 }
