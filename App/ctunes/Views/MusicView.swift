@@ -399,11 +399,21 @@ struct MusicView: View {
         .task(id: PlaylistShortcutsKey(keys: playlistShortcutKeys, generation: model.libraryGeneration)) {
             await loadPlaylistTracks()
         }
+        // Handed the environment explicitly, like the Now Playing cover:
+        // on the Mac a sheet's hosting controller is built without the
+        // inherited environment and Settings' `@Environment(AudioPlayer.self)`
+        // trapped while its sign-out dialog was evaluated.
         .sheet(isPresented: $showingListeners) {
             ListenersSheet(model: model, artists: artists)
+                .environment(player)
+                .environment(nowPlaying)
+                .environment(navigator)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsSheet(model: model, artists: artists)
+                .environment(player)
+                .environment(nowPlaying)
+                .environment(navigator)
         }
     }
 
