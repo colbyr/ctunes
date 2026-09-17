@@ -41,7 +41,26 @@ final class AppRuntime {
             return recovered
         }
         followModel()
+        followPlaylists()
         Task { await model.bootstrap() }
+        #if DEBUG
+        SiriDevHook.run()
+        #endif
+    }
+
+    /// Siri learns the playlist names from the App Shortcuts' parameter
+    /// query when they register, so the registration is refreshed when
+    /// the names change: a playlist made this morning is speakable by
+    /// the afternoon drive.
+    private func followPlaylists() {
+        let model = model
+        Task { @MainActor in
+            var titles = model.playlists.map(\.title)
+            for await current in Observations({ model.playlists.map(\.title) }) where current != titles {
+                titles = current
+                CtunesShortcuts.updateAppShortcutParameters()
+            }
+        }
     }
 
     /// A queue that started offline reports timelines once the server is

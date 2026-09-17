@@ -289,6 +289,33 @@ final class AppModel {
         downloads.setAlbums(snapshot.albums)
     }
 
+    /// Whether launch has settled: a library is open for good, or the app
+    /// knows it can't have one. `reconnecting` is unsettled on purpose: an
+    /// intent that fires with the phone locked should get the server, not
+    /// the snapshot, when the server is a second away.
+    var isSettled: Bool {
+        switch state {
+        case .loading, .connecting, .reconnecting: false
+        case .signedOut, .linking, .connectFailed, .signedIn, .offline: true
+        }
+    }
+
+    /// Waits for launch to settle, so an intent that fired with no window
+    /// and `bootstrap` still running has a library to play from. Returns
+    /// the state it settled in, or the current one after `timeout`: a
+    /// launch still `reconnecting` then plays from the snapshot, which is
+    /// what the browse root would show.
+    func ready(timeout: Duration = .seconds(12)) async -> State {
+        // Polled rather than observed: an `Observations` stream raced
+        // against a sleep in a task group hits a Swift 6 isolation-checker
+        // bug, and only an intent ever waits here, for seconds at most.
+        let deadline = ContinuousClock.now + timeout
+        while !isSettled, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return state
+    }
+
     /// Called by a browse screen, or the player, when a fetch fails while
     /// signed in. The address that failed is not necessarily the server:
     /// a phone that walked from Wi-Fi to cellular still holds the LAN

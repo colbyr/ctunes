@@ -37,6 +37,7 @@ launches on a device.
 | M10 downloads v1 | done | `OfflineStoreTests` cover artist and track pins, narrowing and the state rollups; simulator run pinned an artist (`CTUNES_DEV_PIN=artist`) and a single track, showed the complete, partial and portrait badges, and the manager listed a v1 album pin migrated in place (`notes/downloads.md`) |
 | M11 playlists | done | fixtures captured from the real server; `PlexLibraryTests` cover the reads and every write URL, `OfflineStoreTests` the saved items and the playlist pin group; simulator run showed the seven Music playlists (`CTUNES_DEV_PLAYLIST=list`), the regular and the 1,221-track smart pages with the hidden line, a pin landing in the pinned root and the offline relaunch playing it (`notes/playlists.md`). Edits are unit-tested at the URL level; the interactive flows (Add to Playlist, New Playlist…, reorder, Rename, Delete) are for a hand check |
 
+| S1 Siri App Shortcuts | done | `App/ctunes/Siri/`, `notes/siri.md`; simulator runs through `CTUNES_DEV_INTENT` played each intent online, from the snapshot offline, and spoke the signed-out error; Siri on the phone is a hand check |
 All six milestones are verified, background audio and lock screen controls
 included, the latter on a real device where the simulator cannot test them.
 

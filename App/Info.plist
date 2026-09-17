@@ -25,6 +25,15 @@
 			</array>
 		</dict>
 	</dict>
+	<!-- Siri phrases carry the app's name; this lets "in Tunes" match the
+	     App Shortcuts as well as "in Tunes for Plex". -->
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Tunes</string>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

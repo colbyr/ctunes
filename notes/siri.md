@@ -105,6 +105,36 @@ it decides whether milestone 1 below is worth doing on its own.
 
 ### 1. App Shortcuts (works on iOS 26, and without Apple Intelligence)
 
+**Built 2026-09-17** (`App/ctunes/Siri/`), as written below plus a
+Shuffle Playlist intent, since a phrase can only bind an entity
+parameter and "Shuffle Driving in Tunes" wanted its own. What the
+build settled:
+
+- `AppModel.ready()` polls `isSettled` every 100ms rather than racing an
+  `Observations` stream against a sleep in a task group: that pattern
+  trips a Swift 6 region-isolation checker bug ("pattern that the
+  region-based isolation checker does not understand"). Only an intent
+  waits there, for seconds.
+- `IntentPlayback` reads the library through the model on every call,
+  not from a copy taken at `ready()`: a fetch that fails runs
+  `connectionLost`, which may swap the library in place, and the retry
+  has to see the new one.
+- The intents don't use `LibraryActions`: it needs a
+  `NowPlayingPresentation` and a `LibraryNavigator`, which a view owns.
+  The paths are the same as `CarPlayController`'s.
+- "Play On Rotation" is the top ten albums by the root's rotation
+  score, each front to back, in that order; the dialog names the first.
+- `INAlternativeAppNames` = ["Tunes"] in `Info.plist`, so "in Tunes"
+  matches as well as "in Tunes for Plex".
+- The App Intents metadata is extracted by the build with no project
+  change (`Metadata.appintents` in the bundle lists the five actions).
+- Verified in the simulator through `CTUNES_DEV_INTENT`: every intent
+  online, `rotation` and `favorites` offline from the snapshot and the
+  pinned files, `favorites` signed out (spoken "Sign in to Tunes
+  first."), `resume` on an empty queue. Not yet spoken to Siri on a
+  phone: that, and Shortcuts listing the actions, are the remaining
+  hand checks.
+
 Plain `AppIntent`s conforming to `AudioPlaybackIntent` (iOS 16) behind an
 `AppShortcutsProvider`, phrases registered at install:
 
@@ -242,7 +272,7 @@ phrasing only ("heart Sunday Morning" works before "heart this" does).
 
 | Milestone | Gets | Size |
 |---|---|---|
-| S1 App Shortcuts, `model.ready()` | favorites, On Rotation, playlists by name, resume; works on 26 | a day |
+| S1 App Shortcuts, `model.ready()` | favorites, On Rotation, playlists by name, resume; works on 26. **Done 2026-09-17**, simulator-verified; Siri on a phone still to check | a day |
 | S2 entities, value query, catalog to `AppRuntime` | "Play Loveless", "Play the Velvet Underground", "Shuffle Sunday Morning" | two to three days |
 | S3 heart, add to playlist, search | "Heart Sunday Morning", "Add Femme Fatale to Driving", "Search Tunes for Nico" | a day |
 | S4 `NowPlaying` session | "this song" forms, "play more like this" | two days plus hardware checks |

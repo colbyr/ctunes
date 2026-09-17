@@ -90,6 +90,23 @@ simulator build embeds it in the binary's `__entitlements` section. The
 car screen can't be opened from the terminal under Xcode 27 (DeviceHub
 replaced Simulator.app); test in DeviceHub or on the phone.
 
+**Siri** (`App/ctunes/Siri/`, `notes/siri.md`) is App Shortcuts so far:
+five `AudioPlaybackIntent`s (Shuffle Favorites, Play On Rotation, Play
+and Shuffle a playlist by name, Resume) behind `CtunesShortcuts`, which
+run in the app process with no window and no Apple Intelligence. Each
+goes through `IntentPlayback.ready()`, which waits on
+`AppModel.ready()` for launch to settle (out of `loading`, `connecting`
+and `reconnecting`, 12s at most) and speaks an `IntentFailure` for
+`signedOut` and `connectFailed`; `.offline` plays what is on disk. The
+play paths are the screens' and the car's (vetoes, offline
+availability, the spread shuffle), not `LibraryActions`, which needs
+the presentation objects a view owns. `PlaylistEntity`'s query is how
+Siri learns the names; `AppRuntime.followPlaylists` re-registers the
+shortcuts when they change. "Tunes" alone works as the app name through
+`INAlternativeAppNames`. **Nothing here needs an entitlement or an
+extension**; the metadata is extracted at build time
+(`Metadata.appintents` in the bundle, five actions).
+
 The app runs on iPhone and iPad (and so on Apple silicon Macs as "Designed
 for iPad"). Now Playing has one host, in `LibraryView`, driven by the
 `NowPlayingPresentation` flag in the environment: in a window narrower
@@ -509,6 +526,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
 | `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
+| `CTUNES_DEV_INTENT` | runs an App Shortcut's intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` (the name matched as the entity query matches speech). Combine with `CTUNES_DEV_OFFLINE=1` for the snapshot path, or leave the token off for the signed-out error |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
 disk; `scripts/plex-token.sh` reads it and caches each field in the login
