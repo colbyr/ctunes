@@ -119,6 +119,8 @@ struct LibraryView: View {
             case .artist(let artist): path.append(artist)
             case .album(let album): path.append(album)
             case .playlist(let playlist): path.append(playlist)
+            case .mix(let route): path.append(route)
+            case .favorites: path.append(FavoritesRoute())
             }
             navigator.requested = nil
         }
@@ -266,8 +268,12 @@ struct LibraryView: View {
             }
             // `artist` or `album` opens the builder on that pool.
             if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
-               let kind = MixKind(rawValue: String(raw.prefix { $0 != ":" })) {
-                let subject: BrowseSubject = kind == .artist ? .artists : .albums
+               let kind = MixPickKind(rawValue: String(raw.prefix { $0 != ":" })) {
+                let subject: BrowseSubject = switch kind {
+                case .artist: .artists
+                case .album: .albums
+                case .playlist, .favorites: .playlists
+                }
                 UserDefaults.standard.set(subject.rawValue, forKey: "mixSubject")
                 path.append(MixRoute())
             }
@@ -315,9 +321,9 @@ struct LibraryView: View {
                     ArtistView(model: model, section: section, route: route, path: $path)
                 }
             }
-            .navigationDestination(for: MixRoute.self) { _ in
+            .navigationDestination(for: MixRoute.self) { route in
                 if let section = model.selectedSection {
-                    MixBuilderView(model: model, section: section, query: $query, building: $buildingMix)
+                    MixBuilderView(model: model, section: section, route: route, query: $query, building: $buildingMix)
                 }
             }
             .navigationDestination(for: PlaylistsRoute.self) { _ in

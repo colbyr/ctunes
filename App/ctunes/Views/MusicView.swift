@@ -20,12 +20,16 @@ struct MusicView: View {
     /// request fails, which leaves On Rotation on the server's play counts.
     private var rotation: Rotation { catalog.rotation }
     private var loaded: Bool { catalog.loaded }
-    /// Fetched with the albums so the shuffle card can say how many tracks
-    /// it would play; nil until the request lands.
-    @State private var favorites: [PlexTrack]?
-    @State private var loadingFavorites = false
-    @State private var noFavorites = false
-    @State private var everyFavoriteHidden = false
+    /// Fetched with the albums so the favorites shortcut can say how many
+    /// tracks it would play; nil until the request lands.
+    private var favorites: [PlexTrack]? { catalog.favorites }
+    /// The tracks of every playlist a shortcut plays, keyed by the
+    /// playlist, so the card can count what the listeners leave and
+    /// stay off the screen when that is nothing. Fetched beside the
+    /// albums and again when the shortcuts change.
+    @State private var playlistTracks: [String: [PlexTrack]] = [:]
+    /// The shortcut whose tracks are being fetched, for its spinner.
+    @State private var loadingShortcut: SavedMix.ID?
     @State private var showingListeners = false
     @State private var showingSettings = false
     @Environment(NowPlayingPresentation.self) private var nowPlaying
@@ -88,7 +92,7 @@ struct MusicView: View {
         switch subject {
         case .albums: groups.isEmpty
         case .artists: artistGroups.isEmpty
-        case .playlists: playlists.isEmpty
+        case .playlists: playlists.isEmpty && !showsFavorites
         }
     }
     private var columns: [GridItem] {
@@ -148,10 +152,21 @@ struct MusicView: View {
         count.map { "\($0) album\($0 == 1 ? "" : "s")" }
     }
 
+    /// The favorites lead the playlists, as on the playlists page.
+    private var showsFavorites: Bool {
+        !downloadedOnly || model.isFavoritesPinned
+    }
+
     @ViewBuilder private func playlistItems(_ playlists: [PlexPlaylist]) -> some View {
         switch layout {
         case .grid:
             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                if showsFavorites {
+                    Button { path.append(FavoritesRoute()) } label: {
+                        FavoritesTile(count: favorites?.count)
+                    }
+                    .buttonStyle(.plain)
+                }
                 ForEach(playlists) { playlist in
                     Button { path.append(playlist) } label: {
                         PlaylistTile(model: model, playlist: playlist)
@@ -161,6 +176,13 @@ struct MusicView: View {
                 }
             }
         case .list:
+            if showsFavorites {
+                FavoritesRow(count: favorites?.count) { path.append(FavoritesRoute()) }
+                Rectangle()
+                    .fill(Color.divider)
+                    .frame(height: 1)
+                    .padding(.leading, BrowseRow<EmptyView, EmptyView>.artSize + 12)
+            }
             BrowseList(items: playlists) { playlist in
                 PlaylistRow(model: model, playlist: playlist) { path.append(playlist) } menu: {
                     PlaylistMenu(model: model, playlist: playlist)
@@ -235,8 +257,8 @@ struct MusicView: View {
     private var tileMinimum: CGFloat { sizeClass == .regular ? 180 : 100 }
     /// The screen's width, for the hero cards' layout.
     @State private var width: CGFloat = 0
-    /// Three cards across need about 280pt each before the favorites
-    /// title and its track count stop wrapping.
+    /// Two shortcut cards across need about 400pt each before a title
+    /// like "Mix Albums Bon Jovi" and its count stop wrapping.
     private static let heroRowMinimum: CGFloat = 880
 
     @State private var scrollPosition = ScrollPosition()
@@ -256,25 +278,32 @@ struct MusicView: View {
                     }
                     .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
                 }
-                // One row of three when the screen has the width for
-                // it, where a full-width hero card is mostly empty;
-                // otherwise the favorites card takes its own row. By
-                // measured width, not size class: beside the Now
-                // Playing column, or in a small Mac window, a "regular"
-                // stack can be 600pt, where three across wraps the
-                // favorites title one letter per line.
-                Group {
-                    if width >= Self.heroRowMinimum {
-                        HStack(spacing: 12) {
-                            heroTiles
-                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
+                // The two half-width tiles, then the shortcuts, each a
+                // full-width card on a phone and two across when the
+                // screen has the width, where one is mostly empty. By
+                // measured width, not size class: beside the Now Playing
+                // column, or in a small Mac window, a "regular" stack can
+                // be 600pt, where two across wraps a title one word per
+                // line.
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) { heroTiles }
+                    let shown = visibleShortcuts
+                    if !shown.isEmpty {
+                        let columns = width >= Self.heroRowMinimum ? 2 : 1
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columns), spacing: 12) {
+                            ForEach(shown) { mix in
+                                ShortcutCard(model: model, mix: mix, subtitle: subtitle(for: mix),
+                                             loading: loadingShortcut == mix.id) {
+                                    play(mix)
+                                } open: {
+                                    open(mix)
+                                } edit: {
+                                    path.append(MixRoute(mixID: mix.id))
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
-                        .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        VStack(spacing: 12) {
-                            HStack(spacing: 12) { heroTiles }
-                            ShuffleFavoritesCard(subtitle: favoritesSubtitle, loading: loadingFavorites, action: shuffleFavorites) { path.append(FavoritesRoute()) }
-                        }
+                        .animation(.snappy, value: shown.map(\.id))
                     }
                 }
                 .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
@@ -296,7 +325,7 @@ struct MusicView: View {
                                            description: Text("Turn off Downloaded only to see the whole library."))
                         .frame(maxWidth: .infinity)
                         .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                } else if loaded, subject == .playlists, model.playlists.isEmpty {
+                } else if loaded, subject == .playlists, model.playlists.isEmpty, !showsFavorites {
                     ContentUnavailableView {
                         Label("No playlists", systemImage: "music.note.list")
                     } description: {
@@ -364,15 +393,11 @@ struct MusicView: View {
             #endif
         }
         .refreshable { await load() }
-        .alert("No favorites yet", isPresented: $noFavorites) {
-            Button("OK") {}
-        } message: {
-            Text("Tap ··· on a track, or the heart in Now Playing, to favorite it.")
-        }
-        .alert("Nothing to shuffle", isPresented: $everyFavoriteHidden) {
-            Button("OK") {}
-        } message: {
-            Text("Every favorite is hidden for \(ListenerRoster.joinNames(model.roster.activeNames)).")
+        // A playlist shortcut added in Settings needs its tracks counted
+        // too; keyed on the playlists the shortcuts name, not the list
+        // itself, so restyling one doesn't refetch.
+        .task(id: PlaylistShortcutsKey(keys: playlistShortcutKeys, generation: model.libraryGeneration)) {
+            await loadPlaylistTracks()
         }
         .sheet(isPresented: $showingListeners) {
             ListenersSheet(model: model, artists: artists)
@@ -401,7 +426,7 @@ struct MusicView: View {
             history = (try? await plays) ?? []
             catalog.rotation = Rotation(history: history, albums: albums)
             catalog.artists = (try? await artistList) ?? []
-            favorites = try? await favoriteTracks
+            catalog.favorites = try? await favoriteTracks
             await playlistList
         } catch {
             await model.connectionLost(error)
@@ -413,13 +438,102 @@ struct MusicView: View {
         }
     }
 
-    private var favoritesSubtitle: String? {
+    /// The playlists the shortcuts play, in shortcut order.
+    private var playlistShortcutKeys: [String] {
+        var keys: [String] = []
+        for mix in model.shortcuts {
+            for case .playlist(let key, _, _) in mix.picks where !keys.contains(key) { keys.append(key) }
+        }
+        return keys
+    }
+
+    private struct PlaylistShortcutsKey: Hashable {
+        let keys: [String]
+        let generation: Int
+    }
+
+    /// The items of every playlist a shortcut plays, concurrently and
+    /// each optional: a playlist that fails to load keeps its card, with
+    /// the list's own count under it.
+    private func loadPlaylistTracks() async {
+        guard let library = model.library else { return }
+        let keys = playlistShortcutKeys
+        playlistTracks = playlistTracks.filter { keys.contains($0.key) }
+        let missing = keys.filter { playlistTracks[$0] == nil }
+        let fetched = await withTaskGroup(of: (String, [PlexTrack]?).self) { group in
+            for key in missing {
+                group.addTask { (key, try? await library.items(inPlaylist: key).map(\.track)) }
+            }
+            var all: [String: [PlexTrack]] = [:]
+            for await (key, tracks) in group {
+                if let tracks { all[key] = tracks }
+            }
+            return all
+        }
+        playlistTracks.merge(fetched) { _, new in new }
+    }
+
+    /// The shortcuts with something left to play for the people
+    /// listening. One is dropped when every pick is hidden: an artist or
+    /// album by its own or a wider veto, an artist with every album
+    /// vetoed, the favorites or a playlist once their tracks are known
+    /// and none survive. Not knowing keeps the card, and a mix of the
+    /// whole library is never hidden.
+    private var visibleShortcuts: [SavedMix] {
+        model.shortcuts.filter { $0.picks.isEmpty || !$0.picks.allSatisfy(isHidden) }
+    }
+
+    private func isHidden(_ pick: MixPick) -> Bool {
+        if pick.isHidden(by: hidden) { return true }
+        switch pick {
+        case .favorites:
+            guard let favorites, !favorites.isEmpty else { return false }
+            return !favorites.contains { !hidden.hides($0) }
+        case .playlist(let key, _, _):
+            guard let tracks = playlistTracks[key], !tracks.isEmpty else { return false }
+            return !tracks.contains { !hidden.hides($0) }
+        case .artist(let key, _, _):
+            let theirs = albums.filter { $0.artistKey == key }
+            return !theirs.isEmpty && !theirs.contains { !hidden.hides($0) }
+        case .album:
+            return false
+        }
+    }
+
+    /// The line under a card. For one pick, what it would play for the
+    /// people listening ("32 tracks for you & Laura"): just the count with
+    /// no listeners set up, just the listeners until the count arrives,
+    /// nothing with neither; an album says its artist and year instead,
+    /// since its tracks aren't counted here. For a real mix, what is in
+    /// it, with the picks the listeners hide left out.
+    private func subtitle(for mix: SavedMix) -> String? {
+        guard mix.picks.count == 1 else {
+            let shown = mix.picks.filter { !isHidden($0) }
+            return SavedMix(name: "", picks: shown, style: mix.style).caption
+        }
+        let count: String?
+        switch mix.picks[0] {
+        case .favorites:
+            count = favorites.map { PlexPlaylist.trackCount(allowed($0).count) }
+        case .playlist(let key, _, _):
+            if let tracks = playlistTracks[key] {
+                count = PlexPlaylist.trackCount(allowed(tracks).count)
+            } else if let listed = model.playlists.first(where: { $0.ratingKey == key }), !listed.smart {
+                count = PlexPlaylist.trackCount(listed.leafCount ?? 0)
+            } else {
+                count = nil
+            }
+        case .artist(let key, _, _):
+            count = loaded ? Self.albumCount(albums.filter { $0.artistKey == key && !hidden.hides($0) }.count) : nil
+        case .album(let key, _, _, let artist, _):
+            let album = albums.first { $0.ratingKey == key }
+            let line = [album?.parentTitle ?? artist, album?.year.map(String.init)].compactMap { $0 }
+            return line.isEmpty ? nil : line.joined(separator: " · ")
+        }
         let names = model.roster.activeNames
         let who = model.roster.listeners.count <= 1
             ? nil
             : "for " + (names.isEmpty ? "no one" : ListenerRoster.joinNames(names))
-        let count = favorites.map { allowed($0).count }
-            .map { "\($0) track\($0 == 1 ? "" : "s")" }
         let parts = [count, who].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
@@ -432,40 +546,37 @@ struct MusicView: View {
         }
     }
 
-    /// Every favorite track in the library, in a fresh random order each tap.
-    /// Spread-shuffling once at enqueue time is all this needs; the player has
-    /// no shuffle mode of its own.
-    private func shuffleFavorites() {
-        guard var library = model.library, !loadingFavorites else { return }
-        loadingFavorites = true
+    /// Fetched fresh rather than from the count's copy: hearts and
+    /// playlists may have changed since the screen loaded. A play of the
+    /// favorites refreshes their count too.
+    private func play(_ mix: SavedMix) {
+        guard loadingShortcut == nil else { return }
+        loadingShortcut = mix.id
+        let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
         Task {
-            defer { loadingFavorites = false }
-            // Fetched fresh rather than reusing the count's copy: hearts may
-            // have been toggled since the screen loaded.
-            let fetched: [PlexTrack]
-            do {
-                fetched = try await library.favoriteTracks(inSection: section.key)
-            } catch {
-                // The address may be stale (Wi-Fi to cellular): once the
-                // model has moved the library, one more go on the new one.
-                guard await model.connectionLost(error), let current = model.library,
-                      let again = try? await current.favoriteTracks(inSection: section.key)
-                else { return }
-                library = current
-                fetched = again
+            defer { loadingShortcut = nil }
+            await actions.play(mix)
+            if mix.picks.contains(.favorites), let library = model.library,
+               let fresh = try? await library.favoriteTracks(inSection: section.key) {
+                catalog.favorites = fresh
             }
-            favorites = fetched
-            guard !fetched.isEmpty else {
-                noFavorites = true
-                return
-            }
-            let playable = allowed(fetched)
-            guard !playable.isEmpty else {
-                everyFavoriteHidden = true
-                return
-            }
-            player.play(playable.spreadShuffled(), startingAt: 0, library: library)
-            nowPlaying.isShown = true
+        }
+    }
+
+    /// The chevron: one pick opens the thing itself; a mix of several,
+    /// or of the whole library, opens the builder on its picks.
+    private func open(_ mix: SavedMix) {
+        guard mix.picks.count == 1 else { return path.append(MixRoute(mixID: mix.id)) }
+        switch mix.picks[0] {
+        case .favorites:
+            path.append(FavoritesRoute())
+        case .playlist(let key, let title, _):
+            path.append(model.playlists.first { $0.ratingKey == key } ?? PlexPlaylist(ratingKey: key, title: title))
+        case .artist(let key, let title, _):
+            path.append(ArtistRoute(ratingKey: key, title: title))
+        case .album(let key, let title, let artistKey, let artist, let thumb):
+            path.append(albums.first { $0.ratingKey == key }
+                ?? PlexAlbum(ratingKey: key, title: title, parentRatingKey: artistKey, parentTitle: artist, year: nil, thumb: thumb))
         }
     }
 }
@@ -497,65 +608,6 @@ private struct OfflineBanner: View {
             }
         }
         .padding(14)
-        .glassCard(cornerRadius: 24)
-    }
-}
-
-/// Sits above the grid as a raised card so it reads as the one action on
-/// the page rather than another row. The body shuffles; the chevron past
-/// the rule opens the full list.
-private struct ShuffleFavoritesCard: View {
-    let subtitle: String?
-    let loading: Bool
-    let action: () -> Void
-    let open: () -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: action) {
-                HStack(spacing: 14) {
-                    Image(systemName: "heart.fill")
-                        .font(.title3)
-                        .foregroundStyle(Color.heartInk)
-                        .frame(width: 44, height: 44)
-                        .background(Color.heart, in: .circle)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Shuffle Favorites").font(.headline)
-                        if let subtitle {
-                            // One line: a longer listener list wrapping made
-                            // the card grow as listeners toggled.
-                            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    Spacer()
-                    if loading {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "shuffle")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(Color.heart)
-                    }
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(.rect)
-            }
-            .disabled(loading)
-            Rectangle()
-                .fill(Color.divider)
-                .frame(width: 1)
-                .padding(.vertical, 12)
-            Button(action: open) {
-                Image(systemName: "chevron.right")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(.rect)
-            }
-            .accessibilityLabel("All Favorites")
-        }
-        .buttonStyle(.plain)
         .glassCard(cornerRadius: 24)
     }
 }

@@ -230,6 +230,39 @@ the list and `OfflineStore` the items of every playlist opened
 (`<server>/playlists/<rk>.json`); a pinned playlist is a group beside
 the favorites, never a node in the pin tree.
 
+**Shortcuts** (`SavedMixes.swift` in PlexKit, `ShortcutsView.swift`)
+are the full-width play cards under the Mix Builder and Playlists tiles
+on the browse root: a `SavedMix` is what the mix builder had picked
+(`[MixPick]`: the favorites, a playlist, an artist or an album, each
+with its title and thumb saved beside the key, identity being the kind
+and key; none is the whole library) plus a `PlayStyle` and a name,
+titled "{verb} {name}". **The builder offers two styles, chosen by the
+picks** (`PlayStyle.cases(for:)`): Play and Shuffle for one album,
+playlist or the favorites, Mix Albums and Shuffle for anything else;
+the Save sheet and the Settings page offer the same two. The builder's
+pool has a Playlists subject with the favorites at its head, so the
+default Shuffle Favorites (under the fixed `SavedMix.starterID`) is a
+saved mix like any other; an emptied list stays empty. Save (the
+builder's bookmark) asks for a name, prefilled by `suggestedName`, and
+opened on a saved mix (`MixRoute(mixID:)`) updates it. The list syncs
+like the listeners, whole, under the iCloud key `shortcuts`, last
+writer wins, with a `UserDefaults` copy; `AppModel.startCloudSync`
+handles both keys. The card's body plays through
+`LibraryActions.play(_ mix:)`, which fetches every pick concurrently
+(`tracks(of picks:)`, pick order kept, each track once), applies every
+veto since a mix is a mixed bag, and orders by the style; the builder
+plays through the same fetch. The chevron opens the thing itself for a
+single pick and the builder otherwise; a long press edits or removes.
+**A card whose every pick is hidden for the active listeners is left
+off the screen**: an artist or album by its veto or a wider one, an
+artist with every album vetoed, the favorites or a playlist once their
+tracks are known and none survive, which is why the root fetches the
+items of every playlist a shortcut names. Settings (Shortcuts, beside
+Listeners) reorders, removes, renames and restyles, and opens the
+builder for a new mix or to edit picks. The playlists page and the
+root's Playlists subject lead with a Favorites tile so the page is
+reachable without a shortcut.
+
 **Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu` and
 `TrackMenu` are the one place an artist, album or track's actions live.
 Every tile, row, cover and name gets one as a long-press `.contextMenu`,
@@ -470,12 +503,12 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
 | `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura, as does `album:<ratingKey>` or `track:<ratingKey>`, comma-separated for several (seeded with no title, so the listener page reads "Unknown track") |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the page of the first listener with a veto, else the first listener's |
-| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page |
+| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page; `shortcuts` on the Shortcuts page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
-| `CTUNES_DEV_MIX` | `artist` or `album` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
+| `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
 disk; `scripts/plex-token.sh` reads it and caches each field in the login

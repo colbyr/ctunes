@@ -34,10 +34,24 @@ struct PlaylistsView: View {
         return sort.sorted(downloadedOnly ? all.filter { model.downloads.hasDownloads($0) } : all)
     }
 
+    /// The favorites lead the list under every sort: they are the one
+    /// list here that isn't the server's, and the page should reach them
+    /// whether or not a shortcut does. Under Downloaded only, only once
+    /// they're pinned.
+    private var showsFavorites: Bool {
+        !downloadedOnly || model.isFavoritesPinned
+    }
+
     @ViewBuilder private func items(_ playlists: [PlexPlaylist]) -> some View {
         switch layout {
         case .grid:
             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                if showsFavorites {
+                    Button { path.append(FavoritesRoute()) } label: {
+                        FavoritesTile(count: catalog.favorites?.count)
+                    }
+                    .buttonStyle(.plain)
+                }
                 ForEach(playlists) { playlist in
                     Button { path.append(playlist) } label: {
                         PlaylistTile(model: model, playlist: playlist)
@@ -47,6 +61,13 @@ struct PlaylistsView: View {
                 }
             }
         case .list:
+            if showsFavorites {
+                FavoritesRow(count: catalog.favorites?.count) { path.append(FavoritesRoute()) }
+                Rectangle()
+                    .fill(Color.divider)
+                    .frame(height: 1)
+                    .padding(.leading, BrowseRow<EmptyView, EmptyView>.artSize + 12)
+            }
             BrowseList(items: playlists) { playlist in
                 PlaylistRow(model: model, playlist: playlist) { path.append(playlist) } menu: {
                     PlaylistMenu(model: model, playlist: playlist)
@@ -72,7 +93,7 @@ struct PlaylistsView: View {
                 AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(catalog.albums, view: .artist),
                                      view: $sort, layout: $layout, scope: .playlists, downloadedOnly: $downloadedOnly)
                     .padding(.top, 8)
-                if loaded, !model.playlists.isEmpty, playlists.isEmpty, downloadedOnly {
+                if loaded, !model.playlists.isEmpty, playlists.isEmpty, downloadedOnly, !showsFavorites {
                     ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
                                            description: Text("Turn off Downloaded only to see every playlist."))
                         .frame(maxWidth: .infinity)
@@ -87,10 +108,12 @@ struct PlaylistsView: View {
         .contentMargins(.bottom, 84, for: .scrollContent)
         .animation(.snappy, value: playlists.map(\.id))
         .overlay {
+            // With the favorites leading the list the page is never bare;
+            // the hint waits for a filter that hides them too.
             if model.playlists.isEmpty {
                 if !loaded {
                     ProgressView()
-                } else {
+                } else if !showsFavorites {
                     ContentUnavailableView {
                         Label("No playlists", systemImage: "music.note.list")
                     } description: {

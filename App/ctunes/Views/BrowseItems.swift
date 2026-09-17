@@ -139,6 +139,89 @@ struct PlaylistTile: View {
     }
 }
 
+/// The favorites among the playlists: the one list the server keeps as
+/// ratings rather than a playlist, drawn as a tile so the page reaches it
+/// with or without a shortcut. The heart disc stands in for a composite.
+struct FavoritesTile: View {
+    /// How many are hearted, or nil until the count lands.
+    let count: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FavoritesArt(size: nil, corner: 8)
+                .artworkShadow()
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Favorites")
+                    .font(.footnote)
+                    .lineLimit(1)
+                Text(count.map(PlexPlaylist.trackCount) ?? "Hearted tracks")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+    }
+}
+
+/// The same as a row, the list layout's shape without the `···`: the
+/// favorites have no menu, their page has the download.
+struct FavoritesRow: View {
+    let count: Int?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                FavoritesArt(size: BrowseRow<EmptyView, EmptyView>.artSize, corner: 6)
+                    .artworkShadow()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Favorites")
+                        .font(.body)
+                        .lineLimit(1)
+                    Text(count.map(PlexPlaylist.trackCount) ?? "Hearted tracks")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.trailing, 14)
+            }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A heart on the heart's own wash, the size of a cover.
+struct FavoritesArt: View {
+    let size: CGFloat?
+    let corner: CGFloat
+
+    var body: some View {
+        Color.clear
+            .frame(width: size, height: size)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                GeometryReader { proxy in
+                    Rectangle()
+                        .fill(Color.heart.opacity(0.16))
+                        .overlay {
+                            Image(systemName: "heart.fill")
+                                .font(.system(size: proxy.size.width * 0.4))
+                                .foregroundStyle(Color.heart)
+                        }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+    }
+}
+
 /// The same playlist as a row.
 struct PlaylistRow<Menu: View>: View {
     let model: AppModel
@@ -171,6 +254,9 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
     /// A portrait rather than a cover.
     var round = false
     var placeholder = "music.note"
+    /// Art drawn in place of the image, for a row with none to load:
+    /// the favorites' heart.
+    var art: AnyView? = nil
     let title: String
     let subtitle: String?
     var download: DownloadState = .none
@@ -204,7 +290,13 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
 
     private var content: some View {
         HStack(spacing: 12) {
-            Artwork(url: url, size: Self.artSize, corner: 6, placeholder: placeholder)
+            Group {
+                if let art {
+                    art
+                } else {
+                    Artwork(url: url, size: Self.artSize, corner: 6, placeholder: placeholder)
+                }
+            }
                 .clipShape(round ? AnyShape(.circle) : AnyShape(.rect(cornerRadius: 6)))
                 .artworkShadow()
                 .overlay(alignment: .bottomTrailing) {
