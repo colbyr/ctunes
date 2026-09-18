@@ -208,9 +208,38 @@ alone. What the build settled:
   `playshuffle:velvet underground` the artist shuffled,
   `playnext:femme fatale` queues, `play:` (unspecified) plays the top of
   On Rotation; offline, `search:velvet` finds the snapshot's artist and
-  albums and `play:loaded` plays the seven tracks on disk. Not yet
-  spoken to Siri on a phone: whether "Play Loaded in Tunes" reaches the
-  value query at all (Verify item 2) is the hand check that matters.
+  albums and `play:loaded` plays the seven tracks on disk.
+
+**Spoken to Siri on an iPhone 16 Pro on iOS 27.0, 2026-09-17**, read
+back with `sudo log collect --device-udid … --last 10m` (root is
+required for a device; `/usr/bin/log`, since `log` is a zsh builtin)
+and `log show --predicate 'category == "Siri"'` for the app's lines,
+`process == "intelligenceflowd"` for the planner's:
+
+- **The schema path works.** "Play the Velvet Underground in Tunes" and
+  "Play Abbey Road in Tunes" ran the value query in the app process and
+  `PlayAudioIntent.perform()`, with no Apple Intelligence setting
+  touched. Verify item 2 is closed.
+- **Siri on 27 is an on-device planner** ("Linwood" orchestration in
+  `assistantd`'s log): it runs a general search tool over Spotlight
+  first, then a `SiriAudioAppPredictor` that picks the app by media
+  category and asks its value query. Its decisions log as `<private>`.
+- **"Play Loaded" never reached the app**: the search tool found 16
+  local results for "Loaded" (movies) and the planner answered from
+  those without entering the music path; "Abbey Road" found none and
+  fell through to the query. Nothing in the query can fix that; S5's
+  Spotlight index is what puts the album in front of the planner's
+  search.
+- **The App Shortcut phrases need the per-app Siri toggle.** The first
+  round's "Sorry, Tunes hasn't added support for that with Siri" for
+  "Shuffle my favorites in Tunes" was the toggle being off; Siri asked
+  "Turn on 'Tunes for Plex' shortcuts with Siri?" on a later request
+  and the phrases worked from then on. The reserved Favorites and On
+  Rotation entities in the value query stay as the schema-side answer
+  for the same words.
+- The App Shortcuts index registered 5 shortcuts with 106 phrases after
+  `updateAppShortcutParameters()` (22 before the playlists loaded).
+- The entity ids' colon caused nothing; Verify item 3 is closed.
 
 `App/ctunes/Siri/`, picked up by the synchronized group:
 
@@ -327,7 +356,7 @@ phrasing only ("heart Sunday Morning" works before "heart this" does).
 | Milestone | Gets | Size |
 |---|---|---|
 | S1 App Shortcuts, `model.ready()` | favorites, On Rotation, playlists by name, resume; works on 26. **Done 2026-09-17**, simulator-verified; Siri on a phone still to check | a day |
-| S2 entities, value query, catalog to `AppRuntime` | "Play Loveless", "Play the Velvet Underground", "Shuffle Sunday Morning". **Done 2026-09-17** with item 3, simulator-verified; Siri on a phone still to check | two to three days |
+| S2 entities, value query, catalog to `AppRuntime` | "Play Loveless", "Play the Velvet Underground", "Shuffle Sunday Morning". **Done 2026-09-17** with item 3, verified with Siri on the phone | two to three days |
 | S3 heart, add to playlist, search | "Heart Sunday Morning", "Add Femme Fatale to Driving", "Search Tunes for Nico" | a day |
 | S4 `NowPlaying` session | "this song" forms, "play more like this" | two days plus hardware checks |
 | S5 Spotlight, donations, warmup | Siri over history, faster starts | a day |
@@ -355,12 +384,11 @@ Siri becomes a way to use the app rather than a remote for it.
    `CPNowPlayingTemplate` reads the new session. The sample has neither
    the old API nor CarPlay. If the template does not, S4 is blocked on
    Apple.
-2. **Reach without Apple Intelligence.** Schema intents are presented as
-   Apple Intelligence features. Check on an older phone whether "Play X
-   in Tunes" hits the value query, or only the App Shortcut phrases do.
-   That decides how much S1 has to cover.
-3. **Rating key ids.** Whether `EntityIdentifier` and the index accept a
-   slash in `id`, else use another separator.
+2. **Reach without Apple Intelligence.** Closed 2026-09-17: "Play X in
+   Tunes" hits the value query on an iPhone 16 Pro on 27.0 with nothing
+   enabled by hand. An older phone is untested.
+3. **Rating key ids.** Closed: ids are `server:ratingKey` and nothing
+   objected to the colon.
 4. **Query latency.** Siri times the value query out; the server track
    search is one request and the catalog is local, so it should be
    fine, but measure it on cellular against the remote address.
