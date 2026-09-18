@@ -91,6 +91,17 @@ struct IntentPlayback {
     /// the browse root ranks them. Returns the albums queued.
     func playOnRotation() async throws -> [PlexAlbum] {
         let top = Array(try await rotationAlbums().prefix(Self.rotationAlbums))
+        let queued = try await rotationTracks(albums: top)
+        try play(queued)
+        let keys = Set(queued.compactMap(\.parentRatingKey))
+        return top.filter { keys.contains($0.ratingKey) }
+    }
+
+    /// The tracks of the top albums in rotation order, each front to
+    /// back, minus what the active listeners veto inside them.
+    private func rotationTracks(albums: [PlexAlbum]? = nil) async throws -> [PlexTrack] {
+        let top: [PlexAlbum]
+        if let albums { top = albums } else { top = Array(try await rotationAlbums().prefix(Self.rotationAlbums)) }
         let tracks = try await withThrowingTaskGroup(of: (Int, [PlexTrack]).self) { group in
             for (index, album) in top.enumerated() {
                 group.addTask { (index, try await self.tracks(of: album)) }
@@ -99,10 +110,7 @@ struct IntentPlayback {
             for try await batch in group { batches.append(batch) }
             return batches.sorted { $0.0 < $1.0 }.flatMap(\.1)
         }
-        let queued = playable(tracks, within: .album)
-        try play(queued)
-        let keys = Set(queued.compactMap(\.parentRatingKey))
-        return top.filter { keys.contains($0.ratingKey) }
+        return playable(tracks, within: .album)
     }
 
     /// A playlist front to back, or shuffled: the page's Play and Shuffle
@@ -162,6 +170,11 @@ struct IntentPlayback {
     /// of each kind. The track search is optional, as on the page: the
     /// artists and albums still answer when it fails.
     func search(_ query: String) async throws -> [AudioEntity] {
+        // "My favorites", "on rotation": the reserved lists, alone, since
+        // nothing in the library is a better answer to those words.
+        if let reserved = PlaylistEntity.reserved(matching: query, server: server) {
+            return [.playlist(reserved)]
+        }
         try await loadCatalog()
         async let playlistList = playlists()
         let tracks = (try? await library.searchTracks(inSection: section.key, query: query)) ?? []
@@ -223,6 +236,14 @@ struct IntentPlayback {
             if !tracks.contains(where: { $0.id == track.id }) { tracks.insert(track, at: 0) }
             start = tracks.firstIndex { $0.id == track.id } ?? 0
             name = song.artistName.isEmpty ? song.title : "\(song.title) by \(song.artistName)"
+        case .playlist(let playlist) where playlist.ratingKey == PlaylistEntity.favoritesKey:
+            let hearted = try await fetch { try await library.favoriteTracks(inSection: section.key) }
+            if hearted.isEmpty, !offline { throw IntentFailure.noFavorites }
+            tracks = playable(hearted, within: nil)
+            name = "your favorites"
+        case .playlist(let playlist) where playlist.ratingKey == PlaylistEntity.rotationKey:
+            tracks = try await rotationTracks()
+            name = "On Rotation"
         case .playlist(let playlist):
             let found = try await self.playlist(ratingKey: playlist.ratingKey)
             let items = try await fetch { try await library.items(inPlaylist: found.ratingKey) }

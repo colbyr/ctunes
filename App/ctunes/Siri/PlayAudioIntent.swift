@@ -31,9 +31,16 @@ struct PlayAudioIntent: AudioPlaybackIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        siriLog.info("play asked: \(audioEntity.logName, privacy: .public), \(playbackAttributes.map(\.rawValue).joined(separator: ","), privacy: .public), \(queueLocation?.rawValue ?? "replace", privacy: .public)")
         let playback = try await IntentPlayback.ready()
-        let dialog = try await playback.play(audioEntity, attributes: playbackAttributes, location: queueLocation)
-        return .result(dialog: "\(dialog)")
+        do {
+            let dialog = try await playback.play(audioEntity, attributes: playbackAttributes, location: queueLocation)
+            siriLog.info("play done: \(dialog, privacy: .public)")
+            return .result(dialog: "\(dialog)")
+        } catch {
+            siriLog.error("play failed: \(String(describing: error), privacy: .public)")
+            throw error
+        }
     }
 }
 

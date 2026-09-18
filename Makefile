@@ -10,7 +10,7 @@ DD        := build/DerivedData
 SIM       ?= iPhone 17
 
 DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null \
-	| awk -F'   +' '/iPhone/ && /connected|available/ {print $$3; exit}')
+	| awk -F'   +' '/iPhone/ && /connected|available/ {sub(/ \(UDID\)/, "", $$2); print $$2; exit}')
 
 DEVICE_APP := $(DD)/Build/Products/Debug-iphoneos/$(SCHEME).app
 SIM_APP    := $(DD)/Build/Products/Debug-iphonesimulator/$(SCHEME).app
