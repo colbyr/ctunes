@@ -28,7 +28,7 @@ struct PlayOnRotationIntent: AudioPlaybackIntent {
         let playback = try await IntentPlayback.ready()
         let albums = try await playback.playOnRotation()
         guard let first = albums.first else { return .result(dialog: "Playing On Rotation.") }
-        return .result(dialog: "Playing On Rotation, starting with \(first.title) by \(first.parentTitle).")
+        return .result(dialog: "Playing On Rotation, starting with \(first.title) by \(first.parentTitle ?? "").")
     }
 }
 
