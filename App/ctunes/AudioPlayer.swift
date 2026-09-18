@@ -284,7 +284,12 @@ final class AudioPlayer {
     }
 
     func cycleRepeat() {
-        repeatMode = repeatMode.next
+        setRepeat(repeatMode.next)
+    }
+
+    /// Siri's "repeat" sets a mode outright rather than cycling.
+    func setRepeat(_ mode: RepeatMode) {
+        repeatMode = mode
         updateNowPlayingModes()
         prefetch()
     }

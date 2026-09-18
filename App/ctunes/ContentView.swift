@@ -26,7 +26,7 @@ struct ContentView: View {
             // One label for both: two would be two view identities, and the
             // stack would reset on every transition in or out of offline.
             case .signedIn, .offline, .reconnecting:
-                LibraryView(model: model)
+                LibraryView(model: model, catalog: runtime.catalog)
             }
         }
         // Filled first: the sign-in and connecting screens are only as big

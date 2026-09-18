@@ -96,7 +96,11 @@ reachable on a phone without Apple Intelligence.
 
 ### 0. Deployment target
 
-`IPHONEOS_DEPLOYMENT_TARGET` is 26.0. Every schema type is iOS 27, so
+**Bumped to 27.0 with S2 (2026-09-17)**: the whole of S2 is iOS 27
+API, the phones this runs on are on 27, and wrapping every entity, the
+union and the S1 playlist entity in `@available` was the worse trade.
+
+`IPHONEOS_DEPLOYMENT_TARGET` was 26.0. Every schema type is iOS 27, so
 either bump the target to 27 or wrap the whole `Siri/` directory in
 `@available(iOS 27, *)` and register the dependencies under the same
 check. The bump is simpler and the phones this runs on are on 27; the
@@ -157,6 +161,56 @@ a `CustomLocalizedStringResourceConvertible`) for `signedOut` and
 `connectFailed`. `.offline` is fine: whatever is on disk plays.
 
 ### 2. Entities and the search Siri calls (the payoff)
+
+**Built 2026-09-17** (`AudioEntities.swift`, `AudioSearchQuery.swift`,
+`PlayAudioIntent.swift`, `PlaylistEntity.swift`, the play paths in
+`IntentPlayback`), items 2 and 3 together since neither is testable
+alone. What the build settled:
+
+- **The schema's shapes are in the toolchain**, not the docs:
+  `Toolchains/XcodeDefault.xctoolchain/usr/lib/AppIntentSchemas.framework/Versions/A/Resources/AppIntentSchemas.sqlite`
+  (copy it out; it won't open in place). `entitySchema`, `intentSchema`,
+  `unionSchema` and `enumSchema` hold the property and parameter lists
+  as JSON blobs. The metadata processor (`appintentsmetadataprocessor`,
+  run by the build) checks against it and names every miss, so the loop
+  is: write, build, read the errors.
+- **Every schema property has to be declared, optional ones included**:
+  `universalProductCode` on the album, `composerName`, `composers` and
+  `internationalStandardRecordingCode` on the song, `owner` (a
+  `@UnionValue` of `IntentPerson` or a name), `createdByMe` and
+  `curatedForMe` on the playlist, all nil or empty here. The intent
+  likewise has to declare `warmupAudioQueueResult`, so
+  `WarmupAudioQueueResult` exists as a `TransientAppEntity` with nothing
+  in it. `playbackAttributes` must be `Set<PlaybackAttribute>`, not an
+  array.
+- **The schema macro wraps the schema properties in `@Property`**, so an
+  init has to set every plain stored property (`id`, `ratingKey`) before
+  any schema one, or it is "self used before all stored properties are
+  initialized".
+- **A union case needs an `EntityStringQuery`** (or an index, or
+  `TransientAppEntity`) even with the `IntentValueQuery` there; the
+  processor rejects the intent otherwise. So `ArtistQuery`, `AlbumQuery`
+  and `SongQuery` answer `entities(matching:)` with the value query's
+  hits of their own kind.
+- Ids are `server:ratingKey`, colon-separated; nothing objected. Verify
+  item 3 is closed for the colon; the slash was never tried.
+- `IntentDialog` has no public accessor for its text, so
+  `CTUNES_DEV_INTENT` logs the player's state, not the spoken line.
+- Songs resolve back from an id through a new
+  `LibrarySource.track(ratingKey:)` (`/library/metadata/{rk}`, the
+  pinned files offline), since an id alone can't say which album.
+- The metadata in the bundle (`Metadata.appintents/extract.actionsdata`)
+  lists the six actions, the five entities, the union and the two enums
+  under `enums`, and the five queries.
+- Verified in the simulator through `CTUNES_DEV_INTENT`: `search:velvet`
+  ranks the artist, three albums and four songs; `play:loaded` plays the
+  album, `play:sunday morning` the album from that song,
+  `playshuffle:velvet underground` the artist shuffled,
+  `playnext:femme fatale` queues, `play:` (unspecified) plays the top of
+  On Rotation; offline, `search:velvet` finds the snapshot's artist and
+  albums and `play:loaded` plays the seven tracks on disk. Not yet
+  spoken to Siri on a phone: whether "Play Loaded in Tunes" reaches the
+  value query at all (Verify item 2) is the hand check that matters.
 
 `App/ctunes/Siri/`, picked up by the synchronized group:
 
@@ -273,7 +327,7 @@ phrasing only ("heart Sunday Morning" works before "heart this" does).
 | Milestone | Gets | Size |
 |---|---|---|
 | S1 App Shortcuts, `model.ready()` | favorites, On Rotation, playlists by name, resume; works on 26. **Done 2026-09-17**, simulator-verified; Siri on a phone still to check | a day |
-| S2 entities, value query, catalog to `AppRuntime` | "Play Loveless", "Play the Velvet Underground", "Shuffle Sunday Morning" | two to three days |
+| S2 entities, value query, catalog to `AppRuntime` | "Play Loveless", "Play the Velvet Underground", "Shuffle Sunday Morning". **Done 2026-09-17** with item 3, simulator-verified; Siri on a phone still to check | two to three days |
 | S3 heart, add to playlist, search | "Heart Sunday Morning", "Add Femme Fatale to Driving", "Search Tunes for Nico" | a day |
 | S4 `NowPlaying` session | "this song" forms, "play more like this" | two days plus hardware checks |
 | S5 Spotlight, donations, warmup | Siri over history, faster starts | a day |
