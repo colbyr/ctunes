@@ -130,6 +130,18 @@ enum AudioEntity {
     case playlist(PlaylistEntity)
 }
 
+extension AudioEntity {
+    /// One line for the log.
+    var logName: String {
+        switch self {
+        case .artist(let artist): "artist \(artist.name)"
+        case .album(let album): "album \(album.title) by \(album.artistName)"
+        case .song(let song): "song \(song.title) by \(song.artistName)"
+        case .playlist(let playlist): "playlist \(playlist.title)"
+        }
+    }
+}
+
 @AppEnum(schema: .audio.playbackAttributes)
 enum PlaybackAttribute: String {
     case shuffle

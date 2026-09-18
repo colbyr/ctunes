@@ -1,6 +1,11 @@
 import AppIntents
 import MediaIntents
+import os
 import PlexKit
+
+/// The Siri layer's log, read on a phone with
+/// `log collect --device-udid … ` then `log show --predicate 'category == "Siri"'`.
+let siriLog = Logger(subsystem: "com.colbyr.ctunes", category: "Siri")
 
 /// The search Siri runs for "play X": handed an `AudioSearch`, answers
 /// with the artists, albums, playlists and songs that match, best first,
@@ -16,19 +21,23 @@ struct AudioSearchQuery: IntentValueQuery {
 
     @MainActor
     func values(for input: AudioSearch) async throws -> [AudioEntity] {
+        siriLog.info("search asked: \(String(describing: input.criteria), privacy: .public)")
         let playback = try await IntentPlayback.ready()
+        let hits: [AudioEntity]
         switch input.criteria {
         case .searchQuery(let query):
-            return try await playback.search(query)
+            hits = try await playback.search(query)
         case .unspecified:
             // "Play music": the top of On Rotation, so Siri has a pick.
             let server = playback.server
-            return try await playback.rotationAlbums().prefix(Self.limit).map { .album(AlbumEntity($0, server: server)) }
+            hits = try await playback.rotationAlbums().prefix(Self.limit).map { .album(AlbumEntity($0, server: server)) }
         case .url:
-            return []
+            hits = []
         @unknown default:
-            return []
+            hits = []
         }
+        siriLog.info("search answered \(hits.count) hits: \(hits.prefix(6).map(\.logName).joined(separator: "; "), privacy: .public)")
+        return hits
     }
 }
 
