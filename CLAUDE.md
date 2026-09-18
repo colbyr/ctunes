@@ -90,10 +90,26 @@ simulator build embeds it in the binary's `__entitlements` section. The
 car screen can't be opened from the terminal under Xcode 27 (DeviceHub
 replaced Simulator.app); test in DeviceHub or on the phone.
 
-**Siri** (`App/ctunes/Siri/`, `notes/siri.md`) is App Shortcuts so far:
-five `AudioPlaybackIntent`s (Shuffle Favorites, Play On Rotation, Play
-and Shuffle a playlist by name, Resume) behind `CtunesShortcuts`, which
-run in the app process with no window and no Apple Intelligence. Each
+**Siri** (`App/ctunes/Siri/`, `notes/siri.md`) is two layers. The App
+Shortcuts: five `AudioPlaybackIntent`s (Shuffle Favorites, Play On
+Rotation, Play and Shuffle a playlist by name, Resume) behind
+`CtunesShortcuts`, which run in the app process with no window and no
+Apple Intelligence. And the `.audio` app schema (iOS 27, which is why
+the deployment target is 27): `ArtistEntity`, `AlbumEntity`,
+`SongEntity` and `PlaylistEntity` mapped over the DTOs with ids of
+`server:ratingKey` (`SiriID`), the `AudioEntity` union, and
+`PlayAudioIntent`, whose entity Siri resolves through
+`AudioSearchQuery`: an `IntentValueQuery` over `MediaIntents.AudioSearch`
+that runs `LibrarySearch.hits` over the catalog, the playlists and the
+server's track search (`IntentPlayback.search`), or hands over the top
+of On Rotation for "play music". The catalog is `AppRuntime.catalog`
+(`LibraryCatalog.swift`), which the browse root fills and an intent
+fills itself when no root has. **The schema is checked by the build**
+against `AppIntentSchemas.sqlite` in the toolchain: every property in
+the schema has to be declared, optional or not, the schema properties
+are wrapped so an init sets the plain ones first, and a union case
+needs an `EntityStringQuery` beside the value query; the note lists
+what else it rejected. Every intent
 goes through `IntentPlayback.ready()`, which waits on
 `AppModel.ready()` for launch to settle (out of `loading`, `connecting`
 and `reconnecting`, 12s at most) and speaks an `IntentFailure` for
@@ -102,7 +118,12 @@ play paths are the screens' and the car's (vetoes, offline
 availability, the spread shuffle), not `LibraryActions`, which needs
 the presentation objects a view owns. `PlaylistEntity`'s query is how
 Siri learns the names; `AppRuntime.followPlaylists` re-registers the
-shortcuts when they change. "Tunes" alone works as the app name through
+shortcuts when they change. `IntentPlayback.play(_:attributes:location:)`
+builds the queue an entity's own page would (the artist in release
+order, the album, the song's album from that song with the song always
+kept, the playlist under every veto), `.shuffle` is the spread shuffle
+with a song kept first, `.repeat` is `setRepeat(.all)`, and `.next` and
+`.tail` go through `playNext` and `addToQueue`. "Tunes" alone works as the app name through
 `INAlternativeAppNames`. **Nothing here needs an entitlement or an
 extension**; the metadata is extracted at build time
 (`Metadata.appintents` in the bundle, five actions).
@@ -526,7 +547,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
 | `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
-| `CTUNES_DEV_INTENT` | runs an App Shortcut's intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` (the name matched as the entity query matches speech). Combine with `CTUNES_DEV_OFFLINE=1` for the snapshot path, or leave the token off for the signed-out error |
+| `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music". Combine with `CTUNES_DEV_OFFLINE=1` for the snapshot path, or leave the token off for the signed-out error |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
 disk; `scripts/plex-token.sh` reads it and caches each field in the login

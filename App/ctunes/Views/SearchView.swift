@@ -5,30 +5,6 @@ import SwiftUI
 /// pushes it when the search pill opens and pops it when the pill closes.
 struct SearchRoute: Hashable {}
 
-/// The section as the browse root loaded it, shared with the search page
-/// so opening search never fetches the library a second time. The root
-/// writes it on every load; the search page only reads.
-@MainActor @Observable
-final class LibraryCatalog {
-    var albums: [PlexAlbum] = []
-    var artists: [PlexArtist] = []
-    var rotation: Rotation = .none
-    /// Every hearted track, fetched with the albums so the favorites
-    /// shortcut and the playlists page can say how many; nil until the
-    /// request lands.
-    var favorites: [PlexTrack]?
-    var loaded = false
-
-    /// Back to nothing, for a library switch.
-    func reset() {
-        albums = []
-        artists = []
-        rotation = .none
-        favorites = nil
-        loaded = false
-    }
-}
-
 /// What was opened from search, newest first, per server, kept in
 /// `UserDefaults`. A track is stored whole so it can play again later.
 @MainActor @Observable

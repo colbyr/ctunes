@@ -43,7 +43,7 @@ struct PlayPlaylistIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let playback = try await IntentPlayback.ready()
-        let found = try await playback.playlist(ratingKey: playlist.id)
+        let found = try await playback.playlist(ratingKey: playlist.ratingKey)
         _ = try await playback.play(playlist: found, shuffled: false)
         return .result(dialog: "Playing \(found.title).")
     }
@@ -60,7 +60,7 @@ struct ShufflePlaylistIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let playback = try await IntentPlayback.ready()
-        let found = try await playback.playlist(ratingKey: playlist.id)
+        let found = try await playback.playlist(ratingKey: playlist.ratingKey)
         _ = try await playback.play(playlist: found, shuffled: true)
         return .result(dialog: "Shuffling \(found.title).")
     }

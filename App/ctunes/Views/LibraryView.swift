@@ -17,7 +17,7 @@ struct LibraryView: View {
     @State private var searchDepth: Int?
     /// The section's albums and artists, loaded by the browse root and
     /// read by the search page.
-    @State private var catalog = LibraryCatalog()
+    let catalog: LibraryCatalog
     /// True while a mix builder is on top of the stack; the search pill then
     /// filters the builder's pool instead of opening the search page.
     @State private var buildingMix = false
@@ -247,8 +247,6 @@ struct LibraryView: View {
                 searching = count == depth
             }
         }
-        // A library switch starts the catalog over with the root.
-        .onChange(of: model.selectedSection?.key) { _, _ in catalog.reset() }
         // A builder's query filters its pool only; popping back to the root
         // shouldn't leave the root showing results for it.
         .onChange(of: buildingMix) { _, building in

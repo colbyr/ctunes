@@ -38,6 +38,10 @@ public struct OfflineLibrary: LibrarySource {
     }
 
     /// Pinned albums' tracks plus favorites by the artist, each track once.
+    public func track(ratingKey: String) async throws -> PlexTrack? {
+        await store.pinnedTracks(server: snapshot.server).first { $0.ratingKey == ratingKey }
+    }
+
     public func tracks(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexTrack] {
         var seen: Set<String> = []
         return await store.pinnedTracks(server: snapshot.server).filter {

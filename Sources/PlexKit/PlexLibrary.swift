@@ -80,6 +80,10 @@ public actor PlexLibrary {
         try await fetch(PlexTrack.self, path: "/library/metadata/\(albumRatingKey)/children")
     }
 
+    public func track(ratingKey: String) async throws -> PlexTrack? {
+        try await fetch(PlexTrack.self, path: "/library/metadata/\(ratingKey)").first
+    }
+
     /// Every track by one artist, for artist mixes. Section-filtered for the
     /// same reason as `albums(forArtist:)`: walking `/children` twice would
     /// inherit its under-reporting.

@@ -14,6 +14,10 @@ final class AppRuntime {
 
     let model: AppModel
     let player: AudioPlayer
+    /// The section as the browse root loaded it, read by the search page
+    /// and Siri's value query; here rather than on `LibraryView` because
+    /// an intent can fire with no window and has to fill it itself.
+    let catalog = LibraryCatalog()
 
     private init() {
         // One cache with two roots, shared by the player (window prefetch)
@@ -68,14 +72,22 @@ final class AppRuntime {
     /// sign-out lives in the model, which doesn't know the player: stop
     /// playback and drop the cached audio when it happens.
     private func followModel() {
-        let model = model, player = player
+        let model = model, player = player, catalog = catalog
         Task { @MainActor in
             var generation = model.libraryGeneration
             var state = model.state
-            for await current in Observations({ (state: model.state, generation: model.libraryGeneration) }) {
+            var section = model.selectedSection?.key
+            for await current in Observations({
+                (state: model.state, generation: model.libraryGeneration, section: model.selectedSection?.key)
+            }) {
                 if current.generation != generation {
                     generation = current.generation
                     player.adopt(model.library)
+                }
+                // A library switch starts the catalog over with the root.
+                if current.section != section {
+                    section = current.section
+                    catalog.reset()
                 }
                 if current.state != state {
                     let signedOut = current.state == .signedOut

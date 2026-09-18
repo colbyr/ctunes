@@ -14,6 +14,9 @@ public protocol LibrarySource: Sendable {
     func playHistory(inSection section: String, since: Date) async throws -> [PlayHistoryEntry]
     func albums(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexAlbum]
     func tracks(inAlbum albumRatingKey: String) async throws -> [PlexTrack]
+    /// One track by rating key, for an id Siri hands back; nil when the
+    /// server has no such item, or offline when it has no file.
+    func track(ratingKey: String) async throws -> PlexTrack?
     func tracks(forArtist artistRatingKey: String, inSection section: String) async throws -> [PlexTrack]
     /// Every track in the section, for a mix with nothing picked.
     func tracks(inSection section: String) async throws -> [PlexTrack]
