@@ -9,7 +9,7 @@
           "image-name" : "Tunes App Icon - play.png",
           "name" : "Tunes App Icon - play",
           "position" : {
-            "scale" : 1.7,
+            "scale" : 2,
             "translation-in-points" : [
               0,
               0
@@ -32,10 +32,11 @@
       "hidden" : false,
       "layers" : [
         {
+          "hidden" : false,
           "image-name" : "Tunes App Icon - hole.png",
           "name" : "Tunes App Icon - hole",
           "position" : {
-            "scale" : 1,
+            "scale" : 1.5,
             "translation-in-points" : [
               0,
               0
@@ -62,7 +63,7 @@
           "image-name" : "Tunes App Icon - Record.png",
           "name" : "Tunes App Icon - Record",
           "position" : {
-            "scale" : 1.8,
+            "scale" : 2,
             "translation-in-points" : [
               0,
               0
