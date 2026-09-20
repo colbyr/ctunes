@@ -253,8 +253,11 @@ Still to do on a device:
 
 ## Follow-ups, not in v1
 
-- **Resume after a long pause.** The transcode session dies ~4 minutes into a pause and
-  the item 404s on resume. Options: rebuild the item on the first `-12938` error-log entry
+- **Resume after a long pause.** Handled by time, 2026-09-20 (TestFlight feedback, build
+  15: play did nothing after a long pause, next worked): `AudioPlayer.resume` rebuilds a
+  transcoded item under a fresh session at `currentTime` once it has been paused past
+  `transcodeIdleLimit` (3 min). The item never reached `.failed`, so the retry this note
+  counted on never fired. Confirmed on the phone at 128k over a 5 minute pause. The options considered: rebuild the item on the first `-12938` error-log entry
   and seek back to `currentTime`, or a periodic `/music/:/transcode/universal/ping?session=`
   while paused, if the server honours it (unmeasured). Worth doing before this is the
   default on cellular.

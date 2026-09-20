@@ -84,6 +84,14 @@ final class AudioPlayer {
     /// Whether the current item was built from a cached file, so a failure
     /// can fall back to the stream instead of burning a retry.
     private var currentItemIsLocal = false
+    /// Whether the current item streams through the transcoder, and when it
+    /// was paused. The server reaps a paused transcode session after about
+    /// four minutes; the item then 404s on its segments and sits in
+    /// `waiting` with no status change, so play does nothing until the
+    /// track changes. `resume` rebuilds it in place instead.
+    private var currentItemIsTranscode = false
+    private var pausedAt: Date?
+    private let transcodeIdleLimit: TimeInterval = 180
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     /// How many scrubbers are on screen. A counter, not a flag: when a Mac
     /// window crosses the compact/regular boundary the new host can appear
@@ -207,7 +215,12 @@ final class AudioPlayer {
             return
         }
         activateSession()
-        player.play()
+        if currentItemIsTranscode, let pausedAt, Date().timeIntervalSince(pausedAt) > transcodeIdleLimit {
+            reloadTranscode()
+        } else {
+            player.play()
+        }
+        pausedAt = nil
         isPlaying = true
         updateNowPlayingPlaybackState()
         reportTimeline(.playing)
@@ -216,6 +229,7 @@ final class AudioPlayer {
     func pause() {
         resumeAfterInterruption = false
         player.pause()
+        if isPlaying { pausedAt = Date() }
         isPlaying = false
         updateNowPlayingPlaybackState()
         reportTimeline(.paused)
@@ -437,6 +451,8 @@ final class AudioPlayer {
         let local = cache.localURL(server: server, part: part)
         guard let url = local ?? remoteURL(for: track) else { return }
         currentItemIsLocal = local != nil
+        currentItemIsTranscode = local == nil && streamQuality.bitrate != nil
+        pausedAt = nil
         if currentItemIsLocal {
             Task { await cache.touch(server: server, part: part) }
         }
@@ -470,7 +486,7 @@ final class AudioPlayer {
     /// dropped; AVPlayer then sits on the failed item forever, which looks
     /// like playback stopping after one track. A fresh item opens a fresh
     /// connection, so retry before giving up on the track.
-    private func loadItem(url: URL, autoPlay: Bool) {
+    private func loadItem(url: URL, autoPlay: Bool, startAt: Double = 0) {
         // The URL itself carries the Plex token, so log only where it points.
         let source = currentItemIsLocal ? "local" : streamQuality.bitrate.map { "stream(\($0)k)" } ?? "stream"
         log.info("load item \(source, privacy: .public) autoPlay=\(autoPlay) retry=\(self.itemLoadRetries)")
@@ -489,11 +505,23 @@ final class AudioPlayer {
             guard item.status == .failed else { return }
             Task { @MainActor in self.itemFailedToLoad(item, url: url) }
         }
+        if startAt > 0 {
+            item.seek(to: CMTime(seconds: startAt, preferredTimescale: 600), completionHandler: nil)
+        }
         player.replaceCurrentItem(with: item)
         if autoPlay {
             player.play()
             isPlaying = true
         }
+    }
+
+    /// A fresh transcode session for the current track, from where it was.
+    private func reloadTranscode() {
+        guard let track = currentTrack, let url = remoteURL(for: track) else { return }
+        log.info("transcode idle past the server's limit, rebuilding at \(self.currentTime, format: .fixed(precision: 1))s")
+        itemLoadRetries = 0
+        itemEndHandled = false
+        loadItem(url: url, autoPlay: true, startAt: currentTime)
     }
 
     private func itemFailedToLoad(_ item: AVPlayerItem, url: URL) {
@@ -505,6 +533,7 @@ final class AudioPlayer {
         if currentItemIsLocal, let track = currentTrack, let library, let part = track.part {
             log.error("cached file failed to load, evicting and streaming")
             currentItemIsLocal = false
+            currentItemIsTranscode = streamQuality.bitrate != nil
             let server = library.serverIdentifier
             Task { await cache.evict(server: server, part: part) }
             guard let streamURL = remoteURL(for: track) else {
@@ -726,6 +755,7 @@ final class AudioPlayer {
             guard isPlaying else { return }
             // The player is already stopped; reflect it without touching it.
             resumeAfterInterruption = true
+            pausedAt = Date()
             isPlaying = false
             updateNowPlayingPlaybackState()
             reportTimeline(.paused)
