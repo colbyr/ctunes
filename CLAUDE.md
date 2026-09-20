@@ -174,8 +174,9 @@ end of a track**: the clock runs past the item's duration at rate 1 and the
 notification never posts, so the periodic time observer also treats
 `currentTime >= duration` as the end, guarded by a per-item flag. **iOS
 stops the player silently when Siri, a call or a car's voice assistant takes
-the audio**, so `AudioPlayer` observes `AVAudioSession.interruptionNotification`:
-`.began` marks the player paused, `.ended` with `.shouldResume` plays again.
+the audio**, so `AudioPlayer` observes `AVAudioSession.didBecomeInactiveNotification`
+(a `.system` source marks the player paused) and `resumptionRecommendationNotification`
+(`.shouldResume` plays again), the iOS 27 replacements for `interruptionNotification`.
 Without it `isPlaying` stays true over silence and the head unit needs two
 play/pause presses to recover. **The published now-playing rate follows
 `AVPlayer.timeControlStatus`, not `isPlaying`.** `isPlaying` is intent (what

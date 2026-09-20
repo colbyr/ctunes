@@ -105,6 +105,7 @@ final class AudioPlayer {
     @ObservationIgnored private nonisolated(unsafe) var endObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var errorLogObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var interruptionObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var resumptionObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var routeChangeObserver: NSObjectProtocol?
     /// Set when an interruption (Siri, a call, a car's voice assistant) cut
     /// playback that was running, so the end of it can pick back up.
@@ -184,6 +185,7 @@ final class AudioPlayer {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let errorLogObserver { NotificationCenter.default.removeObserver(errorLogObserver) }
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
+        if let resumptionObserver { NotificationCenter.default.removeObserver(resumptionObserver) }
         if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
     }
 
@@ -697,7 +699,7 @@ final class AudioPlayer {
 
     private func observeItemEnd() {
         endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -713,11 +715,12 @@ final class AudioPlayer {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self, let item = notification.object as? AVPlayerItem,
-                  let event = item.errorLog()?.events.last
-            else { return }
-            let uri = event.uri.flatMap(URL.init(string:))?.path ?? event.uri ?? "?"
-            self.log.error("item error log: \(event.errorStatusCode) \(event.errorDomain, privacy: .public) \(event.errorComment ?? "", privacy: .public) uri=\(uri, privacy: .public)")
+            guard let item = notification.object as? AVPlayerItem else { return }
+            Task { @MainActor in
+                guard let self, let event = await item.errorLog?.events.last else { return }
+                let uri = event.uri.flatMap(URL.init(string:))?.path ?? event.uri ?? "?"
+                self.log.error("item error log: \(event.errorStatusCode) \(event.errorDomain, privacy: .public) \(event.errorComment ?? "", privacy: .public) uri=\(uri, privacy: .public)")
+            }
         }
     }
 
@@ -730,18 +733,25 @@ final class AudioPlayer {
     /// when the interruption ends unless we do it here.
     private func observeInterruptions() {
         interruptionObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
+            forName: AVAudioSession.didBecomeInactiveNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
-            guard let info = notification.userInfo,
-                  let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: raw)
-            else { return }
-            let options = AVAudioSession.InterruptionOptions(
-                rawValue: info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-            )
-            Task { @MainActor in self?.handleInterruption(type, options: options) }
+            let context = notification.userInfo?[AVAudioSession.deactivationContextKey]
+                as? AVAudioSession.DeactivationContext
+            guard context?.source == .system else { return }
+            Task { @MainActor in self?.handleInterruptionBegan() }
+        }
+
+        resumptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.resumptionRecommendationNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            let context = notification.userInfo?[AVAudioSession.resumptionContextKey]
+                as? AVAudioSession.ResumptionContext
+            guard let recommendation = context?.recommendation else { return }
+            Task { @MainActor in self?.handleInterruptionEnded(recommendation) }
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -756,29 +766,23 @@ final class AudioPlayer {
         }
     }
 
-    private func handleInterruption(
-        _ type: AVAudioSession.InterruptionType,
-        options: AVAudioSession.InterruptionOptions
-    ) {
-        switch type {
-        case .began:
-            guard isPlaying else { return }
-            // The player is already stopped; reflect it without touching it.
-            resumeAfterInterruption = true
-            pausedAt = Date()
-            isPlaying = false
-            updateNowPlayingPlaybackState()
-            reportTimeline(.paused)
-        case .ended:
-            guard resumeAfterInterruption else { return }
-            resumeAfterInterruption = false
-            // No hint to resume means the other audio took over for good
-            // (a phone call answered, say). Stay paused rather than barge in.
-            guard options.contains(.shouldResume) else { return }
-            resume()
-        @unknown default:
-            break
-        }
+    private func handleInterruptionBegan() {
+        guard isPlaying else { return }
+        // The player is already stopped; reflect it without touching it.
+        resumeAfterInterruption = true
+        pausedAt = Date()
+        isPlaying = false
+        updateNowPlayingPlaybackState()
+        reportTimeline(.paused)
+    }
+
+    private func handleInterruptionEnded(_ recommendation: AVAudioSession.ResumptionRecommendation) {
+        guard resumeAfterInterruption else { return }
+        resumeAfterInterruption = false
+        // No hint to resume means the other audio took over for good
+        // (a phone call answered, say). Stay paused rather than barge in.
+        guard recommendation == .shouldResume else { return }
+        resume()
     }
 
     /// Unplugging from the car or pulling headphones out: the system pauses
