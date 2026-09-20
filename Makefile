@@ -17,7 +17,7 @@ SIM_APP    := $(DD)/Build/Products/Debug-iphonesimulator/$(SCHEME).app
 
 XCB := xcodebuild -scheme $(SCHEME) -project $(PROJECT) -derivedDataPath $(DD)
 
-.PHONY: test live-test token build device install launch run sim sim-run devices clean
+.PHONY: test live-test token feedback build device install launch run sim sim-run devices clean
 
 ## Run PlexKit tests natively on macOS — no simulator, ~5s
 test:
@@ -35,6 +35,11 @@ live-test:
 token:
 	python3 scripts/plex-dev-login.py
 	scripts/plex-token.sh --clear
+
+## TestFlight feedback (comments, screenshots, crash logs) from App Store
+## Connect, saved under build/feedback/. FEEDBACK_ARGS='--days 7' narrows it.
+feedback:
+	@scripts/testflight-feedback.py $(FEEDBACK_ARGS)
 
 ## Build the package alone
 build:

@@ -16,6 +16,7 @@ make sim         # build for simulator
 make sim-run     # build, install, launch in simulator
 make run         # build, install, launch on the attached iPhone
 make devices     # list attached devices
+make feedback    # TestFlight comments, screenshots and crash logs → build/feedback/
 ```
 
 Run one test by name: `swift test --filter <TestName>`. The suite-name filter
@@ -554,3 +555,11 @@ disk; `scripts/plex-token.sh` reads it and caches each field in the login
 keychain for 24h so 1Password prompts once a day, not per make target.
 `scripts/plex-token.sh --clear` drops the cache (`make token` does this too).
 `.plex-dev.json` is a retired path kept in `.gitignore` as a backstop.
+
+`make feedback` (`scripts/testflight-feedback.py`, `FEEDBACK_ARGS='--days 7'`)
+reads the App Store Connect API with the team key in 1Password
+(`op://Private/App Store Connect API Key`: the `.p8` attached, the key id as
+`username`, the issuer id as `Issuer`), signing the JWT with `openssl` so
+the key never lands on disk. Apple drops an older crash's log while still
+listing the submission, and screenshot URLs expire after a few days, so the
+script keeps what it fetched under `build/feedback/<submission id>/`.
