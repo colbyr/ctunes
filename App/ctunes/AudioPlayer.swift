@@ -92,6 +92,14 @@ final class AudioPlayer {
     private var currentItemIsTranscode = false
     private var pausedAt: Date?
     private let transcodeIdleLimit: TimeInterval = 180
+    /// The backstop for a dead session the clock didn't predict (the system
+    /// paused the player with no notification, the server reaped early): a
+    /// transcoded item that should be playing and has sat in `waiting` this
+    /// long is rebuilt. Twice at most per stall, so a server that is really
+    /// away doesn't loop.
+    private let transcodeStallLimit: Duration = .seconds(6)
+    private var stallWatchdog: Task<Void, Never>?
+    private var stallRebuilds = 0
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     /// How many scrubbers are on screen. A counter, not a flag: when a Mac
     /// window crosses the compact/regular boundary the new host can appear
@@ -218,7 +226,7 @@ final class AudioPlayer {
         }
         activateSession()
         if currentItemIsTranscode, let pausedAt, Date().timeIntervalSince(pausedAt) > transcodeIdleLimit {
-            reloadTranscode()
+            reloadTranscode(reason: "idle past the server's limit")
         } else {
             player.play()
         }
@@ -528,9 +536,9 @@ final class AudioPlayer {
     }
 
     /// A fresh transcode session for the current track, from where it was.
-    private func reloadTranscode() {
+    private func reloadTranscode(reason: String) {
         guard let track = currentTrack, let url = remoteURL(for: track) else { return }
-        log.info("transcode idle past the server's limit, rebuilding at \(self.currentTime, format: .fixed(precision: 1))s")
+        log.info("transcode \(reason, privacy: .public), rebuilding at \(self.currentTime, format: .fixed(precision: 1))s")
         itemLoadRetries = 0
         itemEndHandled = false
         loadItem(url: url, autoPlay: true, startAt: currentTime)
@@ -680,7 +688,25 @@ final class AudioPlayer {
             Task { @MainActor in
                 self.playerIsRunning = status == .playing
                 self.updateNowPlayingPlaybackState()
+                self.watchForStall(status)
             }
+        }
+    }
+
+    private func watchForStall(_ status: AVPlayer.TimeControlStatus) {
+        stallWatchdog?.cancel()
+        stallWatchdog = nil
+        if status == .playing { stallRebuilds = 0 }
+        guard status == .waitingToPlayAtSpecifiedRate, currentItemIsTranscode, stallRebuilds < 2 else { return }
+        let item = player.currentItem
+        stallWatchdog = Task { [weak self] in
+            guard let limit = self?.transcodeStallLimit else { return }
+            try? await Task.sleep(for: limit)
+            guard !Task.isCancelled, let self, self.isPlaying, !self.playerIsRunning,
+                  self.player.currentItem === item
+            else { return }
+            self.stallRebuilds += 1
+            self.reloadTranscode(reason: "stalled in waiting")
         }
     }
 

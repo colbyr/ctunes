@@ -261,6 +261,14 @@ Still to do on a device:
   and seek back to `currentTime`, or a periodic `/music/:/transcode/universal/ping?session=`
   while paused, if the server honours it (unmeasured). Worth doing before this is the
   default on cellular.
+  **Backstop by state, 2026-09-20** (AirPods auto-switched to the Mac, play afterwards
+  did nothing, scrubbing did nothing, next worked): the clock only helps when `pausedAt`
+  was set and the server kept to its ~4 minutes. `watchForStall` rebuilds a transcoded
+  item that should be playing and has sat in `waiting` for `transcodeStallLimit` (6s),
+  at `currentTime`, twice at most until the clock runs again. Not reproduced in the
+  simulator (the phone was streaming and the server runs one music transcode per
+  account); a kill of the live session is `/music/:/transcode/universal/stop?session=`
+  with the key from `/transcode/sessions`.
 - `case automatic`: transcode unless the chosen connection is local and answered the probe.
 - A separate download quality. Measured 2026-09-10 and deliberately left at Original:
   - A transcoded download is `start?protocol=http` with a
