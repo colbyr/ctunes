@@ -5,11 +5,10 @@
       "hidden" : false,
       "layers" : [
         {
-          "hidden" : false,
-          "image-name" : "Tunes App Icon - play.png",
-          "name" : "Tunes App Icon - play",
+          "image-name" : "Tunes App Icon-selection (1).png",
+          "name" : "Tunes App Icon-selection (1)",
           "position" : {
-            "scale" : 2,
+            "scale" : 1.9,
             "translation-in-points" : [
               0,
               0
