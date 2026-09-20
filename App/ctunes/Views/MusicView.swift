@@ -320,7 +320,11 @@ struct MusicView: View {
                     .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 // In the stack rather than an overlay, so it sits under the
                 // cards and the controls instead of over them.
-                if loaded, !albums.isEmpty, filteredOut, downloadedOnly {
+                if loaded, albums.isEmpty {
+                    ContentUnavailableView("No albums", systemImage: "square.stack")
+                        .frame(maxWidth: .infinity)
+                        .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                } else if loaded, filteredOut, downloadedOnly {
                     ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
                                            description: Text("Turn off Downloaded only to see the whole library."))
                         .frame(maxWidth: .infinity)
@@ -356,8 +360,6 @@ struct MusicView: View {
         .overlay {
             if !loaded {
                 ProgressView()
-            } else if albums.isEmpty {
-                ContentUnavailableView("No albums", systemImage: "square.stack")
             }
         }
         .navigationTitle("Tunes")

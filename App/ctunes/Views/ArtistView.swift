@@ -82,6 +82,13 @@ struct ArtistView: View {
                     .padding(.top, 16)
                 HiddenLine(model: model, count: hiddenCount)
                     .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                // In the stack rather than an overlay, so it sits under the
+                // header and the controls instead of over them.
+                if loaded, albums.isEmpty {
+                    ContentUnavailableView("No albums", systemImage: "square.stack")
+                        .frame(maxWidth: .infinity)
+                        .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                }
                 ForEach(groups) { group in
                     Section {
                         items(group.albums)
@@ -110,8 +117,6 @@ struct ArtistView: View {
         .overlay {
             if !loaded {
                 ProgressView()
-            } else if albums.isEmpty {
-                ContentUnavailableView("No albums", systemImage: "square.stack")
             }
         }
         .navigationTitle(route.title)

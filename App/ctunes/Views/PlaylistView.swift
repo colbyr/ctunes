@@ -104,7 +104,7 @@ struct PlaylistView: View {
     var body: some View {
         list
             .artworkBackground(model.library?.artworkURL(current.composite, size: 900))
-            .overlay { emptyState }
+            .overlay { if !loaded { ProgressView() } }
             .navigationTitle(current.title)
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -130,6 +130,15 @@ struct PlaylistView: View {
         let siblings = rows.map(\.track)
         return List {
             header
+            // A row rather than an overlay, so it sits under the cards and
+            // the chips instead of over them.
+            emptyState
+                .frame(maxWidth: .infinity)
+                .listRowInsets(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .moveDisabled(true)
+                .deleteDisabled(true)
             ForEach(rows) { row in
                 self.row(row, siblings: siblings)
                     .listRowBackground(Color.clear)
@@ -154,9 +163,7 @@ struct PlaylistView: View {
     }
 
     @ViewBuilder private var emptyState: some View {
-        if !loaded {
-            ProgressView()
-        } else if items.isEmpty {
+        if loaded, items.isEmpty {
             let title: String = current.smart ? "Nothing matches yet" : "No tracks yet"
             let detail: String = current.smart
                 ? "This smart playlist's filter finds nothing right now."

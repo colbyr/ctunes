@@ -265,7 +265,17 @@ struct MixBuilderView: View {
                         .id(Self.poolAnchor)
                     HiddenLine(model: model, count: hiddenCount)
                         .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
-                    if kind == .album && needle.isEmpty {
+                    // In the stack rather than an overlay, so it sits under
+                    // the picks and the controls instead of over them.
+                    if loaded, rest.isEmpty, !needle.isEmpty {
+                        ContentUnavailableView.search(text: needle)
+                            .frame(maxWidth: .infinity)
+                            .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    } else if loaded, pool.isEmpty {
+                        ContentUnavailableView("Nothing to mix", systemImage: subject.systemImage)
+                            .frame(maxWidth: .infinity)
+                            .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    } else if kind == .album && needle.isEmpty {
                         ForEach(poolGroups) { group in
                             Section {
                                 items(group.albums.map { item(album: $0, showArtist: albumSort != .artist) }, selected: false)
@@ -307,10 +317,6 @@ struct MixBuilderView: View {
         .overlay {
             if !loaded {
                 ProgressView()
-            } else if rest.isEmpty && !needle.isEmpty {
-                ContentUnavailableView.search(text: needle)
-            } else if pool.isEmpty {
-                ContentUnavailableView("Nothing to mix", systemImage: subject.systemImage)
             }
         }
         .navigationTitle(editing.flatMap { model.shortcut($0)?.name } ?? "Mix")

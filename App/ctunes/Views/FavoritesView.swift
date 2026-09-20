@@ -130,6 +130,16 @@ struct FavoritesView: View {
                 .listRowInsets(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
+            // A row rather than an overlay, so it sits under the cards and
+            // the chips instead of over them.
+            if loaded, hearted.isEmpty {
+                ContentUnavailableView("No favorites yet", systemImage: "heart",
+                                       description: Text("Tap ··· on a track, or the heart in Now Playing, to favorite it."))
+                    .frame(maxWidth: .infinity)
+                    .listRowInsets(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, track in
                 row(track, at: index)
                     .listRowBackground(Color.clear)
@@ -152,9 +162,6 @@ struct FavoritesView: View {
         .overlay {
             if !loaded {
                 ProgressView()
-            } else if hearted.isEmpty {
-                ContentUnavailableView("No favorites yet", systemImage: "heart",
-                                       description: Text("Tap ··· on a track, or the heart in Now Playing, to favorite it."))
             }
         }
         .navigationTitle("Favorites")
