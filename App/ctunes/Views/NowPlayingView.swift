@@ -348,8 +348,7 @@ struct NowPlayingView: View {
                         // time observer mid-drag.
                         scrubbing = scrubbing ?? elapsed
                     } else {
-                        if let target = scrubbing { player.seek(to: target) }
-                        scrubbing = nil
+                        if let target = scrubbing { commitScrub(target) }
                     }
                 }
             )
@@ -369,6 +368,31 @@ struct NowPlayingView: View {
         // Keyed on the queue entry, not the track: two adjacent copies of the
         // same track share a ratingKey and would otherwise not reset it.
         .onChange(of: player.queue.currentEntry?.id) { scrubbing = nil }
+        // A backstop for `onEditingChanged(false)`, which the seek above
+        // hangs on: when the slider never reports the end of a drag the
+        // thumb stays parked where it was dropped and the player is
+        // untouched. A thumb that has sat still this long is a seek either
+        // way; one still on the playing position is a touch that hasn't
+        // moved yet.
+        .task(id: scrubbing) {
+            guard let target = scrubbing else { return }
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            guard abs(target - player.currentTime) > 1 else {
+                scrubbing = nil
+                return
+            }
+            commitScrub(target)
+        }
+    }
+
+    /// The thumb stays pinned until the seek lands: released at once it
+    /// flashed back to the old time for the length of the seek. A drag
+    /// begun in the meantime has moved `scrubbing` and keeps it.
+    private func commitScrub(_ target: Double) {
+        player.seek(to: target) {
+            if scrubbing == target { scrubbing = nil }
+        }
     }
 }
 

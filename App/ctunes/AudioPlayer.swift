@@ -322,14 +322,18 @@ final class AudioPlayer {
         loadCurrentItem(autoPlay: true)
     }
 
-    func seek(to seconds: Double) {
+    /// `landed` runs once `currentTime` reflects the seek, so a scrubber can
+    /// hold its thumb until then rather than flash back to the old time.
+    func seek(to seconds: Double, landed: (@MainActor () -> Void)? = nil) {
         // Moving the head is a fresh run at the end of the item.
         itemEndHandled = false
+        log.info("seek to \(seconds, format: .fixed(precision: 1))s")
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         player.seek(to: time) { [weak self] _ in
             Task { @MainActor in
                 self?.currentTime = seconds
                 self?.updateNowPlayingPlaybackState()
+                landed?()
             }
         }
     }
