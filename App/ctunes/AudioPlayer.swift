@@ -508,6 +508,12 @@ final class AudioPlayer {
         if startAt > 0 {
             item.seek(to: CMTime(seconds: startAt, preferredTimescale: 600), completionHandler: nil)
         }
+        // `replaceCurrentItem` is asynchronous, and at rate 1 the outgoing
+        // item keeps rendering until the swap lands. A new `start.m3u8`
+        // makes the server tear down the client's previous transcode, so a
+        // skipped HLS item played a truncated segment in that gap: a burst
+        // of garbled audio before the next track. Stop the clock first.
+        player.pause()
         player.replaceCurrentItem(with: item)
         if autoPlay {
             player.play()
