@@ -5,7 +5,6 @@ struct ContentView: View {
     /// Shared with the CarPlay scene, which may come up first; the model
     /// and player are built and wired there. See `AppRuntime`.
     private let runtime = AppRuntime.shared
-    @Environment(\.scenePhase) private var scenePhase
 
     private var model: AppModel { runtime.model }
 
@@ -35,17 +34,6 @@ struct ContentView: View {
         .foregroundStyle(Color.ink)
         .background(ParchmentBackground())
         .environment(runtime.player)
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            model.refreshFromCloud()
-            Task {
-                switch model.state {
-                case .offline: await model.reconnect()
-                case .signedIn: await model.resumeDownloads()
-                default: break
-                }
-            }
-        }
     }
 }
 

@@ -46,6 +46,7 @@ final class AppRuntime {
         }
         followModel()
         followPlaylists()
+        followSceneActivation()
         Task { await model.bootstrap() }
         #if DEBUG
         SiriDevHook.run()
@@ -63,6 +64,29 @@ final class AppRuntime {
             for await current in Observations({ model.playlists.map(\.title) }) where current != titles {
                 titles = current
                 CtunesShortcuts.updateAppShortcutParameters()
+            }
+        }
+    }
+
+    /// Coming to the front is when to look for the server again. On the
+    /// notification rather than a window's `scenePhase`, so the car's
+    /// scene counts: launched from CarPlay with the phone locked there is
+    /// no window, and nothing on activation looked for the server again.
+    /// Never removed: the runtime lives as long as the process.
+    private func followSceneActivation() {
+        let model = model
+        NotificationCenter.default.addObserver(
+            forName: UIScene.didActivateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                model.refreshFromCloud()
+                switch model.state {
+                case .offline: await model.reconnect()
+                case .signedIn: await model.resumeDownloads()
+                default: break
+                }
             }
         }
     }

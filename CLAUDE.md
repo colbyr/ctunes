@@ -72,7 +72,8 @@ failed together and not repeated within 15s. `AudioPlayer.connectionLost`
 routes a stream that failed every retry through the same call before
 advancing. `PlexClient.apiSession` times a request out at 10s, not the
 shared session's 60s, so a dead address fails fast. The banner's "Try
-again" and scene activation call `reconnect()`. Hearts are read-only
+again" and scene activation (`UIScene.didActivateNotification` in
+`AppRuntime`, so the car's scene counts) call `reconnect()`. Hearts are read-only
 offline. Reachability is decided by the server answering, never by
 `NWPathMonitor`.
 
@@ -178,7 +179,18 @@ the audio**, so `AudioPlayer` observes `AVAudioSession.didBecomeInactiveNotifica
 (a `.system` source marks the player paused) and `resumptionRecommendationNotification`
 (`.shouldResume` plays again), the iOS 27 replacements for `interruptionNotification`.
 Without it `isPlaying` stays true over silence and the head unit needs two
-play/pause presses to recover. **The published now-playing rate follows
+play/pause presses to recover. The same marking covers a pause nobody
+announced (`watchForSilentPause`: the player paused for a second while
+playback is wanted, checked on the live status because `loadItem` and the
+end of an item pause on purpose) and a session activation that failed; an
+`.oldDeviceUnavailable` route change drops the pending resume so music
+never restarts on the speaker. `mediaServicesWereResetNotification`
+replaces the `AVPlayer` itself (`rebuildPlayer`) and reloads the track
+where it was. **End-of-item notifications and clock ticks are checked
+against `player.currentItem`** after their hop to the actor: one from an
+item already replaced could advance the queue twice. An entry with no file and
+no stream is skipped in `loadCurrentItem`, never left under the cursor,
+and every reload after a failure starts at `currentTime`. **The published now-playing rate follows
 `AVPlayer.timeControlStatus`, not `isPlaying`.** `isPlaying` is intent (what
 the transport buttons show); `playerIsRunning` is whether the clock is
 actually running. Publishing rate 1 the moment `play()` is called made a car

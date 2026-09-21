@@ -211,6 +211,7 @@ final class AudioPlayer {
         sessionIdentifier = UUID().uuidString
         activateSession()
         configureRemoteCommands()
+        setRemoteCommandsEnabled(true)
         // Shuffle is a property of the queue, and this is a new one: without
         // this the lock screen and a car head unit keep showing the old
         // queue's shuffle as on.
@@ -384,6 +385,7 @@ final class AudioPlayer {
             pause()
             hasEnded = false
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            setRemoteCommandsEnabled(false)
             return
         }
         loadCurrentItem(autoPlay: isPlaying)
@@ -456,6 +458,7 @@ final class AudioPlayer {
         queue = PlayQueue()
         library = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        setRemoteCommandsEnabled(false)
         await cache.clear()
     }
 
@@ -491,7 +494,6 @@ final class AudioPlayer {
         guard let (track, part, local, url) = playable else { return }
         currentItemIsLocal = local != nil
         currentItemIsTranscode = local == nil && streamQuality.bitrate != nil
-        pausedAt = nil
         if currentItemIsLocal {
             Task { await cache.touch(server: server, part: part) }
         }
@@ -554,6 +556,9 @@ final class AudioPlayer {
         // of garbled audio before the next track. Stop the clock first.
         player.pause()
         player.replaceCurrentItem(with: item)
+        // An item loaded paused starts its transcode session all the same,
+        // and the server's idle clock with it.
+        pausedAt = autoPlay ? nil : Date()
         if autoPlay {
             player.play()
             isPlaying = true
@@ -1019,17 +1024,32 @@ final class AudioPlayer {
             }
             Task { @MainActor in
                 guard let self else { return }
+                // Through `setRepeat`, so the prefetch window follows.
                 switch event.repeatType {
-                case .off: self.repeatMode = .off
-                case .one: self.repeatMode = .one
-                case .all: self.repeatMode = .all
+                case .off: self.setRepeat(.off)
+                case .one: self.setRepeat(.one)
+                case .all: self.setRepeat(.all)
                 @unknown default: break
                 }
-                self.updateNowPlayingModes()
             }
             return .success
         }
         updateNowPlayingModes()
+    }
+
+    /// Off while there is no queue (emptied, signed out): every handler
+    /// answers `.success` without looking, which with nothing to play told
+    /// a head unit its press had worked.
+    private func setRemoteCommandsEnabled(_ enabled: Bool) {
+        guard commandsConfigured else { return }
+        let center = MPRemoteCommandCenter.shared()
+        let commands: [MPRemoteCommand] = [
+            center.playCommand, center.pauseCommand, center.stopCommand,
+            center.togglePlayPauseCommand, center.nextTrackCommand,
+            center.previousTrackCommand, center.changePlaybackPositionCommand,
+            center.changeShuffleModeCommand, center.changeRepeatModeCommand,
+        ]
+        for command in commands { command.isEnabled = enabled }
     }
 
     /// Mirrors shuffle and repeat onto the lock-screen buttons.
