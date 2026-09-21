@@ -40,7 +40,8 @@ final class AudioPlayer {
     var currentTrack: PlexTrack? { queue.current }
     var upcoming: ArraySlice<PlayQueue<PlexTrack>.Entry> { queue.upcoming }
 
-    private nonisolated let player = AVPlayer()
+    /// Replaced only by `rebuildPlayer`, after a media services reset.
+    @ObservationIgnored private nonisolated(unsafe) var player = AVPlayer()
     /// The library the queue was started from, swapped by `adopt` when the
     /// app goes offline or comes back, so timeline reports resume in place.
     private var library: (any LibrarySource)?
@@ -116,6 +117,7 @@ final class AudioPlayer {
     @ObservationIgnored private nonisolated(unsafe) var interruptionObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var resumptionObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var routeChangeObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var mediaResetObserver: NSObjectProtocol?
     /// Set when an interruption (Siri, a call, a car's voice assistant) cut
     /// playback that was running, so the end of it can pick back up.
     private var resumeAfterInterruption = false
@@ -196,6 +198,7 @@ final class AudioPlayer {
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
         if let resumptionObserver { NotificationCenter.default.removeObserver(resumptionObserver) }
         if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
+        if let mediaResetObserver { NotificationCenter.default.removeObserver(mediaResetObserver) }
     }
 
     // MARK: - Playback
@@ -456,7 +459,7 @@ final class AudioPlayer {
 
     // MARK: - Item loading
 
-    private func loadCurrentItem(autoPlay: Bool) {
+    private func loadCurrentItem(autoPlay: Bool, startAt: Double = 0) {
         guard let library else { return }
         // The cached or pinned file when there is one, else the stream. Both
         // resolve synchronously: an await here would let the cursor move
@@ -492,11 +495,11 @@ final class AudioPlayer {
         }
 
         itemLoadRetries = 0
-        currentTime = 0
+        currentTime = startAt
         duration = track.durationSeconds ?? 0
         hasEnded = false
         itemEndHandled = false
-        loadItem(url: url, autoPlay: autoPlay)
+        loadItem(url: url, autoPlay: autoPlay, startAt: startAt)
         updateNowPlayingInfo(for: track)
         reportTimeline(isPlaying ? .playing : .paused)
         prefetch()
@@ -567,6 +570,9 @@ final class AudioPlayer {
     private func itemFailedToLoad(_ item: AVPlayerItem, url: URL) {
         // A stale observer from an item that was already replaced.
         guard player.currentItem === item else { return }
+        // Every reload below starts at `currentTime`: zero for an item that
+        // never loaded, and where it got to for one that died mid-track,
+        // which used to start the track over.
         // A cached file that won't play is a bad file: drop it and stream,
         // with the stream's own retries still to come. Offline there is no
         // stream, so a bad pinned file evicts and the queue moves on.
@@ -580,12 +586,12 @@ final class AudioPlayer {
                 advance(wrapping: false)
                 return
             }
-            loadItem(url: streamURL, autoPlay: isPlaying)
+            loadItem(url: streamURL, autoPlay: isPlaying, startAt: currentTime)
             return
         }
         if itemLoadRetries < maxItemLoadRetries {
             itemLoadRetries += 1
-            loadItem(url: url, autoPlay: isPlaying)
+            loadItem(url: url, autoPlay: isPlaying, startAt: currentTime)
             return
         }
         // Every retry went to the same address. A phone that left the
@@ -601,7 +607,7 @@ final class AudioPlayer {
                 guard player.currentItem === item else { return }
                 if recovered, let track = currentTrack, let url = remoteURL(for: track) {
                     itemLoadRetries = 0
-                    loadItem(url: url, autoPlay: isPlaying)
+                    loadItem(url: url, autoPlay: isPlaying, startAt: currentTime)
                 } else {
                     advance(wrapping: false)
                 }
@@ -855,6 +861,34 @@ final class AudioPlayer {
             else { return }
             Task { @MainActor in self?.handleRouteChange(reason) }
         }
+
+        mediaResetObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.rebuildPlayer() }
+        }
+    }
+
+    /// The media server died and came back. Every AVFoundation object made
+    /// before it is dead, the player included: `play()` does nothing and no
+    /// item fails. The session's category is gone with it. Start over with
+    /// a fresh player on the same track, where it was.
+    private func rebuildPlayer() {
+        log.error("media services were reset, rebuilding the player")
+        if let timeObserver { player.removeTimeObserver(timeObserver) }
+        timeObserver = nil
+        timeControlObserver?.invalidate()
+        itemStatusObserver?.invalidate()
+        player = AVPlayer()
+        player.actionAtItemEnd = .pause
+        playerIsRunning = false
+        observeTime()
+        observeTimeControl()
+        guard currentTrack != nil, !hasEnded else { return }
+        activateSession()
+        loadCurrentItem(autoPlay: isPlaying, startAt: currentTime)
     }
 
     private func handleInterruptionBegan() {
