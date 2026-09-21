@@ -100,6 +100,7 @@ final class AudioPlayer {
     private let transcodeStallLimit: Duration = .seconds(6)
     private var stallWatchdog: Task<Void, Never>?
     private var stallRebuilds = 0
+    private var silentPauseCheck: Task<Void, Never>?
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     /// How many scrubbers are on screen. A counter, not a flag: when a Mac
     /// window crosses the compact/regular boundary the new host can appear
@@ -456,14 +457,33 @@ final class AudioPlayer {
     // MARK: - Item loading
 
     private func loadCurrentItem(autoPlay: Bool) {
-        guard let track = currentTrack, let library, let part = track.part else { return }
+        guard let library else { return }
         // The cached or pinned file when there is one, else the stream. Both
         // resolve synchronously: an await here would let the cursor move
         // under us. Looked up by server and part, not by source, since an
         // offline library has no source to give.
+        //
+        // An entry with neither is skipped, not left under the cursor: a
+        // queue built online and carried offline runs out of files past the
+        // prefetch window, and returning here left the old item in the
+        // player with `isPlaying` true and the new track's name over silence.
         let server = library.serverIdentifier
-        let local = cache.localURL(server: server, part: part)
-        guard let url = local ?? remoteURL(for: track) else { return }
+        var playable: (track: PlexTrack, part: PlexPart, local: URL?, url: URL)?
+        while let track = currentTrack {
+            if let part = track.part {
+                let local = cache.localURL(server: server, part: part)
+                if let url = local ?? remoteURL(for: track) {
+                    playable = (track, part, local, url)
+                    break
+                }
+            }
+            log.error("nothing to play for the current entry, skipping")
+            guard queue.advance(wrapping: false) else {
+                finish()
+                return
+            }
+        }
+        guard let (track, part, local, url) = playable else { return }
         currentItemIsLocal = local != nil
         currentItemIsTranscode = local == nil && streamQuality.bitrate != nil
         pausedAt = nil
@@ -657,8 +677,11 @@ final class AudioPlayer {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
             [weak self] time in
             let seconds = time.seconds
+            let item = self?.player.currentItem
             Task { @MainActor in
-                guard let self else { return }
+                // A tick from an item since replaced would put its time on
+                // the new track, and could read as that track's end.
+                guard let self, self.player.currentItem === item else { return }
                 self.currentTime = seconds
                 if let itemDuration = self.player.currentItem?.duration.seconds,
                    itemDuration.isFinite, itemDuration > 0 {
@@ -689,7 +712,42 @@ final class AudioPlayer {
                 self.playerIsRunning = status == .playing
                 self.updateNowPlayingPlaybackState()
                 self.watchForStall(status)
+                self.watchForSilentPause(status)
             }
+        }
+    }
+
+    /// The system can pause the player and tell no one: no deactivation, no
+    /// route change. `isPlaying` then stays true over silence, the first
+    /// play/pause press "pauses" a stopped player, and the transcode idle
+    /// clock never starts. So a player that sits paused while playback is
+    /// wanted is taken at its word. After a beat, and on the live status:
+    /// `loadItem` pauses across every item swap, the end of an item pauses
+    /// until the queue advances, and an interruption's own notification
+    /// should get there first, since it knows why.
+    private func watchForSilentPause(_ status: AVPlayer.TimeControlStatus) {
+        silentPauseCheck?.cancel()
+        silentPauseCheck = nil
+        guard status == .paused, isPlaying else { return }
+        let item = player.currentItem
+        silentPauseCheck = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let self, self.isPlaying,
+                  self.player.timeControlStatus == .paused,
+                  let item, self.player.currentItem === item,
+                  // A failed item belongs to the retry path.
+                  item.status != .failed
+            else { return }
+            // Paused at the end with no end handled: the notification and
+            // the clock fallback both missed it.
+            let itemDuration = item.duration.seconds
+            if itemDuration.isFinite, itemDuration > 0,
+               self.player.currentTime().seconds >= itemDuration - 0.25 {
+                self.currentItemEnded()
+                return
+            }
+            self.log.info("player paused behind our back, marking paused")
+            self.handleInterruptionBegan()
         }
     }
 
@@ -728,8 +786,15 @@ final class AudioPlayer {
             forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.currentItemEnded() }
+        ) { [weak self] notification in
+            guard let item = notification.object as? AVPlayerItem else { return }
+            // Only the item in the player: by the time this hop lands a
+            // skip may have replaced the one that ended and reset
+            // `itemEndHandled`, and its end would advance the queue again.
+            Task { @MainActor in
+                guard let self, self.player.currentItem === item else { return }
+                self.currentItemEnded()
+            }
         }
         // An HLS item reports segment failures (404s, timeouts, bandwidth)
         // here and nowhere else: the status stays readyToPlay while it
@@ -814,7 +879,12 @@ final class AudioPlayer {
     /// Unplugging from the car or pulling headphones out: the system pauses
     /// the player and the platform convention is to stay paused.
     private func handleRouteChange(_ reason: AVAudioSession.RouteChangeReason) {
-        guard reason == .oldDeviceUnavailable, isPlaying else { return }
+        guard reason == .oldDeviceUnavailable else { return }
+        // Even when an interruption already marked us paused: unplugging
+        // while the car's assistant talks must not resume on the phone's
+        // speaker once it finishes.
+        resumeAfterInterruption = false
+        guard isPlaying else { return }
         pause()
     }
 
