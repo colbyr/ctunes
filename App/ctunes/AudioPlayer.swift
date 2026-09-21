@@ -118,6 +118,7 @@ final class AudioPlayer {
     @ObservationIgnored private nonisolated(unsafe) var resumptionObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var routeChangeObserver: NSObjectProtocol?
     @ObservationIgnored private nonisolated(unsafe) var mediaResetObserver: NSObjectProtocol?
+    @ObservationIgnored private nonisolated(unsafe) var terminationObserver: NSObjectProtocol?
     /// Set when an interruption (Siri, a call, a car's voice assistant) cut
     /// playback that was running, so the end of it can pick back up.
     private var resumeAfterInterruption = false
@@ -199,6 +200,7 @@ final class AudioPlayer {
         if let resumptionObserver { NotificationCenter.default.removeObserver(resumptionObserver) }
         if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
         if let mediaResetObserver { NotificationCenter.default.removeObserver(mediaResetObserver) }
+        if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
     }
 
     // MARK: - Playback
@@ -664,10 +666,24 @@ final class AudioPlayer {
         // player activates the session itself on play, so this can go
         // async without holding playback back.
         if #available(iOS 27, *) {
-            Task { try? await session.activate(options: []) }
+            Task {
+                do { try await session.activate(options: []) } catch { activationFailed(error) }
+            }
         } else {
-            try? session.setActive(true)
+            do { try session.setActive(true) } catch { activationFailed(error) }
         }
+    }
+
+    /// Something with priority holds the audio (a call, Siri mid-sentence)
+    /// and play was pressed anyway. The player was told to play and won't,
+    /// so say paused rather than show playing over silence, and leave the
+    /// resume to the end of whatever has the session. A player that is
+    /// running regardless activated the session itself; leave it be.
+    private func activationFailed(_ error: Error) {
+        log.error("session activation failed: \(error, privacy: .public)")
+        guard isPlaying, !playerIsRunning else { return }
+        player.pause()
+        handleInterruptionBegan()
     }
 
     /// Only a scrubber needs the clock at 0.5s; nothing else reads it more
@@ -869,6 +885,32 @@ final class AudioPlayer {
         ) { [weak self] _ in
             Task { @MainActor in self?.rebuildPlayer() }
         }
+
+        // Swiped away while playing. UIKit posts this on the main thread
+        // and the process exits when the handler returns, so there is no
+        // hopping to the actor: the work has to finish inside the call.
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reportStopBeforeExit() }
+        }
+    }
+
+    /// The one report that is waited for, briefly: without it the server
+    /// shows the session as playing, and keeps its transcode alive, until
+    /// it times the client out. Detached, since the main thread is the one
+    /// blocked.
+    private func reportStopBeforeExit() {
+        guard let track = currentTrack, let library, !library.isOffline, !hasEnded else { return }
+        let time = currentTime, session = sessionIdentifier
+        let sent = DispatchSemaphore(value: 0)
+        Task.detached {
+            try? await library.reportTimeline(track, state: .stopped, time: time, sessionIdentifier: session)
+            sent.signal()
+        }
+        _ = sent.wait(timeout: .now() + 1)
     }
 
     /// The media server died and came back. Every AVFoundation object made
@@ -934,6 +976,11 @@ final class AudioPlayer {
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.pause() }
+            return .success
+        }
+        // Some head units and AirPlay receivers send stop, not pause.
+        center.stopCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.pause() }
             return .success
         }
