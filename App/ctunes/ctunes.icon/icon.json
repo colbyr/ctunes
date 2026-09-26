@@ -9,9 +9,8 @@
       "hidden" : false,
       "layers" : [
         {
-          "hidden" : false,
-          "image-name" : "Tunes App Icon - Label.png",
-          "name" : "Tunes App Icon - Label",
+          "image-name" : "Tunes App Icon-selection (2).png",
+          "name" : "Label",
           "position" : {
             "scale" : 0.92,
             "translation-in-points" : [
@@ -42,7 +41,7 @@
         {
           "hidden" : false,
           "image-name" : "Tunes App Icon - hole.png",
-          "name" : "Tunes App Icon - hole",
+          "name" : "Hole",
           "position" : {
             "scale" : 1.5,
             "translation-in-points" : [
@@ -69,7 +68,7 @@
         {
           "hidden" : false,
           "image-name" : "Tunes App Icon - Record 2.png",
-          "name" : "Tunes App Icon - Record"
+          "name" : "Record"
         }
       ],
       "lighting" : "combined",
