@@ -48,7 +48,7 @@ struct ArtistView: View {
     /// app's. No play history is fetched here, so On Rotation reads the
     /// server's play counts.
     @AppStorage("artistView") private var view: AlbumView = .artist
-    @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
+    @AppStorage("artistLayout") private var layout: BrowseLayout = .grid
 
     private var offline: Bool { model.library?.isOffline ?? false }
     private var hidden: VetoSet { model.roster.hidden }

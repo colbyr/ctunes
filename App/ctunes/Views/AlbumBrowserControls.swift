@@ -2,14 +2,11 @@ import PlexKit
 import SwiftUI
 
 /// How a browse screen lays its items out: covers in a grid, or rows
-/// with the art at the leading edge. One setting for the whole app, under
-/// `key`: a taste for lists is about reading, not about any one page, so
-/// the root, an artist's page and the mix pools all follow it, where each
-/// keeps its own sort.
+/// with the art at the leading edge. Per screen, like the sort: the root,
+/// an artist's page, the playlists page and the mix pools each keep their
+/// own, so the root can stay a grid while an artist's page reads as a list.
 enum BrowseLayout: String, CaseIterable {
     case grid, list
-
-    static let key = "browseLayout"
 
     var title: String {
         switch self {

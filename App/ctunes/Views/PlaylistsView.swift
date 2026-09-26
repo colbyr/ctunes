@@ -20,7 +20,7 @@ struct PlaylistsView: View {
     /// Its own sort, A to Z until arranged otherwise.
     @AppStorage("playlistsView") private var sort: AlbumView = .artist
     @AppStorage("playlistsDownloadedOnly") private var downloadedOnly = false
-    @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
+    @AppStorage("playlistsLayout") private var layout: BrowseLayout = .grid
 
     private var offline: Bool { model.library?.isOffline ?? false }
 

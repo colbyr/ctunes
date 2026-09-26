@@ -253,9 +253,10 @@ is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 the current layout, holds what to browse (`BrowseSubject`, on the root
 and the mix builder only) and the layout (`BrowseLayout`, grid or list);
 the second holds the sort (`AlbumView`) and the download filter. The
-sort is per screen (`albumView`, `artistView`, `mixView.<kind>`); the
-layout is one app-wide key, `browseLayout`, since a taste for lists is
-about reading, not any one page. The four sorts apply to every scope
+sort is per screen (`albumView`, `artistView`, `mixView.<kind>`), and
+so is the layout (`browseLayout`, `artistLayout`, `playlistsLayout`,
+`mixLayout`), so the root can stay a grid while an artist's page reads
+as a list. The four sorts apply to every scope
 and only the Artists view's name changes with it (`title(in:)`): "A to
 Z" over artists, "Release Date" on an artist's page, where
 `AlbumBrowse.groups(scope: .discography)` keeps it flat. `AlbumTile`,

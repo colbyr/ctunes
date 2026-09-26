@@ -57,7 +57,7 @@ struct MixBuilderView: View {
     @AppStorage("mixView.artist") private var artistSort: AlbumView = .mostPlayed
     @AppStorage("mixView.album") private var albumSort: AlbumView = .mostPlayed
     @AppStorage("mixView.playlist") private var playlistSort: AlbumView = .artist
-    @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
+    @AppStorage("mixLayout") private var layout: BrowseLayout = .grid
     @AppStorage("mixDownloadedOnly.album") private var downloadedOnly = false
     /// Comma-joined pick ids, so the last mix is waiting next time.
     @AppStorage("mixSelection") private var savedSelection = ""

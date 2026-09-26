@@ -38,7 +38,7 @@ struct MusicView: View {
     @AppStorage("albumView") private var view: AlbumView = .mostPlayed
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
     @AppStorage("browseSubject") private var subject: BrowseSubject = .albums
-    @AppStorage(BrowseLayout.key) private var layout: BrowseLayout = .grid
+    @AppStorage("browseLayout") private var layout: BrowseLayout = .grid
 
     private var offline: Bool { model.state == .offline }
     private var hidden: VetoSet { model.roster.hidden }

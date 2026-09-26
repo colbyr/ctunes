@@ -1,9 +1,9 @@
 import PlexKit
 import SwiftUI
 
-/// How a playlist page orders its rows. One setting for every playlist,
-/// persisted per device; the playlist's own order is the only one edit
-/// mode reorders.
+/// How a playlist page orders its rows. Persisted per playlist and per
+/// device, so one can read by title while another keeps its own order;
+/// the playlist's own order is the only one edit mode reorders.
 enum PlaylistSort: String, CaseIterable, Identifiable {
     case playlist, title, artist, album
 
@@ -60,7 +60,8 @@ struct PlaylistView: View {
     /// For the Listeners sheet's veto lists, which cover the whole library.
     @State private var albums: [PlexAlbum] = []
     @State private var loaded = false
-    @AppStorage("playlistSort") private var sort: PlaylistSort = .playlist
+    /// Keyed on the server and the playlist, so each remembers its own.
+    @AppStorage private var sort: PlaylistSort
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
@@ -100,6 +101,13 @@ struct PlaylistView: View {
     private var hiddenCount: HiddenCount { .over(tracks, hidden: hidden) }
 
     private static let margin: CGFloat = 16
+
+    init(model: AppModel, playlist: PlexPlaylist) {
+        self.model = model
+        self.playlist = playlist
+        let server = model.library?.serverIdentifier ?? ""
+        _sort = AppStorage(wrappedValue: .playlist, "playlistSort.\(server).\(playlist.ratingKey)")
+    }
 
     var body: some View {
         list
