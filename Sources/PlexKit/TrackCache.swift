@@ -22,6 +22,10 @@ public actor TrackCache {
     private let session: URLSession
 
     private var inFlight: [String: Task<URL, Error>] = [:]
+    /// The address each in-flight fetch went to, so a window handed over
+    /// after the library moved (Wi-Fi to cellular) cancels a fetch still
+    /// stuck on the old one rather than joining it.
+    private var inFlightURLs: [String: URL] = [:]
     /// What the player wants on disk right now, keyed by `cachePath`.
     /// Eviction never touches these.
     private var window: Set<String> = []
@@ -110,8 +114,13 @@ public actor TrackCache {
     public func retain(window sources: [TrackSource]) {
         let wanted = sources.compactMap(\.cachePath)
         window = Set(wanted)
-        for (path, task) in inFlight where !window.contains(path) && !pinned.contains(path) {
-            task.cancel()
+        let addresses = Dictionary(sources.compactMap { source in
+            source.cachePath.map { ($0, source.request.url) }
+        }, uniquingKeysWith: { first, _ in first })
+        for (path, task) in inFlight {
+            let left = !window.contains(path) && !pinned.contains(path)
+            let moved = addresses[path].map { $0 != inFlightURLs[path] } ?? false
+            if left || moved { task.cancel() }
         }
         pending = sources.filter { source in
             guard let path = source.cachePath else { return false }
@@ -187,7 +196,11 @@ public actor TrackCache {
 
         let task = Task { try await fetch(source, path: path) }
         inFlight[path] = task
-        defer { inFlight[path] = nil }
+        inFlightURLs[path] = source.request.url
+        defer {
+            inFlight[path] = nil
+            inFlightURLs[path] = nil
+        }
         eventContinuation.yield(.started(path))
         do {
             let url = try await task.value

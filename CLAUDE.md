@@ -64,16 +64,50 @@ the last server, it opens an `OfflineLibrary` over it instead and enters
 `.task(id: model.libraryGeneration)`, which re-runs when the library is
 swapped. A fetch that throws a `URLError` while signed in reports to
 `model.connectionLost`, which **runs discovery again first** and swaps a
-fresh `PlexLibrary` in place when the same server answers on any
+fresh `PlexLibrary` in place when the same server answers on another
 connection, since a phone that walked from Wi-Fi to cellular still holds
-the LAN address and the remote one is fine; only when nothing answers does
+the LAN address and the remote one is fine (the same address answering
+bumps the generation without a swap); only when nothing answers does
 it flip to the snapshot. The probe is coalesced across the screens that
-failed together and not repeated within 15s. `AudioPlayer.connectionLost`
-routes a stream that failed every retry through the same call before
-advancing. `PlexClient.apiSession` times a request out at 10s, not the
-shared session's 60s, so a dead address fails fast. The banner's "Try
-again" and scene activation (`UIScene.didActivateNotification` in
-`AppRuntime`, so the car's scene counts) call `reconnect()`. Hearts are read-only
+failed together and not repeated within 15s, so **a failure on an
+address already left behind never probes**: the model answers a
+`URLError` whose `failingURL` host isn't the current address with a
+bump alone, and the player reloads an item whose `itemBaseURL` the
+library has moved off on its own. **Discovery rides out the
+handoff** (`AppModel.discover`): Wi-Fi drops seconds before cellular is
+up and `waitsForConnectivity` is off, so a transport failure is retried
+for up to 25s (20s behind the snapshot at launch, 10s on the connecting
+screen, once for a tap or the timer) before the snapshot wins; plex.tv
+answering and no connection answering is the server itself away and
+gets one more try. `selectServer` gives better-ranked probes a 1s grace
+once a lower one answers, not the 5s timeout, since every local address
+is dead away from home. **Offline retries on its own** (`scheduleOfflineRetry`,
+10s doubling to 60s) while the process lives, i.e. while audio plays or
+the app is up. `AudioPlayer` asks the same `connectionLost` when a stream
+fails every retry and when one **stalls**: any streamed item sat in
+`waiting` for 4s with no growth in `loadedTimeRanges` (the reload is a
+fresh transcode session too, so the same-address transcode rebuild is
+only the fallback inside the probe's throttle); recovered, it reloads
+at `currentTime` from the new address, and offline it advances when the
+next entry is on disk and otherwise **pauses in place and plays again
+from there when `adopt` brings a server back** (`resumeOnReconnect`),
+instead of running the queue out over entries with no file and no
+stream. `loadCurrentItem` does the same when nothing from the cursor
+on has a file and the library is offline (`waitForServer`): the cursor
+goes back to the entry asked for, the player empties, and `adopt` or a
+press of play loads it, so an album tapped while launch is still
+`reconnecting` waits for the server rather than skipping every track. `adopt` of an online library also drops the cache's failure
+backoff, and `TrackCache.retain` cancels an in-flight fetch whose
+address the window has moved away from. `PlexClient.apiSession` times a
+request out at 10s, not the shared session's 60s, so a dead address
+fails fast, and `PlexClient.data` retries a `GET` once on `-1005`, the
+first request after a network change on a keep-alive the server
+dropped. The banner's "Try again" and scene activation
+(`UIScene.didActivateNotification` in `AppRuntime`, so the car's scene
+counts) call `reconnect()`; activation while signed in on a local
+address pings it with a 3s timeout first (`checkConnection`) so the
+screens don't each sit on the 10s timeout. Discovery, reconnection and
+the offline flips log under category `Connection`. Hearts are read-only
 offline. Reachability is decided by the server answering, never by
 `NWPathMonitor`.
 

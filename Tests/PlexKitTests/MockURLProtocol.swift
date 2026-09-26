@@ -15,6 +15,8 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         var hangs = false
         /// Extra response headers, e.g. a `Content-Length`.
         var headers: [String: String] = [:]
+        /// Fails the load with this transport error instead of answering.
+        var error: URLError.Code?
     }
 
     private static let registry = Registry()
@@ -59,6 +61,10 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         }
         let result = handler(request)
         if result.hangs { return }
+        if let code = result.error {
+            client?.urlProtocol(self, didFailWithError: URLError(code))
+            return
+        }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: result.status,
@@ -79,4 +85,6 @@ extension MockURLProtocol.Response {
     }
 
     static var hang: Self { .init(body: Data(), hangs: true) }
+
+    static func failing(_ code: URLError.Code) -> Self { .init(body: Data(), error: code) }
 }

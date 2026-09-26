@@ -24,6 +24,37 @@ struct PlexLibraryTests {
         )
     }
 
+    /// The first request after the phone changes networks can die on a
+    /// keep-alive connection the server dropped; one fresh request is the
+    /// fix, and a write is never repeated.
+    @Test("retries a GET once after a lost connection, never a write")
+    func retriesLostConnectionOnGet() async throws {
+        let body = try Fixture.string("sections")
+        let calls = Counter()
+        let library = library { request in
+            let attempt = calls.increment(request.httpMethod ?? "GET")
+            if attempt == 1 { return .failing(.networkConnectionLost) }
+            return .json(body)
+        }
+
+        let sections = try await library.musicSections()
+        #expect(sections.count == 2)
+        #expect(calls.count("GET") == 2)
+
+        await #expect(throws: URLError.self) {
+            try await library.setFavorite("1", true)
+        }
+        #expect(calls.count("PUT") == 1)
+    }
+
+    @Test("ping answers true only when the address does")
+    func ping() async throws {
+        let up = library { _ in .json(#"{"MediaContainer":{"machineIdentifier":"M"}}"#) }
+        #expect(await up.ping())
+        let down = library { _ in .failing(.cannotConnectToHost) }
+        #expect(await down.ping() == false)
+    }
+
     @Test("finds both music libraries and skips video ones")
     func musicSections() async throws {
         let body = try Fixture.string("sections")
@@ -485,4 +516,20 @@ struct PlexLibraryTests {
         #expect(library.artworkURL(nil) == nil)
         #expect(library.artworkURL("") == nil)
     }
+}
+
+/// Request counts by method, shared with a mock handler across threads.
+private final class Counter: @unchecked Sendable {
+    private var counts: [String: Int] = [:]
+    private let lock = NSLock()
+
+    @discardableResult
+    func increment(_ key: String) -> Int {
+        lock.withLock {
+            counts[key, default: 0] += 1
+            return counts[key]!
+        }
+    }
+
+    func count(_ key: String) -> Int { lock.withLock { counts[key] ?? 0 } }
 }

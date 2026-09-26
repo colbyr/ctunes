@@ -14,6 +14,18 @@ public actor PlexLibrary {
 
     public nonisolated var baseURL: URL { server.baseURL }
     public nonisolated var serverIdentifier: String { server.machineIdentifier }
+    /// Whether discovery picked a LAN address, the one a phone that leaves
+    /// the house keeps holding.
+    public nonisolated var isLocalConnection: Bool { server.isLocal }
+
+    /// Whether the address still answers, quickly: `/identity` with its own
+    /// short timeout, for the app coming to the foreground on a local
+    /// connection it may have walked away from.
+    public func ping(timeout: Duration = .seconds(3)) async -> Bool {
+        var request = client.request(url: server.baseURL.appending(path: "/identity"), token: token)
+        request.timeoutInterval = Double(timeout.components.seconds)
+        return (try? await client.data(for: request)) != nil
+    }
 
     private func fetch<Item: Decodable & Sendable>(
         _ type: Item.Type,

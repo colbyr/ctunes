@@ -154,6 +154,26 @@ struct TrackCacheTests {
         #expect(cache.localURL(for: kept) != nil)
     }
 
+    /// The library moved to another address mid-fetch: the fetch on the
+    /// old one is cancelled rather than joined, and the new one lands.
+    @Test("retain cancels a fetch stuck on the old address when the window moves")
+    func retainFollowsAddress() async throws {
+        let (cache, _, counter) = try makeCache { request in
+            if request.url?.host() == "old.plex.direct" { return .hang }
+            return .init(body: Data(count: 1024))
+        }
+        let file = CacheTestSupport.part(id: 1)
+        let old = TrackSource(server: "M", part: file,
+                              request: URLRequest(url: URL(string: "https://old.plex.direct:32400" + file.key)!))
+        let new = CacheTestSupport.source(part: file)
+        await cache.retain(window: [old])
+        try await Task.sleep(for: .milliseconds(50))
+        await cache.retain(window: [new])
+        try await cache.drain()
+        #expect(cache.localURL(for: new) != nil)
+        #expect(counter.count == 2)
+    }
+
     // MARK: - Space
 
     @Test("evicts least recently played first, never the window")

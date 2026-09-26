@@ -45,8 +45,21 @@ public actor PlexClient {
         return request
     }
 
+    /// One retry for a `GET` that dies with `NSURLError -1005`: CFNetwork
+    /// reused a keep-alive connection the other end had dropped, which is
+    /// the first request after the phone changes networks. A fresh request
+    /// opens a fresh connection. Never a write, which may have landed.
     @discardableResult
     public func data(for request: URLRequest) async throws -> Data {
+        do {
+            return try await send(request)
+        } catch let error as URLError where error.code == .networkConnectionLost
+            && (request.httpMethod ?? "GET") == "GET" {
+            return try await send(request)
+        }
+    }
+
+    private func send(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { return data }
         guard (200..<300).contains(http.statusCode) else {

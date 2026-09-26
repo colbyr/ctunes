@@ -2,6 +2,7 @@ import AuthenticationServices
 import Observation
 import PlexKit
 import SwiftUI
+import os
 
 @MainActor
 @Observable
@@ -48,6 +49,16 @@ final class AppModel {
     private var rediscovery: Task<Bool, Never>?
     private var lastRediscovery: Date = .distantPast
     private static let rediscoverInterval: TimeInterval = 15
+    /// The timer that looks for the server again while offline, so a
+    /// phone in a pocket comes back on its own. Backs off from 10s to a
+    /// minute; a foreground or a tap resets nothing, they just try sooner.
+    private var offlineRetry: Task<Void, Never>?
+    private var offlineRetryDelay: TimeInterval = AppModel.offlineRetryFloor
+    private static let offlineRetryFloor: TimeInterval = 10
+    private static let offlineRetryCeiling: TimeInterval = 60
+    /// Discovery, reconnection and the offline flips, so a report from the
+    /// road can be read back with `log show --predicate 'category == "Connection"'`.
+    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ctunes", category: "Connection")
 
     /// Music libraries on the server, and the one being browsed. A server can
     /// expose several (audiobooks also report type "artist"), so the choice is
@@ -235,7 +246,15 @@ final class AppModel {
         guard let client, let token else { return }
         do {
             if Self.forceOffline, !tapped { throw PlexError.noServerReachable }
-            let server = try await PlexServerDirectory(client: client).selectServer(token: token)
+            // Behind the snapshot there is time to ride out a network that
+            // is still coming up; on the connecting screen less so, and a
+            // tap or the offline timer wants one answer now.
+            let patience: Duration = switch state {
+            case .reconnecting: .seconds(20)
+            case .connecting: .seconds(10)
+            default: .zero
+            }
+            let server = try await discover(client: client, token: token, patience: patience)
             let library = PlexLibrary(client: client, server: server, token: token)
             let sections = try await library.musicSections()
 
@@ -250,12 +269,16 @@ final class AppModel {
             libraryGeneration += 1
             errorMessage = nil
             state = .signedIn
+            cancelOfflineRetry()
+            log.notice("connected to \(server.baseURL.host() ?? "?", privacy: .public) local=\(server.isLocal)")
             downloads.attach(server: server.machineIdentifier, offline: false)
             await resumeDownloads()
             await syncFavoritesPin()
             await syncPlaylistPins()
         } catch {
             errorMessage = error.localizedDescription
+            log.error("connect failed: \(String(describing: error), privacy: .public)")
+            defer { if state == .offline { scheduleOfflineRetry() } }
             // Already offline: stay there; the banner shows the error.
             guard state != .offline else { return }
             // Browsing the snapshot already: only the banner changes.
@@ -269,6 +292,57 @@ final class AppModel {
                 state = .connectFailed
             }
         }
+    }
+
+    /// Discovery that rides out the handoff between networks. Wi-Fi drops
+    /// a few seconds before cellular is up, and with `waitsForConnectivity`
+    /// off every request in that gap fails at once, so one probe conceded
+    /// to the snapshot before the phone had a network to try. A transport
+    /// failure is retried until `patience` runs out; plex.tv answering and
+    /// no connection answering is the server itself away, and gets one
+    /// more try in case the cellular path had just come up under it.
+    private func discover(client: PlexClient, token: String, patience: Duration) async throws -> PlexServer {
+        let deadline = ContinuousClock.now + patience
+        var unreachable = 0
+        while true {
+            do {
+                return try await PlexServerDirectory(client: client).selectServer(token: token)
+            } catch {
+                if case PlexError.noServerReachable = error {
+                    unreachable += 1
+                    guard unreachable < 2 else { throw error }
+                } else {
+                    guard error is URLError else { throw error }
+                }
+                guard ContinuousClock.now + .seconds(2) < deadline else { throw error }
+                log.notice("discovery failed, trying again: \(String(describing: error), privacy: .public)")
+                try? await Task.sleep(for: .seconds(2))
+                try Task.checkCancellation()
+            }
+        }
+    }
+
+    /// While offline, looks for the server again on its own: the app went
+    /// offline in the gap between two networks, and nothing else runs
+    /// while the phone is in a pocket playing downloaded music. Backs off
+    /// from 10s to a minute. The process only lives in the background
+    /// while audio plays, so an idle app never probes.
+    private func scheduleOfflineRetry() {
+        offlineRetry?.cancel()
+        let delay = offlineRetryDelay
+        offlineRetryDelay = min(delay * 2, Self.offlineRetryCeiling)
+        offlineRetry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self, self.state == .offline else { return }
+            self.log.notice("offline retry after \(delay, format: .fixed(precision: 0))s")
+            await self.reconnect(force: true)
+        }
+    }
+
+    private func cancelOfflineRetry() {
+        offlineRetry?.cancel()
+        offlineRetry = nil
+        offlineRetryDelay = Self.offlineRetryFloor
     }
 
     private func lastSnapshot() async -> LibrarySnapshot? {
@@ -328,14 +402,45 @@ final class AppModel {
     @discardableResult
     func connectionLost(_ error: Error) async -> Bool {
         guard state == .signedIn, Self.isConnectionError(error) else { return false }
+        log.error("connection lost: \(String(describing: error), privacy: .public)")
+        // A fetch that started on the library before a swap fails on the
+        // old address after it: the move already happened, so the bump
+        // alone has the caller fetch again. Asking again inside the
+        // probe's throttle read as nothing answering, and went offline
+        // off a working address.
+        if let failing = (error as? URLError)?.failingURL, let current = library as? PlexLibrary,
+           failing.host() != current.baseURL.host() {
+            log.notice("failure on an address already left, retrying on the current one")
+            libraryGeneration += 1
+            return true
+        }
         if await rediscover() { return true }
         // Another caller may have flipped to the snapshot while this one
         // waited on the probe.
         guard state == .signedIn else { return false }
         guard let snapshot = await lastSnapshot() else { return false }
         errorMessage = error.localizedDescription
+        log.error("nothing answered, opening the snapshot")
         enterOffline(snapshot)
+        scheduleOfflineRetry()
         return false
+    }
+
+    /// The scene coming to the front while signed in. The phone may have
+    /// changed networks in the background, and every screen's fetch would
+    /// otherwise sit on the API timeout before rediscovery ran. A local
+    /// address is pinged with a short timeout and rediscovery runs at once
+    /// when it doesn't answer; a remote address works from anywhere and is
+    /// left alone.
+    func checkConnection() async {
+        guard state == .signedIn, rediscovery == nil,
+              Date().timeIntervalSince(lastRediscovery) > Self.rediscoverInterval,
+              let library = library as? PlexLibrary, library.isLocalConnection
+        else { return }
+        guard await !library.ping() else { return }
+        guard state == .signedIn, (self.library as? PlexLibrary)?.baseURL == library.baseURL else { return }
+        log.notice("local address stopped answering while in the background")
+        await connectionLost(URLError(.cannotConnectToHost))
     }
 
     /// Runs discovery again and, when the same server answers somewhere,
@@ -350,11 +455,19 @@ final class AppModel {
               let client, let token, let current = library as? PlexLibrary
         else { return false }
         let task = Task { () -> Bool in
-            guard let server = try? await PlexServerDirectory(client: client).selectServer(token: token),
+            guard let server = try? await discover(client: client, token: token, patience: .seconds(25)),
                   state == .signedIn, server.machineIdentifier == current.serverIdentifier
             else { return false }
-            library = PlexLibrary(client: client, server: server, token: token)
-            serverName = server.name
+            // The same address answering means the failure was a moment,
+            // not a move: the library stands and the generation bump alone
+            // has the screens fetch again.
+            if server.baseURL != current.baseURL {
+                log.notice("server moved to \(server.baseURL.host() ?? "?", privacy: .public) local=\(server.isLocal)")
+                library = PlexLibrary(client: client, server: server, token: token)
+                serverName = server.name
+            } else {
+                log.notice("same address answered, retrying")
+            }
             libraryGeneration += 1
             errorMessage = nil
             return true
@@ -876,6 +989,7 @@ final class AppModel {
             playlists = []
             favoriteOverrides = [:]
             state = .signedOut
+            cancelOfflineRetry()
             await offline.clear()
             downloads.attach(server: nil, offline: false)
         } catch {

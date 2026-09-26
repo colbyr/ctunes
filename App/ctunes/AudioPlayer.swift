@@ -93,14 +93,28 @@ final class AudioPlayer {
     private var currentItemIsTranscode = false
     private var pausedAt: Date?
     private let transcodeIdleLimit: TimeInterval = 180
-    /// The backstop for a dead session the clock didn't predict (the system
-    /// paused the player with no notification, the server reaped early): a
-    /// transcoded item that should be playing and has sat in `waiting` this
-    /// long is rebuilt. Twice at most per stall, so a server that is really
-    /// away doesn't loop.
-    private let transcodeStallLimit: Duration = .seconds(6)
+    /// A streamed item that should be playing and has sat in `waiting`
+    /// this long with nothing more buffered is not buffering, it is
+    /// stuck: the address stopped answering (the phone left the server's
+    /// Wi-Fi mid-track, and the item never fails, its range requests just
+    /// hang) or a transcode session the server reaped. Either way the app
+    /// is asked whether the server is somewhere else now, and the reload
+    /// from whichever address answers is a fresh transcode session too.
+    /// Rebuilding the transcode on the same address first cost 12s on a
+    /// dead one; it is kept only for a stall inside the probe's throttle.
+    private let streamStallLimit: Duration = .seconds(4)
     private var stallWatchdog: Task<Void, Never>?
     private var stallRebuilds = 0
+    /// Set when the server went away under a stream and nothing on disk
+    /// could follow it: the player sits paused on this track and `adopt`
+    /// plays it again from here once a server answers.
+    private var resumeOnReconnect = false
+    /// The server address the current item was built from, so a failure
+    /// on an address the app has already moved off is answered here with
+    /// a reload, not another probe: the screen that failed first ran the
+    /// rediscovery, and asking again inside its throttle read as nothing
+    /// answering.
+    private var itemBaseURL: URL?
     private var silentPauseCheck: Task<Void, Never>?
     @ObservationIgnored private nonisolated(unsafe) var timeObserver: Any?
     /// How many scrubbers are on screen. A counter, not a flag: when a Mac
@@ -175,6 +189,10 @@ final class AudioPlayer {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 1
         config.waitsForConnectivity = false
+        // Twenty seconds without a byte, not the default minute: a fetch on
+        // an address the phone walked away from held the one download slot
+        // for the whole minute before the cache gave up on it.
+        config.timeoutIntervalForRequest = 20
         return URLSession(configuration: config)
     }
 
@@ -188,7 +206,21 @@ final class AudioPlayer {
     /// and the prefetch window refills.
     func adopt(_ library: (any LibrarySource)?) {
         self.library = library
-        prefetch()
+        guard let library, !library.isOffline else {
+            prefetch()
+            return
+        }
+        // A server that answers again deserves a fresh try at whatever
+        // failed on the old address, not the cache's five-minute backoff.
+        Task { await cache.retryFailed() }
+        if resumeOnReconnect, currentTrack != nil, !hasEnded {
+            resumeOnReconnect = false
+            log.notice("server back, resuming at \(self.currentTime, format: .fixed(precision: 1))s")
+            activateSession()
+            loadCurrentItem(autoPlay: true, startAt: currentTime)
+        } else {
+            prefetch()
+        }
     }
 
     deinit {
@@ -226,12 +258,18 @@ final class AudioPlayer {
     func resume() {
         guard currentTrack != nil else { return }
         resumeAfterInterruption = false
+        resumeOnReconnect = false
         // Nothing left to resume: a lock-screen play after the end starts over.
         if hasEnded {
             restart()
             return
         }
         activateSession()
+        // Emptied while waiting for a server: try the entry again.
+        guard player.currentItem != nil else {
+            loadCurrentItem(autoPlay: true, startAt: currentTime)
+            return
+        }
         if currentItemIsTranscode, let pausedAt, Date().timeIntervalSince(pausedAt) > transcodeIdleLimit {
             reloadTranscode(reason: "idle past the server's limit")
         } else {
@@ -245,6 +283,7 @@ final class AudioPlayer {
 
     func pause() {
         resumeAfterInterruption = false
+        resumeOnReconnect = false
         player.pause()
         if isPlaying { pausedAt = Date() }
         isPlaying = false
@@ -475,7 +514,13 @@ final class AudioPlayer {
         // queue built online and carried offline runs out of files past the
         // prefetch window, and returning here left the old item in the
         // player with `isPlaying` true and the new track's name over silence.
+        // But when nothing from here on has a file and there is no server,
+        // the cursor goes back to the entry asked for and waits there: an
+        // album tapped in the seconds before launch finds the server, or a
+        // queue that walked out of Wi-Fi, used to skip through every entry
+        // in a burst and end.
         let server = library.serverIdentifier
+        let asked = queue.currentIndex
         var playable: (track: PlexTrack, part: PlexPart, local: URL?, url: URL)?
         while let track = currentTrack {
             if let part = track.part {
@@ -487,7 +532,11 @@ final class AudioPlayer {
             }
             log.error("nothing to play for the current entry, skipping")
             guard queue.advance(wrapping: false) else {
-                finish()
+                if library.isOffline, queue.jump(to: asked), let track = currentTrack {
+                    waitForServer(on: track, startAt: startAt)
+                } else {
+                    finish()
+                }
                 return
             }
         }
@@ -499,6 +548,8 @@ final class AudioPlayer {
         }
 
         itemLoadRetries = 0
+        stallRebuilds = 0
+        resumeOnReconnect = false
         currentTime = startAt
         duration = track.durationSeconds ?? 0
         hasEnded = false
@@ -532,6 +583,7 @@ final class AudioPlayer {
         let source = currentItemIsLocal ? "local" : streamQuality.bitrate.map { "stream(\($0)k)" } ?? "stream"
         log.info("load item \(source, privacy: .public) autoPlay=\(autoPlay) retry=\(self.itemLoadRetries)")
         let item = AVPlayerItem(url: url)
+        itemBaseURL = currentItemIsLocal ? nil : (library as? PlexLibrary)?.baseURL
         itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard let self else { return }
             switch item.status {
@@ -605,26 +657,110 @@ final class AudioPlayer {
         // server's Wi-Fi still streams from the LAN address discovery
         // picked; let the app probe again and reload from the one that
         // answers, or go offline, before giving up on the track.
-        if let connectionLost, !recovering {
-            recovering = true
+        if connectionLost != nil, !recovering {
             log.error("stream failed \(self.itemLoadRetries) times, asking for rediscovery")
-            Task {
-                let recovered = await connectionLost(Self.connectionError(in: item))
-                recovering = false
-                guard player.currentItem === item else { return }
-                if recovered, let track = currentTrack, let url = remoteURL(for: track) {
-                    itemLoadRetries = 0
-                    loadItem(url: url, autoPlay: isPlaying, startAt: currentTime)
-                } else {
-                    advance(wrapping: false)
-                }
-            }
+            recoverConnection(for: item, stalled: false)
             return
         }
         log.error("giving up on track after \(self.itemLoadRetries) retries, advancing")
         // The track is unplayable: move on rather than stall the queue. No
         // wrapping, so a server that is down doesn't cycle the queue forever.
         advance(wrapping: false)
+    }
+
+    /// A stream that failed every retry, or sat stalled past the limit:
+    /// asks the app whether the server is somewhere else now. Recovered,
+    /// the item reloads from the fresh address where it was. Not recovered
+    /// and offline, the queue moves on when the next entry is on disk and
+    /// otherwise pauses here to pick up on its own when the server is
+    /// back; running the queue out over entries with no file and no
+    /// stream was how a walk out of Wi-Fi ended in silence. Not recovered
+    /// but still online (a probe too soon after the last), a stalled
+    /// transcode is rebuilt on the same address, any other stalled item
+    /// is left to its own retries with the watchdog re-armed, and a
+    /// failed one is given up on.
+    private func recoverConnection(for item: AVPlayerItem, stalled: Bool) {
+        guard let connectionLost, !recovering else {
+            if stalled { watchForStall(player.timeControlStatus) }
+            return
+        }
+        if let current = library as? PlexLibrary, current.baseURL != itemBaseURL,
+           let track = currentTrack, let url = remoteURL(for: track) {
+            log.notice("library moved since the item loaded, reloading from it at \(self.currentTime, format: .fixed(precision: 1))s")
+            itemLoadRetries = 0
+            stallRebuilds = 0
+            loadItem(url: url, autoPlay: isPlaying, startAt: currentTime)
+            return
+        }
+        recovering = true
+        Task {
+            let recovered = await connectionLost(Self.connectionError(in: item))
+            recovering = false
+            guard player.currentItem === item else { return }
+            if recovered, let track = currentTrack, let url = remoteURL(for: track) {
+                log.notice("reloading from the address that answered at \(self.currentTime, format: .fixed(precision: 1))s")
+                itemLoadRetries = 0
+                stallRebuilds = 0
+                loadItem(url: url, autoPlay: isPlaying, startAt: currentTime)
+                return
+            }
+            if library?.isOffline == true {
+                if nextEntryIsOnDisk {
+                    advance(wrapping: false)
+                } else {
+                    pauseForReconnect()
+                }
+                return
+            }
+            if !stalled {
+                advance(wrapping: false)
+            } else if currentItemIsTranscode, stallRebuilds < 2 {
+                // Inside the probe's throttle, a reaped session on an
+                // address that just answered still wants a fresh one.
+                stallRebuilds += 1
+                reloadTranscode(reason: "stalled in waiting")
+            } else {
+                watchForStall(player.timeControlStatus)
+            }
+        }
+    }
+
+    private var nextEntryIsOnDisk: Bool {
+        guard let library, let next = queue.upcoming.first?.item, let part = next.part else { return false }
+        return cache.localURL(server: library.serverIdentifier, part: part) != nil
+    }
+
+    /// An entry with no file and no server to stream it from: the player
+    /// empties, the header and the lock screen show the track, paused, and
+    /// `adopt` loads it once a server answers. `resume` reloads it too, so
+    /// a press of play tries again.
+    private func waitForServer(on track: PlexTrack, startAt: Double) {
+        log.notice("no file and no server for the current entry, waiting")
+        player.replaceCurrentItem(with: nil)
+        currentItemIsLocal = false
+        currentItemIsTranscode = false
+        itemBaseURL = nil
+        itemLoadRetries = 0
+        stallRebuilds = 0
+        currentTime = startAt
+        duration = track.durationSeconds ?? 0
+        hasEnded = false
+        itemEndHandled = false
+        updateNowPlayingInfo(for: track)
+        pauseForReconnect()
+    }
+
+    /// Offline with nothing on disk to move on to: stop here rather than
+    /// run the queue out, and play again from this spot when `adopt`
+    /// brings a server back. The lock screen reads paused meanwhile; a
+    /// press of play or pause takes over.
+    private func pauseForReconnect() {
+        log.notice("offline mid-stream, pausing until a server answers")
+        player.pause()
+        pausedAt = Date()
+        isPlaying = false
+        resumeOnReconnect = true
+        updateNowPlayingPlaybackState()
     }
 
     /// AVFoundation wraps the transport error; the app decides on the
@@ -782,17 +918,32 @@ final class AudioPlayer {
         stallWatchdog?.cancel()
         stallWatchdog = nil
         if status == .playing { stallRebuilds = 0 }
-        guard status == .waitingToPlayAtSpecifiedRate, currentItemIsTranscode, stallRebuilds < 2 else { return }
+        guard status == .waitingToPlayAtSpecifiedRate, !currentItemIsLocal else { return }
         let item = player.currentItem
+        let buffered = item.map(Self.bufferedSeconds) ?? 0
         stallWatchdog = Task { [weak self] in
-            guard let limit = self?.transcodeStallLimit else { return }
+            guard let limit = self?.streamStallLimit else { return }
             try? await Task.sleep(for: limit)
             guard !Task.isCancelled, let self, self.isPlaying, !self.playerIsRunning,
-                  self.player.currentItem === item
+                  let item, self.player.currentItem === item
             else { return }
-            self.stallRebuilds += 1
-            self.reloadTranscode(reason: "stalled in waiting")
+            // Bytes still arriving is a slow link, not a dead address: a
+            // big file over cellular can take longer than this to start.
+            // Watch another round rather than restart the fetch.
+            if Self.bufferedSeconds(item) > buffered {
+                self.log.info("still buffering in waiting, watching on")
+                self.watchForStall(status)
+                return
+            }
+            self.log.error("stream stalled in waiting, asking for rediscovery")
+            self.recoverConnection(for: item, stalled: true)
         }
+    }
+
+    /// How much of the item is buffered, summed over its ranges; growth
+    /// between two looks is the sign the address is still answering.
+    private static func bufferedSeconds(_ item: AVPlayerItem) -> Double {
+        item.loadedTimeRanges.reduce(0) { $0 + $1.timeRangeValue.duration.seconds }
     }
 
     /// After a seek close to the end of a track, AVPlayer was observed to keep

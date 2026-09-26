@@ -99,10 +99,11 @@ struct PlexServerTests {
         #expect(ContinuousClock.now - started < .seconds(2))
     }
 
-    /// A hung local probe still has to lose to a remote that answers, but
-    /// only once every better-ranked probe has given up.
-    @Test("waits for better-ranked probes before settling on a lower one")
-    func waitsForBetterRanked() async throws {
+    /// A hung local probe still has to lose to a remote that answers, and
+    /// after the grace, not the whole timeout: away from home every local
+    /// address is dead, and each launch and rediscovery paid the full 5s.
+    @Test("settles on a lower-ranked answer once the grace for better ones runs out")
+    func settlesAfterGrace() async throws {
         let resources = try Fixture.string("resources")
         let directory = directory { request in
             let url = request.url?.absoluteString ?? ""
@@ -113,9 +114,32 @@ struct PlexServerTests {
         }
 
         let started = ContinuousClock.now
-        let server = try await directory.selectServer(token: "t", timeout: .seconds(1))
+        let server = try await directory.selectServer(token: "t", timeout: .seconds(10), grace: .seconds(1))
+        let elapsed = ContinuousClock.now - started
         #expect(server.isLocal == false)
-        #expect(ContinuousClock.now - started >= .seconds(1))
+        #expect(elapsed >= .seconds(1))
+        #expect(elapsed < .seconds(5))
+    }
+
+    /// The grace is a wait, not a decision: a local address that answers
+    /// during it still wins over the remote that answered first.
+    @Test("a better-ranked answer inside the grace still wins")
+    func betterRankedWinsInsideGrace() async throws {
+        let resources = try Fixture.string("resources")
+        let directory = directory { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("plex.tv/api/v2/resources") { return .json(resources) }
+            if url.contains("38-42-101-254") { return Self.identityBody("MACHINE-1") }
+            if url.contains("192-168-0-193") {
+                Thread.sleep(forTimeInterval: 0.3)
+                return Self.identityBody("MACHINE-1")
+            }
+            return .hang
+        }
+
+        let server = try await directory.selectServer(token: "t", timeout: .seconds(10), grace: .seconds(2))
+        #expect(server.isLocal)
+        #expect(server.baseURL.absoluteString.contains("192-168-0-193"))
     }
 
     @Test("throws when nothing answers rather than returning a dead URL")

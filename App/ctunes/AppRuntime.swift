@@ -84,7 +84,9 @@ final class AppRuntime {
                 model.refreshFromCloud()
                 switch model.state {
                 case .offline: await model.reconnect()
-                case .signedIn: await model.resumeDownloads()
+                case .signedIn:
+                    await model.checkConnection()
+                    await model.resumeDownloads()
                 default: break
                 }
             }
