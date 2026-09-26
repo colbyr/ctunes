@@ -18,6 +18,9 @@ struct LibraryView: View {
     /// The section's albums and artists, loaded by the browse root and
     /// read by the search page.
     let catalog: LibraryCatalog
+    /// The `ctunes://` route a widget asked for, taken here since the
+    /// URL can land before this stack exists.
+    let links: DeepLinks
     /// True while a mix builder is on top of the stack; the search pill then
     /// filters the builder's pool instead of opening the search page.
     @State private var buildingMix = false
@@ -113,6 +116,11 @@ struct LibraryView: View {
         // A route from a menu, or the artist tapped in Now Playing: the
         // cover has closed itself (or the column stays), and the page goes
         // onto the stack behind it.
+        .onChange(of: links.route, initial: true) { _, route in
+            guard let route else { return }
+            navigator.open(route)
+            links.route = nil
+        }
         .onChange(of: navigator.requested) { _, route in
             guard let route else { return }
             switch route {

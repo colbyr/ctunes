@@ -401,6 +401,13 @@ struct MusicView: View {
         .task(id: PlaylistShortcutsKey(keys: playlistShortcutKeys, generation: model.libraryGeneration)) {
             await loadPlaylistTracks()
         }
+        // The widgets draw these cards: written as they settle, a beat
+        // after the last change so a page of counts landing is one write.
+        .task(id: WidgetFeedKey(cards: visibleShortcuts.map { ($0, subtitle(for: $0)) }, generation: model.libraryGeneration)) {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let library = model.library else { return }
+            await WidgetFeedWriter.publish(visibleShortcuts.map { (mix: $0, subtitle: subtitle(for: $0)) }, library: library)
+        }
         // Handed the environment explicitly, like the Now Playing cover:
         // on the Mac a sheet's hosting controller is built without the
         // inherited environment and Settings' `@Environment(AudioPlayer.self)`
@@ -462,6 +469,18 @@ struct MusicView: View {
     private struct PlaylistShortcutsKey: Hashable {
         let keys: [String]
         let generation: Int
+    }
+
+    private struct WidgetFeedKey: Hashable {
+        let mixes: [SavedMix]
+        let subtitles: [String?]
+        let generation: Int
+
+        init(cards: [(SavedMix, String?)], generation: Int) {
+            mixes = cards.map(\.0)
+            subtitles = cards.map(\.1)
+            self.generation = generation
+        }
     }
 
     /// The items of every playlist a shortcut plays, concurrently and

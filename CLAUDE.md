@@ -38,6 +38,12 @@ Two pieces, split so the interesting logic is testable without a simulator:
 - **`App/ctunes/`** — the SwiftUI app. `App/ctunes.xcodeproj` is hand-written
   using file-system synchronized groups, so **new source files need no project
   edits** — they are picked up from the directory automatically.
+- **`App/ctunesWidgets/`** — the WidgetKit extension (target
+  `ctunesWidgets`), and **`App/Shared/`** — the folder both targets
+  compile (the feed shape, `PlayMixIntent`, `ArtworkTint`). **Info.plists
+  live outside the synchronized folders** (`App/Info.plist`,
+  `App/ctunesWidgets-Info.plist`): inside one the folder copies it as a
+  resource and the build fails on a duplicate output.
 
 Swift 6 language mode with `SWIFT_STRICT_CONCURRENCY = complete`, deployment
 target iOS 26.
@@ -125,6 +131,25 @@ and repeat there are `MPRemoteCommandCenter` events. The entitlement
 simulator build embeds it in the binary's `__entitlements` section. The
 car screen can't be opened from the terminal under Xcode 27 (DeviceHub
 replaced Simulator.app); test in DeviceHub or on the phone.
+
+**Widgets** (`App/ctunesWidgets/`, `App/Shared/`, `notes/widgets.md`)
+are a second process that sees none of the app's storage, so the browse
+root writes what they draw into the App Group `group.com.colbyr.ctunes`
+(`WidgetFeedWriter` → `widget.json` plus `thumbs/`, a JPEG per cover
+keyed like the tint cache) as its shortcut cards settle, and reloads the
+timelines; the feed is self-describing, so the widget links no PlexKit.
+`ShortcutWidget` is one card as a button (small and lock-screen circle,
+configurable by `SelectMixIntent`), `ShortcutsWidget` the rows (medium,
+large) with a `Link` chevron. Every button is `PlayMixIntent`, an
+`AudioPlaybackIntent` compiled into both binaries whose body is
+`#if !WIDGET` and runs `IntentPlayback.play(mixID:)` in the app's
+process; `MixQuery` answers from the model in the app and the feed in
+the widget. The `ctunes://` scheme (`DeepLinks`, held by `AppRuntime`,
+taken by `LibraryView`) opens `mix/<uuid>`, `favorites` and
+`album|artist|playlist/<ratingKey>`; a URL can land before the stack
+exists. The fetches a card, a menu and the intent share are on the model
+(`LibraryFetches.swift`), not `LibraryActions`. `-allowProvisioningUpdates`
+registers the App Group and the widget's App ID on its own.
 
 **Siri** (`App/ctunes/Siri/`, `notes/siri.md`) is two layers. The App
 Shortcuts: five `AudioPlaybackIntent`s (Shuffle Favorites, Play On
@@ -596,7 +621,9 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
 | `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
-| `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music". Combine with `CTUNES_DEV_OFFLINE=1` for the snapshot path, or leave the token off for the signed-out error |
+| `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music"; `mix:<title or id>` plays a shortcut through `PlayMixIntent`, the widgets' tap. Combine with `CTUNES_DEV_OFFLINE=1` for the snapshot path, or leave the token off for the signed-out error |
+| `CTUNES_DEV_WIDGET_FEED` | `1` logs the widget feed each time the browse root writes it, under category `Widget` |
+| `CTUNES_DEV_URL` | a `ctunes://` URL, opened a few seconds after launch the way a widget's link would; `simctl openurl` from the terminal stops at the "Open in…?" prompt |
 
 The dev token lives in 1Password (`op://Private/ctunes dev token`), never on
 disk; `scripts/plex-token.sh` reads it and caches each field in the login

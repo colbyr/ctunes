@@ -172,63 +172,12 @@ extension SavedMix {
 // MARK: - Playing one
 
 extension LibraryActions {
-    /// Every track of one pick, as the server lists it. A fetch failure
-    /// runs the usual rediscovery and yields nothing; the favorites are
-    /// asked again once the library has moved, since the address may have
-    /// gone stale between Wi-Fi and cellular.
-    func tracks(of pick: MixPick) async -> [PlexTrack] {
-        guard let library = model.library, let section = model.selectedSection else { return [] }
-        switch pick {
-        case .favorites:
-            // Newest hearts first, the Favorites page's own default, so
-            // Play starts where the list does.
-            do {
-                return FavoritesSort.recent.sorted(try await library.favoriteTracks(inSection: section.key))
-            } catch {
-                guard await model.connectionLost(error), let current = model.library else { return [] }
-                return FavoritesSort.recent.sorted((try? await current.favoriteTracks(inSection: section.key)) ?? [])
-            }
-        case .playlist(let key, let title, _):
-            return await items(of: PlexPlaylist(ratingKey: key, title: title), known: nil).map(\.track)
-        case .artist(let key, _, _):
-            return await tracks(ofArtist: key)
-        case .album(let key, let title, let artistKey, let artist, let thumb):
-            let album = PlexAlbum(ratingKey: key, title: title, parentRatingKey: artistKey, parentTitle: artist, year: nil, thumb: thumb)
-            return await tracks(of: album, known: nil)
-        }
-    }
-
-    /// Every track across the picks, fetched concurrently and laid out
-    /// in pick order, each track once; no picks is the whole section.
-    /// Not yet filtered: the caller decides which vetoes apply.
-    func tracks(of picks: [MixPick]) async -> [PlexTrack] {
-        guard let library = model.library, let section = model.selectedSection else { return [] }
-        if picks.isEmpty {
-            do {
-                return try await library.tracks(inSection: section.key)
-            } catch {
-                await model.connectionLost(error)
-                return []
-            }
-        }
-        let fetched = await withTaskGroup(of: (Int, [PlexTrack]).self) { group in
-            for (index, pick) in picks.enumerated() {
-                group.addTask { (index, await self.tracks(of: pick)) }
-            }
-            var all: [(Int, [PlexTrack])] = []
-            for await batch in group { all.append(batch) }
-            return all.sorted { $0.0 < $1.0 }.flatMap(\.1)
-        }
-        var seen: Set<String> = []
-        return fetched.filter { seen.insert($0.ratingKey).inserted }
-    }
-
     /// Plays a saved mix: fetched fresh each tap, since hearts and
     /// playlists change, ordered by its style, minus what the active
     /// listeners hide by any veto, since a mix is a mixed bag. Favorites
     /// alone with nothing hearted yet say so rather than "Nothing to play".
     func play(_ mix: SavedMix) async {
-        let tracks = await tracks(of: mix.picks)
+        let tracks = await model.tracks(of: mix.picks)
         if tracks.isEmpty, mix.picks == [.favorites], !offline {
             navigator.notice = "No favorites yet. Tap ··· on a track, or the heart in Now Playing, to favorite it."
             return

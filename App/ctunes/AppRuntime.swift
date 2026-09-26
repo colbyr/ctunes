@@ -18,6 +18,8 @@ final class AppRuntime {
     /// and Siri's value query; here rather than on `LibraryView` because
     /// an intent can fire with no window and has to fill it itself.
     let catalog = LibraryCatalog()
+    /// A `ctunes://` URL's route, parked until the library stack is up.
+    let links = DeepLinks()
 
     private init() {
         // One cache with two roots, shared by the player (window prefetch)
@@ -50,6 +52,17 @@ final class AppRuntime {
         Task { await model.bootstrap() }
         #if DEBUG
         SiriDevHook.run()
+        // `CTUNES_DEV_URL` opens a `ctunes://` URL a few seconds after
+        // launch, the way a widget's link would: `simctl openurl` from the
+        // terminal is another app's link and stops at the "Open in…?"
+        // prompt.
+        if let spec = ProcessInfo.processInfo.environment["CTUNES_DEV_URL"], let url = URL(string: spec) {
+            let links = links, model = model, catalog = catalog
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(6))
+                links.open(url, model: model, catalog: catalog)
+            }
+        }
         #endif
     }
 

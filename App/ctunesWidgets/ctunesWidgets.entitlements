@@ -6,9 +6,5 @@
 	<array>
 		<string>group.com.colbyr.ctunes</string>
 	</array>
-	<key>com.apple.developer.carplay-audio</key>
-	<true/>
-	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
-	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
 </dict>
 </plist>

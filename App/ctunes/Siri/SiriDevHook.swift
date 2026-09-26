@@ -12,7 +12,8 @@ import os
 /// `search:<query>` logs what the value query would hand Siri for it,
 /// `play:<query>` plays its best hit through `PlayAudioIntent` (Siri's
 /// pick, in effect), `playshuffle:<query>` shuffled, `playnext:<query>`
-/// as Play Next, and a bare `play:` is "play music". The intent's own
+/// as Play Next, and a bare `play:` is "play music"; `mix:<title or
+/// id>` plays a shortcut through `PlayMixIntent`, the widgets' tap. The intent's own
 /// `perform()` runs, `ready()` included, since the point is the path an
 /// intent takes with nothing on screen yet.
 enum SiriDevHook {
@@ -59,6 +60,15 @@ enum SiriDevHook {
             let intent = PlayPlaylistIntent()
             intent.playlist = entity
             return try await intent.perform().spokenLine
+        case "mix":
+            // The widgets' tap: a shortcut by its title or id, through
+            // the same intent a widget button carries.
+            let all = await MixQuery.all()
+            guard let entity = all.first(where: {
+                $0.id.uuidString.caseInsensitiveCompare(argument) == .orderedSame
+                    || $0.title.localizedCaseInsensitiveContains(argument)
+            }) else { throw IntentFailure.noSuchShortcut }
+            return try await PlayMixIntent(mix: entity).perform().spokenLine
         case "search":
             let hits = try await search(argument)
             for hit in hits { log.info("hit \(describe(hit), privacy: .public)") }

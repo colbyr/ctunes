@@ -16,6 +16,7 @@ enum IntentFailure: Error, CustomLocalizedStringResourceConvertible {
     case nothingToResume
     case noSuchPlaylist
     case noSuchItem
+    case noSuchShortcut
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
@@ -30,6 +31,7 @@ enum IntentFailure: Error, CustomLocalizedStringResourceConvertible {
         case .nothingToResume: "There's nothing to resume."
         case .noSuchPlaylist: "Tunes couldn't find that playlist."
         case .noSuchItem: "Tunes couldn't find that in your library."
+        case .noSuchShortcut: "Tunes couldn't find that shortcut."
         }
     }
 }
@@ -122,6 +124,17 @@ struct IntentPlayback {
         let tracks = playable(items.map(\.track), within: nil)
         try play(shuffled ? tracks.spreadShuffled() : tracks)
         return tracks.count
+    }
+
+    /// A shortcut from the Music screen, as its card plays it: fetched
+    /// fresh, every veto applied since a mix is a mixed bag, ordered by
+    /// its style. The widgets' tap. Returns the mix.
+    func play(mixID: UUID) async throws -> SavedMix {
+        guard let mix = model.shortcut(mixID) else { throw IntentFailure.noSuchShortcut }
+        let tracks = await model.tracks(of: mix.picks)
+        if tracks.isEmpty, mix.picks == [.favorites], !offline { throw IntentFailure.noFavorites }
+        try play(mix.style.ordered(playable(tracks, within: nil)))
+        return mix
     }
 
     /// Picks up where the queue left off. Returns the track playing.

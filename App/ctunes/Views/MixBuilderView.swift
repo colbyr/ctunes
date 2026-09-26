@@ -498,7 +498,7 @@ struct MixBuilderView: View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
         Task {
             defer { loadingMix = nil }
-            var tracks = await actions.tracks(of: picked)
+            var tracks = await model.tracks(of: picked)
             // Nothing picked under Downloaded only: the albums the filter shows.
             if picked.isEmpty, downloadedOnly {
                 let shown = Set(browsable.map(\.ratingKey))

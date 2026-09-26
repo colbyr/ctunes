@@ -100,46 +100,6 @@ struct LibraryActions {
              : player.addToQueue([entry.item], library: library)
     }
 
-    /// Every track of an album, from the page that has them or one fetch.
-    /// A fetch failure runs the usual rediscovery and yields nothing.
-    func tracks(of album: PlexAlbum, known: [PlexTrack]?) async -> [PlexTrack] {
-        if let known { return known }
-        guard let library = model.library else { return [] }
-        do {
-            let tracks = try await library.tracks(inAlbum: album.ratingKey)
-            await model.rememberTracks(tracks, inAlbum: album)
-            return tracks
-        } catch {
-            await model.connectionLost(error)
-            return []
-        }
-    }
-
-    func tracks(ofArtist key: String) async -> [PlexTrack] {
-        guard let library = model.library, let section = model.selectedSection else { return [] }
-        do {
-            return try await library.tracks(forArtist: key, inSection: section.key)
-        } catch {
-            await model.connectionLost(error)
-            return []
-        }
-    }
-
-    /// Every item of a playlist, from the page that has them or one
-    /// fetch, remembered for offline like a browsed album.
-    func items(of playlist: PlexPlaylist, known: [PlaylistItem]?) async -> [PlaylistItem] {
-        if let known { return known }
-        guard let library = model.library else { return [] }
-        do {
-            let items = try await library.items(inPlaylist: playlist.ratingKey)
-            await model.rememberItems(items, inPlaylist: playlist)
-            return items
-        } catch {
-            await model.connectionLost(error)
-            return []
-        }
-    }
-
     /// Appends to a playlist and says what happened: the server drops
     /// tracks already there, so "Already in" is common and worth a line.
     func add(_ tracks: [PlexTrack], to playlist: PlexPlaylist) async {
@@ -160,7 +120,7 @@ struct LibraryActions {
 
     func download(_ album: PlexAlbum, known: [PlexTrack]?) async {
         guard let library = model.library, !library.isOffline else { return }
-        let tracks = await tracks(of: album, known: known)
+        let tracks = await model.tracks(of: album, known: known)
         guard !tracks.isEmpty else { return }
         model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
     }
@@ -260,19 +220,19 @@ struct ArtistMenu: View {
         if showPlayback {
             Section {
                 Button {
-                    Task { actions.mixAlbums(await actions.tracks(ofArtist: ratingKey), within: .artist) }
+                    Task { actions.mixAlbums(await model.tracks(ofArtist: ratingKey), within: .artist) }
                 } label: {
                     Label("Mix Albums", systemImage: "square.stack")
                 }
                 Button {
-                    Task { actions.shuffle(await actions.tracks(ofArtist: ratingKey), within: .artist) }
+                    Task { actions.shuffle(await model.tracks(ofArtist: ratingKey), within: .artist) }
                 } label: {
                     Label("Shuffle", systemImage: "shuffle")
                 }
             }
         }
         // Vetoes are not applied here: they apply when the playlist plays.
-        AddToPlaylistMenu(model: model) { await actions.tracks(ofArtist: ratingKey) }
+        AddToPlaylistMenu(model: model) { await model.tracks(ofArtist: ratingKey) }
         actions.downloadItems(
             pinned: model.downloads.isPinned(artist: ratingKey),
             state: model.downloads.state(artist: ratingKey),
@@ -321,29 +281,29 @@ struct AlbumMenu: View {
             Section {
                 if showAlbum {
                     Button {
-                        Task { actions.play(await actions.tracks(of: album, known: tracks), within: .album) }
+                        Task { actions.play(await model.tracks(of: album, known: tracks), within: .album) }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
                     Button {
-                        Task { actions.shuffle(await actions.tracks(of: album, known: tracks), within: .album) }
+                        Task { actions.shuffle(await model.tracks(of: album, known: tracks), within: .album) }
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
                     }
                 }
                 Button {
-                    Task { actions.enqueue(await actions.tracks(of: album, known: tracks), within: .album, next: true) }
+                    Task { actions.enqueue(await model.tracks(of: album, known: tracks), within: .album, next: true) }
                 } label: {
                     Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
                 Button {
-                    Task { actions.enqueue(await actions.tracks(of: album, known: tracks), within: .album, next: false) }
+                    Task { actions.enqueue(await model.tracks(of: album, known: tracks), within: .album, next: false) }
                 } label: {
                     Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
                 }
             }
         }
-        AddToPlaylistMenu(model: model) { await actions.tracks(of: album, known: tracks) }
+        AddToPlaylistMenu(model: model) { await model.tracks(of: album, known: tracks) }
         // An album under an artist pin reads as pinned; removing it
         // narrows the artist to their other albums.
         actions.downloadItems(
@@ -379,7 +339,7 @@ struct PlaylistMenu: View {
 
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
-        let tracks: () async -> [PlexTrack] = { await actions.items(of: playlist, known: items).map(\.track) }
+        let tracks: () async -> [PlexTrack] = { await model.items(of: playlist, known: items).map(\.track) }
         if showPlaylist {
             Section {
                 Button { actions.open(.playlist(playlist)) } label: {

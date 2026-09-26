@@ -25,7 +25,7 @@ struct ContentView: View {
             // One label for both: two would be two view identities, and the
             // stack would reset on every transition in or out of offline.
             case .signedIn, .offline, .reconnecting:
-                LibraryView(model: model, catalog: runtime.catalog)
+                LibraryView(model: model, catalog: runtime.catalog, links: runtime.links)
             }
         }
         // Filled first: the sign-in and connecting screens are only as big
@@ -34,6 +34,7 @@ struct ContentView: View {
         .foregroundStyle(Color.ink)
         .background(ParchmentBackground())
         .environment(runtime.player)
+        .onOpenURL { runtime.links.open($0, model: model, catalog: runtime.catalog) }
     }
 }
 
