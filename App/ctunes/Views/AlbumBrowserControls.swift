@@ -36,8 +36,8 @@ extension BrowseSubject {
 /// The album browser's arrange buttons: two 34pt circles pinned at the
 /// trailing edge of the listener chips. The first is what the page shows
 /// and how (the subject, where the page has one, then grid or list), its
-/// glyph the current layout; the second is the order and the download
-/// filter. Picking one applies it and dismisses.
+/// glyph the current layout; the second is the order. Picking one applies
+/// it and dismisses.
 struct ArrangeChip: View {
     @Binding var view: AlbumView
     @Binding var layout: BrowseLayout
@@ -47,8 +47,6 @@ struct ArrangeChip: View {
     var subject: Binding<BrowseSubject>? = nil
     /// The kinds on offer: the mix builder has no playlists.
     var subjects: [BrowseSubject] = BrowseSubject.allCases
-    /// Only the main browser and the mix builder offer the filter.
-    var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -73,9 +71,6 @@ struct ArrangeChip: View {
                     ForEach(AlbumView.cases(in: scope), id: \.self) { Text($0.title(in: scope)) }
                 }
                 .pickerStyle(.inline)
-                if let downloadedOnly {
-                    Toggle("Downloaded only", systemImage: "arrow.down.circle", isOn: downloadedOnly)
-                }
             } label: {
                 ChipIcon(systemImage: "arrow.up.arrow.down")
             }
@@ -99,7 +94,8 @@ struct ArrangeChip: View {
 }
 
 /// The chips plus the arrange button as one row. Each screen keeps its own
-/// stored sort; the roster and the layout are shared.
+/// stored sort; the roster and the layout are shared. The download filter,
+/// where a screen has one, is the chip at the head of the row.
 struct AlbumBrowserControls: View {
     let model: AppModel
     /// Every artist in the library, for the Listeners sheet the chips open.
@@ -109,12 +105,12 @@ struct AlbumBrowserControls: View {
     var scope: BrowseScope = .albums
     var subject: Binding<BrowseSubject>? = nil
     var subjects: [BrowseSubject] = BrowseSubject.allCases
+    /// Only the main browser, the playlists page and the mix builder filter.
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {
-        ListenerChips(model: model, artists: artists) {
-            ArrangeChip(view: $view, layout: $layout, scope: scope, subject: subject, subjects: subjects,
-                        downloadedOnly: downloadedOnly)
+        ListenerChips(model: model, artists: artists, downloadedOnly: downloadedOnly) {
+            ArrangeChip(view: $view, layout: $layout, scope: scope, subject: subject, subjects: subjects)
         }
     }
 }

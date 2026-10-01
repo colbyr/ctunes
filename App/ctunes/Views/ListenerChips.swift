@@ -3,12 +3,16 @@ import SwiftUI
 
 /// Who's in the car. Every listener toggles. With one listener or none a
 /// plus chip opens the Listeners sheet, so the row never reads as just one
-/// chip. An optional accessory sits
-/// pinned at the trailing edge, outside the scroll.
+/// chip. A screen that filters to downloads leads the row with that
+/// toggle, a chip like the listeners' since it narrows the page the same
+/// way. An optional accessory sits pinned at the trailing edge, outside
+/// the scroll.
 struct ListenerChips<Trailing: View>: View {
     let model: AppModel
     /// Every artist in the library, for the Listeners sheet's veto lists.
     let artists: [AlbumGroup]
+    /// The Downloaded filter, on the screens that have one.
+    var downloadedOnly: Binding<Bool>? = nil
     @ViewBuilder let trailing: Trailing
     @State private var showingListeners = false
 
@@ -18,6 +22,16 @@ struct ListenerChips<Trailing: View>: View {
         HStack(spacing: 8) {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
+                    if let downloadedOnly {
+                        Button {
+                            withAnimation(.snappy) { downloadedOnly.wrappedValue.toggle() }
+                        } label: {
+                            IconChip(active: downloadedOnly.wrappedValue, systemImage: "arrow.down.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Downloaded only")
+                        .accessibilityAddTraits(downloadedOnly.wrappedValue ? .isSelected : [])
+                    }
                     ForEach(model.roster.listeners) { listener in
                         let active = model.roster.isActive(listener.id)
                         Button {
@@ -64,8 +78,24 @@ struct ListenerChips<Trailing: View>: View {
 }
 
 extension ListenerChips where Trailing == EmptyView {
-    init(model: AppModel, artists: [AlbumGroup]) {
-        self.init(model: model, artists: artists) { EmptyView() }
+    init(model: AppModel, artists: [AlbumGroup], downloadedOnly: Binding<Bool>? = nil) {
+        self.init(model: model, artists: artists, downloadedOnly: downloadedOnly) { EmptyView() }
+    }
+}
+
+/// A round chip holding one glyph: the listener pill's colors while
+/// active, the quiet fill of the plus and arrange chips otherwise.
+struct IconChip: View {
+    let active: Bool
+    let systemImage: String
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(active ? AnyShapeStyle(Color.pillInk) : AnyShapeStyle(.secondary))
+            .frame(width: 34, height: 34)
+            .background(active ? AnyShapeStyle(Color.pill) : AnyShapeStyle(.fill.tertiary), in: .circle)
+            .contentShape(.circle)
     }
 }
 

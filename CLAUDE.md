@@ -277,7 +277,9 @@ is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `BrowseItems.swift`): the arrange chip is two menus. The first, its glyph
 the current layout, holds what to browse (`BrowseSubject`, on the root
 and the mix builder only) and the layout (`BrowseLayout`, grid or list);
-the second holds the sort (`AlbumView`) and the download filter. The
+the second holds the sort (`AlbumView`). The Downloaded filter is the
+round chip at the head of the listener row (`IconChip` in
+`ListenerChips.swift`), filled like an active listener while on. The
 sort is per screen (`albumView`, `artistView`, `mixView.<kind>`), and
 so is the layout (`browseLayout`, `artistLayout`, `playlistsLayout`,
 `mixLayout`), so the root can stay a grid while an artist's page reads

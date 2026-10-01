@@ -429,8 +429,9 @@ downloads" (destructive, confirmed), and the existing item renamed "Clear cached
 so the two are not confused. `.task` gains `id: model.libraryGeneration` and calls
 `model.snapshot(albums:favorites:)`.
 
-**`App/ctunes/Views/AlbumBrowserControls.swift`.** The arrange menu gains
-`Toggle("Downloaded only", systemImage: "arrow.down.circle")` under the pickers.
+**`App/ctunes/Views/ListenerChips.swift`.** The Downloaded filter is a round
+`arrow.down.circle` chip at the head of the listener row (`IconChip`), filled like
+an active listener while on. It started life as a `Toggle` in the sort menu.
 
 **`NowPlayingView.swift`**: heart disabled when `model.library?.isOffline == true`.
 **`MixBuilderView.swift`**: `.task(id: model.libraryGeneration)`; album tiles dim like
