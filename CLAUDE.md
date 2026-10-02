@@ -633,6 +633,12 @@ keychain for 24h so 1Password prompts once a day, not per make target.
 `scripts/plex-token.sh --clear` drops the cache (`make token` does this too).
 `.plex-dev.json` is a retired path kept in `.gitignore` as a backstop.
 
+`scripts/plex-probe/` measures the server with that token: `server-info.py` is
+read-only (version, endpoints, transcoder prefs); `download-queue.py <command>`
+reproduces the `/downloadQueue` findings in `notes/transcoded-downloads.md`,
+adding items and deleting them again. Both use an iOS-shaped identity, since
+the server has no client profile for the CLI's.
+
 `make feedback` (`scripts/testflight-feedback.py`, `FEEDBACK_ARGS='--days 7'`)
 reads the App Store Connect API with the team key in 1Password
 (`op://Private/App Store Connect API Key`: the `.p8` attached, the key id as
