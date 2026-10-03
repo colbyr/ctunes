@@ -360,14 +360,23 @@ public struct PlexPart: Codable, Sendable, Hashable {
         self.size = size
     }
 
-    /// The file name the track cache stores this part under:
-    /// `/library/parts/1017/1746246593/file.flac` → `1017-1746246593.flac`.
-    /// The middle segment is the file's modification stamp, so the name
-    /// changes when the file is replaced and a cached copy never needs
-    /// revalidating. Only that exact shape is accepted; anything else is nil
-    /// and the track streams. The real extension is kept because
-    /// AVFoundation sniffs the container from it first.
+    /// The name the track cache files this part under, before the
+    /// extension: `/library/parts/1017/1746246593/file.flac` →
+    /// `1017-1746246593`. The second segment is the file's modification
+    /// stamp, so the name changes when the file is replaced and a cached
+    /// copy never needs revalidating. Every copy of the part, the original
+    /// and any transcoded one, shares this stem; `cacheFileName(quality:)`
+    /// tells them apart. Only that exact shape is accepted; anything else
+    /// is nil and the track streams.
     public var cacheKey: String? {
+        parsedKey.map { "\($0.id)-\($0.stamp)" }
+    }
+
+    /// The original file's extension, kept because AVFoundation sniffs the
+    /// container from it first.
+    public var fileExtension: String? { parsedKey.map { String($0.ext) } }
+
+    private var parsedKey: (id: Substring, stamp: Substring, ext: Substring)? {
         let segments = key.split(separator: "/", omittingEmptySubsequences: false)
         guard segments.count == 6, segments[0].isEmpty,
               segments[1] == "library", segments[2] == "parts",
@@ -380,44 +389,89 @@ public struct PlexPart: Codable, Sendable, Hashable {
         else { return nil }
         let ext = name[name.index(after: dot)...]
         guard ext.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
-        return "\(segments[3])-\(segments[4]).\(ext)"
+        return (segments[3], segments[4], ext)
     }
 
-    /// `server/1017-1746246593.flac`, the path the track cache files this
-    /// part under; nil when the part key isn't cacheable.
+    /// `server/1017-1746246593`: the path the track cache keys this part
+    /// under, whatever quality the copy on disk is. Nil when the part key
+    /// isn't cacheable.
     public func cachePath(server: String) -> String? {
         cacheKey.map { "\(server)/\($0)" }
     }
+
+    /// The file a copy at `quality` is stored as: `1017-1746246593.flac`
+    /// for the original, `1017-1746246593-q128.mp3` for one the server's
+    /// download queue transcoded, which is MP3 whatever is asked for.
+    public func cacheFileName(quality: StreamQuality) -> String? {
+        guard let key = cacheKey, let ext = fileExtension else { return nil }
+        guard let bitrate = quality.bitrate else { return "\(key).\(ext)" }
+        return "\(key)-q\(bitrate).mp3"
+    }
+
+    /// `server/<cacheFileName>`.
+    public func cachePath(server: String, quality: StreamQuality) -> String? {
+        cacheFileName(quality: quality).map { "\(server)/\($0)" }
+    }
 }
 
-/// One part file the track cache can fetch. `request` carries the token in a
-/// header, so nothing secret ends up in a path on disk; the cache stores the
-/// file under `server/cacheKey`.
+/// One copy of a part file the track cache can fetch: the original through
+/// `request`, which carries the token in a header so nothing secret ends up
+/// in a path on disk, or an MP3 under a bitrate cap through the server's
+/// download queue (`queueJob`). The cache keys every copy under
+/// `server/cacheKey` and files the one fetched under its own name.
 public struct TrackSource: Sendable, Hashable {
     /// `PlexServer.machineIdentifier`, so part ids from different servers
     /// can't collide.
     public let server: String
     public let part: PlexPart
+    /// `GET` for the part file as stored.
     public let request: URLRequest
+    /// The copy wanted. Anything but `.original` goes through `queueJob`.
+    public let quality: StreamQuality
+    /// What the download queue needs for a transcoded copy; nil for the
+    /// original, and the cache fetches the original when it is missing.
+    public let queueJob: DownloadQueueJob?
 
-    public init(server: String, part: PlexPart, request: URLRequest) {
+    public init(
+        server: String,
+        part: PlexPart,
+        request: URLRequest,
+        quality: StreamQuality = .original,
+        queueJob: DownloadQueueJob? = nil
+    ) {
         self.server = server
         self.part = part
         self.request = request
+        self.quality = quality.bitrate == nil || queueJob == nil ? .original : quality
+        self.queueJob = self.quality == .original ? nil : queueJob
     }
 
-    public var expectedSize: Int? { part.size }
+    /// The part's size at scan time, a fallback integrity check for the
+    /// original only: a transcoded copy has no size but what the server
+    /// says it is sending.
+    public var expectedSize: Int? { quality == .original ? part.size : nil }
 
-    /// `server/1017-1746246593.flac`; nil when the part key isn't cacheable.
+    /// `server/1017-1746246593`; nil when the part key isn't cacheable.
     public var cachePath: String? {
         part.cachePath(server: server)
     }
+
+    /// `server/1017-1746246593-q128.mp3`: where this copy lands.
+    public var filePath: String? {
+        part.cachePath(server: server, quality: quality)
+    }
+
+    /// The same part as stored, for when the queue won't transcode it.
+    public var original: TrackSource {
+        TrackSource(server: server, part: part, request: request)
+    }
 }
 
-/// How a streamed track leaves the server: the part file as stored, or the
-/// universal transcoder's AAC at a bitrate. Per device, kept in
-/// `UserDefaults` by the player under the raw value; a new case is a new
-/// raw value, not a migration. Files on disk are never transcoded.
+/// How a track leaves the server: the part file as stored, or the server's
+/// transcoder under a bitrate cap, AAC over HLS for a stream and MP3 for a
+/// download. Two per-device settings use it, the streaming quality and the
+/// download quality, each kept in `UserDefaults` under the raw value; a new
+/// case is a new raw value, not a migration. A file on disk plays as it is.
 public enum StreamQuality: String, CaseIterable, Sendable {
     case original
     case kbps320, kbps192, kbps128
@@ -432,6 +486,11 @@ public enum StreamQuality: String, CaseIterable, Sendable {
         }
     }
 
+    public init?(bitrate: Int) {
+        guard let match = Self.allCases.first(where: { $0.bitrate == bitrate }) else { return nil }
+        self = match
+    }
+
     public var label: String {
         switch self {
         case .original: "Original"
@@ -439,6 +498,14 @@ public enum StreamQuality: String, CaseIterable, Sendable {
         case .kbps192: "192 kbps"
         case .kbps128: "128 kbps"
         }
+    }
+
+    /// Whether a copy at this quality is as good as one asked for at
+    /// `other`: the original is as good as anything, and a higher cap as
+    /// good as a lower one. A file on disk that satisfies the ask plays
+    /// instead of fetching again.
+    public func satisfies(_ other: StreamQuality) -> Bool {
+        (bitrate ?? .max) >= (other.bitrate ?? .max)
     }
 }
 

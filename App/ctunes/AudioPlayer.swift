@@ -53,9 +53,11 @@ final class AudioPlayer {
     /// How streamed tracks leave the server. Per device, never synced: it
     /// is about the network this device is on. A change takes effect on
     /// the next item; rebuilding the current one would restart the track.
-    /// While transcoding the prefetch window is empty, since downloading
-    /// the originals behind a bandwidth setting defeats it. Pins and files
-    /// already on disk are untouched: local always wins.
+    /// The prefetch window follows it: under a cap the next tracks are
+    /// fetched as MP3 at that cap through the server's download queue, so
+    /// the cache never costs more than the stream it stands in for, and a
+    /// second listen on cellular is local. A pinned file plays whatever its
+    /// quality; a cached one only when it is as good as the setting asks.
     var streamQuality: StreamQuality {
         didSet {
             UserDefaults.standard.set(streamQuality.rawValue, forKey: Self.streamQualityKey)
@@ -457,20 +459,16 @@ final class AudioPlayer {
     /// `cycleRepeat`.
     private func prefetch() {
         guard let library else { return }
-        // Transcoding: nothing downloads, not even the current track. An
-        // empty window cancels every unpinned fetch and leaves pins alone.
-        guard streamQuality == .original else {
-            Task { await cache.retain(window: []) }
-            return
-        }
         var tracks = Array(queue.upcoming.prefix(prefetchDepth).map(\.item))
         if repeatMode == .all, tracks.count < prefetchDepth {
             tracks += queue.entries.prefix(prefetchDepth - tracks.count).map(\.item)
         }
         if let currentTrack { tracks.append(currentTrack) }
         // Offline there are no sources; an empty window is fine, since
-        // `retain` leaves pins alone.
-        let sources = tracks.compactMap { library.trackSource(for: $0) }
+        // `retain` leaves pins alone. At the streaming quality: a copy as
+        // good as the stream, never an original behind a cap.
+        let quality = streamQuality
+        let sources = tracks.compactMap { library.trackSource(for: $0, quality: quality) }
         Task { await cache.retain(window: sources) }
     }
 
@@ -521,10 +519,13 @@ final class AudioPlayer {
         // in a burst and end.
         let server = library.serverIdentifier
         let asked = queue.currentIndex
+        // Online a cached copy has to be as good as the streaming quality
+        // asks; a pinned one plays as it is; offline anything on disk does.
+        let wanted: StreamQuality? = library.isOffline ? nil : streamQuality
         var playable: (track: PlexTrack, part: PlexPart, local: URL?, url: URL)?
         while let track = currentTrack {
             if let part = track.part {
-                let local = cache.localURL(server: server, part: part)
+                let local = cache.localURL(server: server, part: part, quality: wanted)
                 if let url = local ?? remoteURL(for: track) {
                     playable = (track, part, local, url)
                     break
@@ -580,7 +581,9 @@ final class AudioPlayer {
     /// connection, so retry before giving up on the track.
     private func loadItem(url: URL, autoPlay: Bool, startAt: Double = 0) {
         // The URL itself carries the Plex token, so log only where it points.
-        let source = currentItemIsLocal ? "local" : streamQuality.bitrate.map { "stream(\($0)k)" } ?? "stream"
+        let source = currentItemIsLocal
+            ? "local" + (TrackCache.quality(ofFile: url).bitrate.map { "(\($0)k)" } ?? "")
+            : streamQuality.bitrate.map { "stream(\($0)k)" } ?? "stream"
         log.info("load item \(source, privacy: .public) autoPlay=\(autoPlay) retry=\(self.itemLoadRetries)")
         let item = AVPlayerItem(url: url)
         itemBaseURL = currentItemIsLocal ? nil : (library as? PlexLibrary)?.baseURL
@@ -635,12 +638,11 @@ final class AudioPlayer {
         // A cached file that won't play is a bad file: drop it and stream,
         // with the stream's own retries still to come. Offline there is no
         // stream, so a bad pinned file evicts and the queue moves on.
-        if currentItemIsLocal, let track = currentTrack, let library, let part = track.part {
+        if currentItemIsLocal, let track = currentTrack, library != nil {
             log.error("cached file failed to load, evicting and streaming")
             currentItemIsLocal = false
             currentItemIsTranscode = streamQuality.bitrate != nil
-            let server = library.serverIdentifier
-            Task { await cache.evict(server: server, part: part) }
+            Task { await cache.evict(fileAt: url) }
             guard let streamURL = remoteURL(for: track) else {
                 advance(wrapping: false)
                 return

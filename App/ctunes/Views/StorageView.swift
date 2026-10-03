@@ -481,7 +481,9 @@ private struct DownloadedTrackRow: View {
 
     @ViewBuilder private var trailing: some View {
         if let bytes = downloads.bytes(track) {
-            Text(DownloadText.bytes(bytes))
+            // "128 kbps · 3.8 MB" for a transcoded copy, the size alone for
+            // the original.
+            Text([downloads.quality(track)?.label, DownloadText.bytes(bytes)].compactMap { $0 }.joined(separator: " · "))
         } else if downloads.isDownloading(track) {
             Image(systemName: TrackDownloadGlyph.symbol(downloads.state(track)))
         } else if track.part?.cacheKey == nil {

@@ -26,6 +26,65 @@ enum CacheTestSupport {
         TrackSource(server: server, part: part, request: URLRequest(url: base.appending(path: part.key)))
     }
 
+    /// A source for a transcoded copy, through a download queue at `base`.
+    static func transcoded(id: Int, quality: StreamQuality, server: String = "M") -> TrackSource {
+        let part = part(id: id)
+        var queue = URLRequest(url: base.appending(path: "/downloadQueue"))
+        queue.httpMethod = "POST"
+        queue.setValue("TOKEN", forHTTPHeaderField: "X-Plex-Token")
+        return TrackSource(
+            server: server, part: part,
+            request: URLRequest(url: base.appending(path: part.key)),
+            quality: quality,
+            queueJob: DownloadQueueJob(request: queue, ratingKey: String(id), bitrate: quality.bitrate ?? 0)
+        )
+    }
+
+    /// Answers the download queue the way the server was measured to: one
+    /// queue (id 2), every add is item 6, which is `processing` for `polls`
+    /// polls and then `available`, and the media is 700 bytes with a
+    /// `Content-Length`. Anything else is a 1024-byte part file.
+    final class QueueServer: @unchecked Sendable {
+        private var polled = 0
+        private var log: [(String, String)] = []
+        private let lock = NSLock()
+        private let polls: Int
+
+        init(polls: Int) { self.polls = polls }
+
+        /// "METHOD /path", in order.
+        var requests: [String] { lock.withLock { log.map { "\($0.0) \(URL(string: $0.1)?.path ?? "")" } } }
+        var urls: [String] { lock.withLock { log.map(\.1) } }
+
+        var handler: @Sendable (URLRequest) -> MockURLProtocol.Response {
+            { [self] request in
+                let method = request.httpMethod ?? "GET"
+                let path = request.url?.path ?? ""
+                lock.withLock { log.append((method, request.url?.absoluteString ?? "")) }
+                switch (method, path) {
+                case ("POST", "/downloadQueue"):
+                    return .json(#"{"MediaContainer":{"DownloadQueue":[{"id":2,"owner":1,"itemCount":0,"status":"done"}]}}"#)
+                case ("GET", "/downloadQueue/2/items"):
+                    return .json(#"{"MediaContainer":{}}"#)
+                case ("POST", "/downloadQueue/2/add"):
+                    return .json(#"{"MediaContainer":{"AddedQueueItems":[{"key":"/library/metadata/1017","id":6}]}}"#)
+                case ("GET", "/downloadQueue/2/items/6"):
+                    let n = lock.withLock { polled += 1; return polled }
+                    if n <= polls {
+                        return .json(#"{"MediaContainer":{"DownloadQueueItem":[{"id":6,"queueId":2,"status":"processing","transcode":{"progress":\#(n * 40),"context":"static"}}]}}"#)
+                    }
+                    return .json(#"{"MediaContainer":{"DownloadQueueItem":[{"id":6,"queueId":2,"status":"available"}]}}"#)
+                case ("GET", "/downloadQueue/2/item/6/media"):
+                    return .init(body: Data(count: 700), headers: ["Content-Length": "700", "Content-Type": "application/octet-stream"])
+                case ("DELETE", "/downloadQueue/2/items/6"):
+                    return .init(status: 204, body: Data())
+                default:
+                    return .init(body: Data(count: 1024))
+                }
+            }
+        }
+    }
+
     /// A track whose part is `part(id:)`, sized to the mock's 1024-byte body.
     static func track(
         id: Int, album: String, artist: String, title: String? = nil, key: String? = nil

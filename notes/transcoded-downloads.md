@@ -166,3 +166,65 @@ proxy. At most a later optimisation of the play cache on top of idea 1.
 Idea 1, with idea 2 held as the fallback if the Plex Pass gate turns out to apply to the
 raw API. The two share the cache-side work (the quality suffix, `localURL` over variants,
 the integrity rule), so starting on that side commits to neither.
+
+## What shipped (2026-10-02)
+
+Idea 1, with these differences from the sketch above:
+
+- **`PlexPart.cacheKey` is the stem** (`1017-1746246593`), not the original's file name,
+  and `cacheFileName(quality:)` is `<stem>.flac` or `<stem>-q128.mp3`. Every set keyed by
+  cache path (the window, the pins, the failure memo, `DownloadInventory.files` and
+  `wanted`) keys on the stem, so the quality is a property of the fetch, not the identity.
+  A root holds one copy of a part: the fetch that lands removes any other.
+- **Always MP3, never the server's decision.** `directPlay=0&directStream=0` on every add,
+  so the file name is known before the decision (finding 6 would need the decision read
+  back to name the file, and re-encodes a 320 kbps MP3 under a 320 cap anyway). A lossy
+  source below the cap is re-encoded for nothing; measured as rare in this library.
+- **Which copy plays.** `TrackCache.localURL(server:part:quality:)`: the pinned root at any
+  quality first, since a pin is an ask to play from disk; then the cache root at the asked
+  quality or better (`StreamQuality.satisfies`), so a 128 copy left from a cellular listen
+  does not stand in for the original at home; offline (`quality: nil`), anything on disk.
+- **The window follows the streaming quality**, not the download quality: the cache never
+  costs more than the stream it replaces. `prefetch` is no longer suspended under a cap.
+  Pins follow `Downloads.quality` (`downloadQuality` in `UserDefaults`, default Original).
+  `OfflineStore` is handed sources through `Downloads.sources(library)`, which binds the
+  quality; a quality change calls `resumeDownloads`, and `TrackCache.pin` replaces what a
+  pin still has queued and cancels an in-flight fetch for a lesser copy. Files already
+  down keep their quality; an upgrade is Remove and Download again.
+- **The queue is one item at a time**, prepared by `DownloadQueueClient.prepare` (queue id
+  memoised per server, the first look sweeping whatever the queue still lists from an
+  earlier run; add; poll at 1s until `available`, giving up after 60s with no change in
+  status or `transcode.progress`), then the cache downloads `/media` itself so the temp
+  file is moved in its own actor turn, then `DELETE`, detached so a cancellation sends it.
+- **Fallback.** A queue that refuses (401/403/404 on any queue request) or an item that
+  errors or expires gives a pin the original file and fails the window's copy; the
+  refusal is remembered per server for an hour, forgotten by `retryFailed`, which `adopt`
+  of an online library calls. Only `Content-Length` checks a transcoded body; the
+  `part.size` fallback is the original's.
+- **Cellular.** `Downloads.allowsCellular` (`cellularDownloads`, on by default so nothing
+  changes for existing installs) against `NWPathMonitor.isExpensive`, which counts a
+  hotspot too. Off on an expensive path, `TrackCache.setDownloadsAllowed(false)` cancels
+  what is in flight and puts it back at the head of its queue, and nothing starts until
+  the path or the switch changes; every badge reads waiting meanwhile. The gate covers
+  pins and the play cache alike: with the switch off nothing is written to disk on
+  cellular. `allowsCellularAccess` rides on each fetch as the backstop, and a
+  `notConnectedToInternet` failure is not memoised. The monitor answers cost only; the
+  reachability rule (the server answering, never the path) stands.
+- Settings → Downloads: the quality picker and the switch, under Playback. The Storage
+  page's track rows read "128 kbps · 3.8 MB" for a transcoded copy.
+
+Dev: `xcrun simctl spawn booted defaults write com.colbyr.ctunes downloadQuality kbps128`
+and `… cellularDownloads -bool NO`. `make live-test` now also queues one short track at
+128 and checks the MP3 comes back (an iOS-shaped identity, the dev client id plus
+`-ios`, the same device the probes register).
+
+### Still to measure on a device
+
+- A VBR MP3's duration in AVFoundation: `ffmpeg` writes a Xing frame when the output is
+  seekable, so `item.duration` should be exact and the end guard safe; if a transcoded
+  copy ends early or late, that is where to look.
+- The Plex Pass question: whether an account without one gets a 401/403 on the add (the
+  fallback) or something else.
+- How long `available` lasts, so a job that finishes while the app is suspended is still
+  there on resume; today the sweep deletes it and the pin fetches again.
+

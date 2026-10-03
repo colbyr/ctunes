@@ -340,22 +340,36 @@ public actor PlexLibrary {
         return URL(string: server.baseURL.absoluteString + "/music/:/transcode/universal/start.m3u8?" + query)
     }
 
-    private nonisolated static func encode(_ value: String) -> String {
+    /// Strict percent-encoding for a query the server splits on bare `&`
+    /// and `=`: everything but unreserved characters.
+    nonisolated static func encode(_ value: String) -> String {
         value.addingPercentEncoding(
             withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~"))
         ) ?? value
     }
 
-    /// The same file for the track cache to download. Unlike `streamURL`
-    /// this can carry the token and identity headers, so it does.
-    public nonisolated func trackSource(for track: PlexTrack) -> TrackSource? {
+    /// The same track for the track cache to download: the file as stored,
+    /// or, under a cap, the server's download queue (`DownloadQueueClient`),
+    /// which transcodes it to MP3 on its own clock. Unlike `streamURL` this
+    /// can carry the token and identity headers, so it does.
+    public nonisolated func trackSource(for track: PlexTrack, quality: StreamQuality) -> TrackSource? {
         guard let part = track.part, part.cacheKey != nil,
-              let url = URL(string: server.baseURL.absoluteString + part.key)
+              let url = URL(string: server.baseURL.absoluteString + part.key),
+              let queueURL = URL(string: server.baseURL.absoluteString + "/downloadQueue")
         else { return nil }
+        let job = quality.bitrate.map { bitrate in
+            DownloadQueueJob(
+                request: client.request("POST", url: queueURL, token: token),
+                ratingKey: track.ratingKey,
+                bitrate: bitrate
+            )
+        }
         return TrackSource(
             server: server.machineIdentifier,
             part: part,
-            request: client.request(url: url, token: token)
+            request: client.request(url: url, token: token),
+            quality: quality,
+            queueJob: job
         )
     }
 

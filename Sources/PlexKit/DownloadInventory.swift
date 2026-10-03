@@ -70,6 +70,9 @@ public struct DownloadInventory: Sendable, Equatable {
     public var playlistStatuses: [String: AlbumDownloadStatus] = [:]
     /// Bytes on disk in the pinned root, by cache path.
     public var files: [String: Int] = [:]
+    /// The quality of each transcoded file in the pinned root, by cache
+    /// path; an original has no entry.
+    public var qualities: [String: StreamQuality] = [:]
     /// Cache paths any pin wants, on disk or not.
     public var wanted: Set<String> = []
     /// Cache paths whose last fetch failed and are inside the backoff.
@@ -89,6 +92,12 @@ public struct DownloadInventory: Sendable, Equatable {
 
     public func bytes(for track: PlexTrack, server: String) -> Int? {
         track.part?.cachePath(server: server).flatMap { files[$0] }
+    }
+
+    /// The quality the file on disk was downloaded at; nil when there is
+    /// no file or it is the original.
+    public func quality(for track: PlexTrack, server: String) -> StreamQuality? {
+        track.part?.cachePath(server: server).flatMap { qualities[$0] }
     }
 
     /// A pin wants it and the file isn't down yet.

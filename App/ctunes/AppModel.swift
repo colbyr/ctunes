@@ -119,6 +119,8 @@ final class AppModel {
         shortcuts = Self.loadShortcuts()
         seedDevelopmentListeners()
         startCloudSync()
+        // A new download quality re-asks every pin for what it still wants.
+        downloads.pinsChanged = { [weak self] in await self?.resumeDownloads() }
     }
 
     func bootstrap() async {
@@ -521,7 +523,7 @@ final class AppModel {
         )
         try? await offline.save(snapshot)
         downloads.setAlbums(albums)
-        await offline.setFavorites(favorites, server: library.serverIdentifier, sources: library.trackSource)
+        await offline.setFavorites(favorites, server: library.serverIdentifier, sources: downloads.sources(library))
         downloads.refresh()
     }
 
@@ -548,7 +550,7 @@ final class AppModel {
     func rememberItems(_ items: [PlaylistItem], inPlaylist playlist: PlexPlaylist) async {
         guard let library, !library.isOffline else { return }
         await offline.setPlaylistItems(items, inPlaylist: playlist.ratingKey, server: library.serverIdentifier,
-                                       sources: library.trackSource)
+                                       sources: downloads.sources(library))
         downloads.refresh()
     }
 
@@ -655,7 +657,7 @@ final class AppModel {
         if enabled {
             guard let items = try? await library.items(inPlaylist: playlist.ratingKey) else { return }
             await offline.pinPlaylist(playlist, items: items, server: server,
-                                      art: { library.artworkURL($0, size: 600) }, sources: library.trackSource)
+                                      art: { library.artworkURL($0, size: 600) }, sources: downloads.sources(library))
         } else {
             await offline.unpinPlaylist(playlist.ratingKey, server: server)
         }
@@ -678,7 +680,7 @@ final class AppModel {
                 continue
             }
             guard let items = try? await library.items(inPlaylist: pin.id) else { continue }
-            await offline.setPlaylistItems(items, inPlaylist: pin.id, server: server, sources: library.trackSource)
+            await offline.setPlaylistItems(items, inPlaylist: pin.id, server: server, sources: downloads.sources(library))
         }
         downloads.refresh()
     }
@@ -689,7 +691,7 @@ final class AppModel {
     /// and on foreground, since nothing survives the app being suspended.
     func resumeDownloads() async {
         guard let library, !library.isOffline else { return }
-        await offline.resume(server: library.serverIdentifier, sources: library.trackSource)
+        await offline.resume(server: library.serverIdentifier, sources: downloads.sources(library))
         downloads.refresh()
     }
 
@@ -726,7 +728,7 @@ final class AppModel {
         let server = library.serverIdentifier
         await offline.setFavoritesPinned(enabled, server: server)
         if enabled, let favorites = try? await library.favoriteTracks(inSection: section.key) {
-            await offline.setFavorites(favorites, server: server, sources: library.trackSource)
+            await offline.setFavorites(favorites, server: server, sources: downloads.sources(library))
         }
         downloads.refresh()
     }
@@ -738,7 +740,7 @@ final class AppModel {
               await offline.favoritesPinned(server: library.serverIdentifier),
               let favorites = try? await library.favoriteTracks(inSection: section.key)
         else { return }
-        await offline.setFavorites(favorites, server: library.serverIdentifier, sources: library.trackSource)
+        await offline.setFavorites(favorites, server: library.serverIdentifier, sources: downloads.sources(library))
         downloads.refresh()
     }
 
@@ -971,7 +973,7 @@ final class AppModel {
         guard await offline.favoritesPinned(server: server) else { return }
         var group = await offline.favoriteTracks(server: server).filter { $0.ratingKey != track.ratingKey }
         if favorite { group.append(track) }
-        await offline.setFavorites(group, server: server, sources: library.trackSource)
+        await offline.setFavorites(group, server: server, sources: downloads.sources(library))
         downloads.refresh()
     }
 

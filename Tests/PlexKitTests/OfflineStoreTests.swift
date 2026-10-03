@@ -35,7 +35,7 @@ struct OfflineStoreTests {
         ids.map { Support.track(id: $0, album: album, artist: artist) }
     }
 
-    private func path(_ id: Int) -> String { "M/\(id)-1746246593.flac" }
+    private func path(_ id: Int) -> String { "M/\(id)-1746246593" }
 
     private func pin(_ store: OfflineStore, _ album: PlexAlbum, _ tracks: [PlexTrack]) async {
         await store.pinAlbum(album, tracks: tracks, server: Self.server, section: "1", art: { _ in nil }, sources: sources)

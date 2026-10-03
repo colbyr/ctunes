@@ -9,7 +9,7 @@ import Foundation
 ///
 /// Layout under `directory`:
 ///
-///     Tracks/<server>/<partId>-<stamp>.<ext>   the cache's pinned root
+///     Tracks/<server>/<partId>-<stamp>.<ext>   the cache's pinned root (or `-q128.mp3`, a transcoded copy)
 ///     <server>/manifest.json                   Manifest
 ///     <server>/artists/<ratingKey>.json        [PlexAlbum] per pinned artist
 ///     <server>/albums/<ratingKey>.json         [PlexTrack] per album ever browsed
@@ -382,7 +382,9 @@ public actor OfflineStore {
     public func inventory(server: String) async -> DownloadInventory {
         let manifest = manifest(server)
         var inventory = DownloadInventory()
-        inventory.files = await cache.pinnedFiles()
+        let files = await cache.pinnedFiles()
+        inventory.files = files.mapValues(\.size)
+        inventory.qualities = files.compactMapValues { $0.quality == .original ? nil : $0.quality }
         inventory.failed = await cache.failedPaths()
         inventory.artists = manifest.artists
             .sorted { $0.value.pinnedAt < $1.value.pinnedAt }

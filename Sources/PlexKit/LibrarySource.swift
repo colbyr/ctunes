@@ -43,7 +43,9 @@ public protocol LibrarySource: Sendable {
     /// `sessionIdentifier` names the transcode session when `quality` asks
     /// for one, and is unused for `.original`.
     func streamURL(for track: PlexTrack, quality: StreamQuality, sessionIdentifier: String) -> URL?
-    func trackSource(for track: PlexTrack) -> TrackSource?
+    /// The same track for the cache to download at `quality`; nil offline
+    /// or when the part isn't cacheable.
+    func trackSource(for track: PlexTrack, quality: StreamQuality) -> TrackSource?
     func artworkURL(_ thumb: String?, size: Int) -> URL?
 }
 
@@ -51,6 +53,11 @@ extension LibrarySource {
     /// The part file as stored.
     public func streamURL(for track: PlexTrack) -> URL? {
         streamURL(for: track, quality: .original, sessionIdentifier: "")
+    }
+
+    /// The part file as stored, for the cache.
+    public func trackSource(for track: PlexTrack) -> TrackSource? {
+        trackSource(for: track, quality: .original)
     }
 
     /// List-cell size, the default every grid uses. A tile is ~110pt on a

@@ -499,6 +499,34 @@ struct PlexLibraryTests {
         #expect(original == library.streamURL(for: track))
     }
 
+    @Test("a track source under a cap carries the download queue job, the original none")
+    func trackSourceQuality() async throws {
+        let body = try Fixture.string("tracks")
+        let library = library { _ in .json(body) }
+        let track = try #require(try await library.tracks(inAlbum: "1029").first)
+
+        let original = try #require(library.trackSource(for: track))
+        #expect(original.quality == .original)
+        #expect(original.queueJob == nil)
+        #expect(original.request.url?.path.hasPrefix("/library/parts/1017/") == true)
+        #expect(original.request.value(forHTTPHeaderField: "X-Plex-Token") == "TOKEN")
+        #expect(original.filePath == "\(original.server)/1017-1746246593.flac")
+
+        let capped = try #require(library.trackSource(for: track, quality: .kbps192))
+        #expect(capped.quality == .kbps192)
+        #expect(capped.cachePath == original.cachePath)
+        #expect(capped.filePath == "\(original.server)/1017-1746246593-q192.mp3")
+        #expect(capped.expectedSize == nil, "a transcoded copy has no size but the response's")
+        let job = try #require(capped.queueJob)
+        #expect(job.ratingKey == track.ratingKey)
+        #expect(job.bitrate == 192)
+        #expect(job.request.httpMethod == "POST")
+        #expect(job.request.url == URL(string: "https://example.plex.direct:32400/downloadQueue"))
+        #expect(job.request.value(forHTTPHeaderField: "X-Plex-Token") == "TOKEN")
+        #expect(job.request.value(forHTTPHeaderField: "X-Plex-Client-Identifier") != nil)
+        #expect(capped.original == original)
+    }
+
     @Test("artwork URL goes through the photo transcoder")
     func artworkURL() async throws {
         let library = library { _ in .json("{}") }

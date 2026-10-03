@@ -28,6 +28,7 @@ struct SettingsSheet: View {
             List {
                 librarySection
                 playbackSection
+                downloadsSection
                 listenersSection
                 shortcutsSection
                 storageSection
@@ -132,8 +133,36 @@ struct SettingsSheet: View {
         } header: {
             Text("Playback")
         } footer: {
-            Text("Anything below Original is transcoded to AAC by the server. Downloaded tracks always play as stored. Takes effect from the next track.")
+            Text("Anything below Original is transcoded to AAC by the server, and the tracks you play are kept in the play cache at that quality. Downloaded tracks always play as stored. Takes effect from the next track.")
         }
+    }
+
+    /// The download quality mirrors the streaming one but is its own
+    /// setting: downloads mostly happen at home. The cellular switch
+    /// gates the whole pump, pins and the play cache alike.
+    @ViewBuilder private var downloadsSection: some View {
+        @Bindable var downloads = model.downloads
+        Section {
+            Picker("Download Quality", selection: $downloads.quality) {
+                ForEach(StreamQuality.allCases, id: \.self) { quality in
+                    Text(quality.label).tag(quality)
+                }
+            }
+            .pickerStyle(.navigationLink)
+            Toggle("Download on Cellular", isOn: $downloads.allowsCellular)
+        } header: {
+            Text("Downloads")
+        } footer: {
+            Text(downloadsFooter)
+        }
+    }
+
+    private var downloadsFooter: String {
+        var lines = ["Anything below Original is converted to MP3 by the server before it downloads, at up to the chosen bitrate. Tracks already downloaded keep their quality; remove and download again to change it."]
+        lines.append(model.downloads.allowsCellular
+            ? "Downloads and the play cache use cellular data."
+            : "Downloads wait for Wi-Fi, and nothing played on cellular is kept.")
+        return lines.joined(separator: " ")
     }
 
     @ViewBuilder private var listenersSection: some View {

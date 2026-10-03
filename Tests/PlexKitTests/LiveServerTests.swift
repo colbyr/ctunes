@@ -99,4 +99,42 @@ struct LiveServerTests {
         }
         #expect(checked == 1, "no artist with a playable album was found")
     }
+
+    /// The download queue, the path transcoded downloads take. Needs an
+    /// iOS-shaped identity: the CLI's has no client profile on the server
+    /// and every add fails with a decision error.
+    @Test("queues a transcoded download and fetches the MP3 the server made")
+    func downloadQueue() async throws {
+        let credentials = try Self.credentials()
+        let client = PlexClient(
+            identity: PlexIdentity(clientIdentifier: credentials.clientIdentifier + "-ios", product: "ctunes")
+        )
+        let server = try await PlexServerDirectory(client: client)
+            .selectServer(token: credentials.token)
+        let library = PlexLibrary(client: client, server: server, token: credentials.token)
+        let music = try #require(try await library.musicSections().first { $0.title == "Music" })
+        let albums = try await library.albums(inSection: music.key)
+        var picked: PlexTrack?
+        for album in albums.prefix(20) {
+            if let track = try await library.tracks(inAlbum: album.ratingKey).first(where: { ($0.durationSeconds ?? 0) < 300 }) {
+                picked = track
+                break
+            }
+        }
+        let track = try #require(picked)
+        let source = try #require(library.trackSource(for: track, quality: .kbps128))
+        let job = try #require(source.queueJob)
+
+        let queue = DownloadQueueClient(session: .shared)
+        let prepared = try await queue.prepare(job)
+        let (data, response) = try await URLSession.shared.data(for: prepared.media)
+        _ = try? await URLSession.shared.data(for: prepared.delete)
+        let http = try #require(response as? HTTPURLResponse)
+        #expect(http.statusCode == 200)
+        #expect(data.count > 1000)
+        #expect(data.prefix(3) == Data("ID3".utf8), "the queue hands back MP3")
+        let kbps = Double(data.count * 8) / (track.durationSeconds ?? 1) / 1000
+        print("→ download queue: \(track.title), \(data.count) bytes, \(Int(kbps)) kbps under a 128 cap")
+        #expect(kbps < 160)
+    }
 }

@@ -103,7 +103,7 @@ public struct OfflineLibrary: LibrarySource {
     /// Nothing to stream from; the player resolves by server and part.
     public func streamURL(for track: PlexTrack, quality: StreamQuality, sessionIdentifier: String) -> URL? { nil }
 
-    public func trackSource(for track: PlexTrack) -> TrackSource? { nil }
+    public func trackSource(for track: PlexTrack, quality: StreamQuality) -> TrackSource? { nil }
 
     /// The stored cover for a pinned album, whatever size was asked for;
     /// otherwise the server URL the image loader saw online, which its

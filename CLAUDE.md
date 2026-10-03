@@ -267,8 +267,16 @@ lines are dropped without `--info`). **Streaming quality** (`StreamQuality`,
 `notes/always-transcode.md`) is a per-device `UserDefaults` setting owned by
 `AudioPlayer`: anything but `original` streams every track through the
 universal transcoder as HLS/AAC at that bitrate, logged as `stream(192k)`
-next to `local`/`stream`. A file on disk still wins, pins are untouched, and
-the prefetch window is empty while it is on. Every
+next to `local`/`local(128k)`/`stream`. The prefetch window follows the
+setting: under a cap the next tracks are fetched as MP3 at that cap through
+the server's download queue (`notes/transcoded-downloads.md`), so a second
+listen on cellular is local. **Download quality** and **Download on
+Cellular** are the two per-device settings `Downloads` owns
+(`downloadQuality`, `cellularDownloads`, on by default): pins are fetched at
+the download quality, and with cellular off `Downloads` closes the cache's
+gate (`setDownloadsAllowed`) whenever `NWPathMonitor` says the path is
+expensive, which parks pins and the play cache alike and reads as waiting
+on every badge. That monitor answers cost only, never reachability. Every
 shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
@@ -404,14 +412,27 @@ or album's tracks) run in the menu action; nothing to play is posted to
 under two roots with one sequential pump: `Caches/Tracks/<server>/<partId>-<stamp>.<ext>`
 for played and upcoming tracks, LRU-evicted at 2 GB, and
 `Application Support/ctunes/Offline/Tracks/…` for pinned tracks, uncapped,
-never evicted, excluded from backup. `AudioPlayer` plays the local file when
-one exists (pinned root first) and streams otherwise, and after every queue or
-cursor change hands the cache a window of the next three entries plus the
-current one; the pump serves the window before the pin queue, and `retain`
-never cancels a pinned fetch. A file pinned while in the cache root is
-renamed, never fetched twice. A local item that fails to load is evicted and
-re-loaded from the stream URL, or skipped offline. Keep the stream fallback
-and the `-1005` retry: the cache is an optimisation, never the only path.
+never evicted, excluded from backup. A transcoded copy is
+`<partId>-<stamp>-q128.mp3` beside the original's name; **everything is
+keyed by the stem** (`PlexPart.cacheKey`, the window, the pins, the
+failure memo, the inventory) and a root holds one copy of a part, the
+last fetched. `localURL(server:part:quality:)` takes the pinned root at
+any quality first (a pin is an ask to play from disk), then the cache
+root at the asked quality or better; nil quality is anything, which is
+what offline asks. A `TrackSource` under a cap carries a
+`DownloadQueueJob`, and `DownloadQueueClient` runs add → poll → `/media`
+→ delete on `/downloadQueue`; a queue that refuses (404 on an older
+server, 401/403 for a token without the feature, or an item `error`)
+gives a **pin the original file** and fails the window's copy, remembered
+per server for an hour. `AudioPlayer` plays the local file when one
+exists and streams otherwise, and after every queue or cursor change hands
+the cache a window of the next three entries plus the current one at the
+streaming quality; the pump serves the window before the pin queue, and
+`retain` never cancels a pinned fetch. A file pinned while in the cache
+root is renamed, never fetched twice, when it is as good as the pin asks.
+A local item that fails to load is evicted and re-loaded from the stream
+URL, or skipped offline. Keep the stream fallback and the `-1005` retry:
+the cache is an optimisation, never the only path.
 
 Listeners (`ListenerRoster`, owned by `AppModel`, `notes/listeners.md`)
 sync through `NSUbiquitousKeyValueStore` under one `listeners` key holding
@@ -515,6 +536,15 @@ appears to offer.
   on. Measurements in `notes/always-transcode.md`. The server's own log is
   at `GET /diagnostics/logs` (a zip) and names the request that killed a
   session.
+- **Transcoded downloads are the server's download queue**, `POST /downloadQueue`
+  (one per client identifier), `POST /downloadQueue/{q}/add?keys=/library/metadata/{rk}&protocol=http&directPlay=0&directStream=0&musicBitrate=N&X-Plex-Client-Profile-Extra=add-transcode-target(…container=mp3&audioCodec=mp3)`,
+  `GET …/items/{id}` until `available`, `GET …/item/{id}/media` (singular),
+  `DELETE …/items/{id}`. It never touches the one live music transcode the
+  account gets, so a stream plays through it; it is sequential; it is MP3
+  whatever container is asked for, VBR under the cap, so the label says
+  "up to"; items stay listed until deleted. **The identity needs a client
+  profile**: the CLI's (`macOS`/`CLI`) fails every add with a decision
+  error, the app's iOS one works. `notes/transcoded-downloads.md`.
 - **A new track's first range request intermittently fails with
   `NSURLError -1005`** when CFNetwork reuses a keep-alive connection the server
   has dropped. `AVPlayer` then sits on the failed item with no error surfaced,
