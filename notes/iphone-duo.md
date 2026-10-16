@@ -19,11 +19,20 @@ had none of those, so this note is about the layout.
   when it is wider than tall and at least 800 usable. A Duo open in
   landscape is 951pt less the vertical strip's inset, about 850 to a
   `GeometryProxy`, which the old 960 line missed; an 11" iPad's 834
-  portrait is taller than wide and keeps the cover. The column is half
-  the window, capped at 560, and leads: held open like a book the fold
-  runs down the middle, so the player is the left page and the library
-  the right. This moved the column from the trailing edge on the iPad
-  and the Mac too (the browser is still the bigger side past 1120).
+  portrait is taller than wide and keeps the cover. The column leads:
+  held open like a book the fold runs down the middle, so the player is
+  the left page and the library the right. **Its edge is the crease**:
+  iOS 27.1 reports the fold as a `division` reserved region, placed
+  even while flat with `includeInactive`, and the column ends on its
+  midpoint. Half the usable width stopped 50pt short, since the vertical
+  strip's inset is all on the trailing side. Without a fold the column
+  is half the window, capped at 560, which moved it from the trailing
+  edge on the iPad and the Mac too (the browser is still the bigger
+  side past 1120).
+- **Grid tiles follow the pane's width**, not the size class
+  (`BrowseTile.minimum(forWidth:)`): the browser beside the column is
+  about 375pt and still regular, where the 180pt floor gave one tile
+  across. Under 560 the floor is the phone's 100, so three across.
 - **Now Playing's header is two panes of an `ArrangementView`** (iOS
   27.1, `.split`): the artist, album and art as the primary, the
   title, scrubber and transport over the queue as the secondary. Flat,
@@ -56,14 +65,21 @@ had none of those, so this note is about the layout.
 - The strip's inset is about 95pt in landscape on the inner display.
 - Text-only items (Done, Sign out) stay horizontal, as Apple says;
   symbol items (back, ···, Play, Shuffle, Settings, Search) stack.
+- The fold region's `midX` in the host's space is 475.5 of 951 in
+  landscape, with the hinge reported `fullyOpen 180°`; the simulator's
+  screenshot draws no crease, so check the divider against the centre.
+- `onHingeChange` streams the angle while the simulator folds; the
+  status reads `closed` from about 80° down. A debug build logs it under
+  `Layout` (`VerticalBarProbe`), which is how a fold is noticed from the
+  terminal.
 
 ## Verify
 
-Checked in the Xcode 27.1 Duo simulator (`notes/../memory` has the
-driving details): closed, the browse root, album page scrolled, the
-Now Playing sheet and Settings; open in landscape, the column beside
-the album page. The iPad Pro 13 on iOS 27.0 showed the leading column
-over the fallback stack. Not yet seen: the inner display in portrait
+Checked in the Xcode 27.1 Duo simulator: closed, the browse root, the
+album page scrolled, the Now Playing sheet and Settings; open in
+landscape, flat and in the book pose, the column on the crease beside
+the album page and the browse root at three tiles across. The iPad Pro
+13 on iOS 27.0 showed the leading column over the fallback stack. Not yet seen: the inner display in portrait
 (the cover's stacked split), the laptop pose and the book pose, which
 the simulator only folds from DeviceHub.
 
