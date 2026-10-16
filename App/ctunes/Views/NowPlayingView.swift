@@ -176,60 +176,60 @@ struct NowPlayingView: View {
         .listRowSeparator(.hidden)
     }
 
-    private var albumLine: String {
-        guard let track = player.currentTrack else { return "" }
-        let artist = track.trackArtist == nil ? nil : track.grandparentTitle
-        return [track.parentTitle, artist].compactMap { $0 }.joined(separator: " · ")
-    }
-
     private var header: some View {
-        VStack(spacing: 24) {
-            // Edge to edge less a margin, so the art is as big as the screen
-            // allows rather than a fixed 300pt. On the phone the sheet's
-            // drag indicator sits over the top, so the art clears it. In
-            // the column the toolbar already clears the top, and the art is
-            // capped so a wide column in a short window still leaves room
-            // for the queue.
-            Artwork(url: artworkURL, size: nil, corner: 14)
-                .shadow(radius: 12, y: 6)
-                .frame(maxWidth: style == .phone ? nil : 400)
+        VStack(alignment: .leading, spacing: 24) {
+            // The context first: whose record is on, and which. The track
+            // itself comes after the art, where the heart can sit beside
+            // it. Everything is leading-aligned on the art's left edge; a
+            // centred title beside one 44pt well read as off-centre. On the
+            // phone the sheet's drag indicator sits over the top, so the
+            // text clears it. In the column the toolbar already does.
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    artistLine
+                        .font(.headline)
+                    albumLine
+                        .font(.subheadline)
+                }
                 .padding(.horizontal, 12)
                 .padding(.top, style == .phone ? 28 : 8)
-                // A long press on the art is the track's menu: the way to
-                // its album, and to who hears its artist.
-                .contextMenu {
-                    if let track = player.currentTrack {
-                        TrackMenu(model: model, track: track, placement: .playing)
-                    }
-                }
 
-            HStack(alignment: .top) {
-                // The heart at the leading edge balances AirPlay at the
-                // trailing one, so the text stays centred and the header
-                // grows no taller.
-                HeartButton(model: model, track: player.currentTrack)
-                    .frame(width: 44)
-                VStack(spacing: 6) {
+                // Edge to edge less a margin, so the art is as big as the
+                // screen allows rather than a fixed 300pt. In the column
+                // the art is capped so a wide column in a short window
+                // still leaves room for the queue.
+                Artwork(url: artworkURL, size: nil, corner: 14)
+                    .shadow(radius: 12, y: 6)
+                    .frame(maxWidth: style == .phone ? nil : 400)
+                    .padding(.horizontal, 12)
+                    // A long press on the art is the track's menu: the way
+                    // to its album, and to who hears its artist.
+                    .contextMenu {
+                        if let track = player.currentTrack {
+                            TrackMenu(model: model, track: track, placement: .playing)
+                        }
+                    }
+            }
+
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(player.currentTrack?.title ?? "Nothing playing")
                         .font(.title3.bold())
-                        .multilineTextAlignment(.center)
-                    // The credited artist takes the artist line on a
-                    // compilation or a feature; the album artist moves down
-                    // beside the album so both still show. Tapping opens the
-                    // album artist's page, the one with a rating key.
-                    artistLine
-                    Text(albumLine)
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
+                    // The credited artist on a compilation or a feature;
+                    // the album artist is already at the top.
+                    if let credited = player.currentTrack?.trackArtist {
+                        Text(credited)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                // Its height is the title's first line so the glyph sits
-                // level with the heart, not centred on 44pt.
-                AirPlayButton()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // The heart belongs to the track, so it sits beside the
+                // title, level with its first line.
+                HeartButton(model: model, track: player.currentTrack)
                     .frame(width: 44, height: 26)
-                    .accessibilityLabel("AirPlay")
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 12)
 
             scrubber
 
@@ -240,28 +240,48 @@ struct NowPlayingView: View {
         .padding(.bottom, 8)
     }
 
+    /// The album artist, the one with a page to open. The credited artist
+    /// on a feature or a compilation is shown under the title instead.
     @ViewBuilder private var artistLine: some View {
         let track = player.currentTrack
-        let name = track?.trackArtist ?? track?.grandparentTitle ?? ""
+        let name = track?.grandparentTitle ?? ""
         if let track, let key = track.grandparentRatingKey, let artist = track.grandparentTitle {
-            Button {
-                // The cover gets out of the way; the column stays put.
-                if !presentation.isColumn { presentation.isShown = false }
+            routeLink(name, label: "Open \(artist)") {
                 navigator.open(.artist(ArtistRoute(ratingKey: key, title: artist)))
-            } label: {
-                HStack(spacing: 4) {
-                    Text(name)
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                }
-                .foregroundStyle(.secondary)
-                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open \(artist)")
+        } else {
+            Text(name)
+        }
+    }
+
+    @ViewBuilder private var albumLine: some View {
+        let track = player.currentTrack
+        let name = track?.parentTitle ?? ""
+        if let album = track?.album {
+            routeLink(name, label: "Open \(album.title)") { navigator.open(.album(album)) }
+                .foregroundStyle(.secondary)
         } else {
             Text(name).foregroundStyle(.secondary)
         }
+    }
+
+    /// A name with a caret that opens its page. The cover gets out of the
+    /// way first; the column stays put.
+    private func routeLink(_ name: String, label: String, open: @escaping () -> Void) -> some View {
+        Button {
+            if !presentation.isColumn { presentation.isShown = false }
+            open()
+        } label: {
+            HStack(spacing: 4) {
+                Text(name).lineLimit(2)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     /// Once the queue has ended the only sensible action is to start over,
@@ -269,7 +289,7 @@ struct NowPlayingView: View {
     private var transport: some View {
         let ended = player.hasEnded
         let dimmed = ended ? 0.35 : 1.0
-        return HStack(spacing: 40) {
+        return HStack(spacing: 28) {
             Button { player.previous() } label: {
                 Image(systemName: "backward.fill").font(.title)
             }
@@ -300,6 +320,15 @@ struct NowPlayingView: View {
         // Plain so a tap on a control isn't swallowed as a row tap.
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
+        .frame(maxWidth: .infinity)
+        // AirPlay is an output control, so it rides with the transport, as
+        // an overlay rather than a fourth member so play stays centred.
+        .overlay(alignment: .trailing) {
+            AirPlayButton()
+                .frame(width: 44, height: 44)
+                .padding(.trailing, 12)
+                .accessibilityLabel("AirPlay")
+        }
     }
 
     private var repeatLabel: String {
@@ -412,6 +441,9 @@ struct HeartButton: View {
                 .font(.title2)
                 .foregroundStyle(favorite ? AnyShapeStyle(Color.heart) : AnyShapeStyle(.secondary))
                 .contentTransition(.symbolEffect(.replace))
+                // The glyph is 22pt; the tap target is not.
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         // Hearts are read-only offline.
