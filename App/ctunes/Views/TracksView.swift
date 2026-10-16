@@ -138,6 +138,7 @@ struct TracksView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { SearchBarItem() }
         .toolbar {
             // The title bar carries the artist under the title, and opens
             // their page: the native subtitle is plain text, so this is a
