@@ -68,11 +68,27 @@ struct NowPlayingView: View {
             // stack beside it, and the cover's close button is a real
             // toolbar item.
             NavigationStack {
-                VStack(spacing: 0) {
-                    header
-                    List { queueSection }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
+                Group {
+                    // An arrangement rather than a plain stack: on an
+                    // iPhone Duo half folded like a laptop the fold is a
+                    // horizontal division, and the split snaps the header
+                    // to the top pane and the queue to the bottom one.
+                    // Flat, a vertical split is the stack it replaces. The
+                    // header keeps its own height; the queue takes the rest.
+                    if #available(iOS 27.1, *) {
+                        ArrangementView {
+                            header
+                                .splitArrangementFixedLayoutSize(horizontal: false, vertical: true)
+                        } secondary: {
+                            queueList
+                        }
+                        .arrangementViewStyle(.split.axes(.vertical))
+                    } else {
+                        VStack(spacing: 0) {
+                            header
+                            queueList
+                        }
+                    }
                 }
                 .artworkBackground(artworkURL)
                 .navigationTitle("Now Playing")
@@ -86,6 +102,13 @@ struct NowPlayingView: View {
                 }
             }
         }
+    }
+
+    /// The queue on its own, under the pinned header.
+    private var queueList: some View {
+        List { queueSection }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
     }
 
     /// Up Next. No header once the queue has ended: there is nothing next.
@@ -197,10 +220,12 @@ struct NowPlayingView: View {
                 // Edge to edge less a margin, so the art is as big as the
                 // screen allows rather than a fixed 300pt. In the column
                 // the art is capped so a wide column in a short window
-                // still leaves room for the queue.
+                // still leaves room for the queue, and it gives way in
+                // height too: in a pane half a folded screen tall the art
+                // shrinks and the transport stays on.
                 Artwork(url: artworkURL, size: nil, corner: 14)
                     .shadow(radius: 12, y: 6)
-                    .frame(maxWidth: style == .phone ? nil : 400)
+                    .frame(maxWidth: style == .phone ? nil : 400, maxHeight: style == .phone ? nil : 400)
                     .padding(.horizontal, 12)
                     // A long press on the art is the track's menu: the way
                     // to its album, and to who hears its artist.
