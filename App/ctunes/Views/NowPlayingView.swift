@@ -36,6 +36,20 @@ struct NowPlayingView: View {
 
     /// Held while dragging so the slider doesn't fight the time observer.
     @State private var scrubbing: Double?
+    /// Which way the arrangement split its panes, from the environment
+    /// inside the art pane; nil before it reports, and on iOS 27.0.
+    @State private var paneAxis: Axis?
+
+    /// The art pane lays the names and title beside the art rather than
+    /// under it: in a stacked split every art pane is wider than tall (a
+    /// 475×270 strip at the head of the column), so the art takes the
+    /// pane's height and the width is the text's. A side-by-side split
+    /// gives a pane taller than wide and keeps the stack.
+    private var namesBesideArt: Bool {
+        guard style != .phone else { return false }
+        if #available(iOS 27.1, *) { return paneAxis != .horizontal }
+        return false
+    }
 
     /// The art on show, at the size the header draws it; the background
     /// takes its color from the same file so it is never a second fetch.
@@ -64,54 +78,72 @@ struct NowPlayingView: View {
             // recurses in UICollectionView's layout during a live window
             // resize on the Mac; a plain VStack does not. The queue rows are
             // fixed height, so they stay in a List and keep swipe to remove.
-            // Its own stack so the title bar lines up with the one in the
-            // stack beside it, and the cover's close button is a real
-            // toolbar item.
-            NavigationStack {
-                Group {
-                    // An arrangement rather than a plain stack: on an
-                    // iPhone Duo half folded like a laptop the fold is a
-                    // horizontal division, and the split puts the art on
-                    // the top pane and the transport over the queue on the
-                    // bottom one, the controls by the hands. Flat, the
-                    // split follows the shape: halves stacked in the
-                    // column and the portrait cover, where the art fits
-                    // the top half, and side by side in a cover wider than
-                    // it is tall.
-                    if #available(iOS 27.1, *) {
-                        ArrangementView {
-                            // Two fifths of a stacked pane: in a 669pt
-                            // column (a Duo open in landscape) that is
-                            // art of about 180 and three queue rows under
-                            // the transport; a tall cover caps the art
-                            // at 400 anyway.
-                            artPane
-                                .splitArrangementLayoutRatio(idealHorizontal: 0.5, idealVertical: 0.4)
-                        } secondary: {
-                            VStack(spacing: 0) {
-                                controlsPane
-                                queueList
-                            }
-                        }
-                        .arrangementViewStyle(.split)
-                    } else {
-                        VStack(spacing: 0) {
-                            artPane
-                            controlsPane
-                            queueList
-                        }
-                    }
+            if style == .column {
+                // No navigation stack in the column: beside the browser's
+                // stack on an iPhone Duo a second one reserved a trailing
+                // inset the width of the vertical bar, about 85pt, though
+                // the bar sits beside the browser, and the column's
+                // content ran 335pt wide in a 475pt column. A title row
+                // the height of the inline bar keeps the panes level with
+                // the stack beside it.
+                VStack(spacing: 0) {
+                    Text("Now Playing")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        // Level with the inline title in the stack beside it.
+                        .padding(.top, 26)
+                    panes
                 }
                 .artworkBackground(artworkURL)
-                .navigationTitle("Now Playing")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    if style == .fullScreen {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Hide Now Playing", systemImage: "xmark") { presentation.isShown = false }
+            } else {
+                // The cover's own stack, so its close button is a real
+                // toolbar item.
+                NavigationStack {
+                    panes
+                        .artworkBackground(artworkURL)
+                        .navigationTitle("Now Playing")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Hide Now Playing", systemImage: "xmark") { presentation.isShown = false }
+                            }
                         }
-                    }
                 }
+            }
+        }
+    }
+
+    /// The art, then the transport over the queue. An arrangement rather
+    /// than a plain stack: on an iPhone Duo half folded like a laptop the
+    /// fold is a horizontal division, and the split puts the art on the
+    /// top pane and the controls on the bottom one, by the hands. Flat,
+    /// the split follows the shape: halves stacked in the column and the
+    /// portrait cover, side by side in a cover wider than it is tall.
+    @ViewBuilder private var panes: some View {
+        if #available(iOS 27.1, *) {
+            ArrangementView {
+                // Under half of a stacked split: in a 669pt column (a Duo
+                // open in landscape) that is art of about 220 beside the
+                // names and two queue rows under the transport; a tall
+                // cover caps the art at 400 anyway.
+                artPane
+                    .splitArrangementLayoutRatio(idealHorizontal: 0.5, idealVertical: 0.45)
+                    .background {
+                        SplitAxisProbe { paneAxis = $0 }
+                    }
+            } secondary: {
+                VStack(spacing: 0) {
+                    controlsPane
+                    queueList
+                }
+            }
+            .arrangementViewStyle(.split)
+        } else {
+            VStack(spacing: 0) {
+                artPane
+                controlsPane
+                queueList
             }
         }
     }
@@ -219,6 +251,7 @@ struct NowPlayingView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 24) {
             artBlock
+            titleRow
             controls
         }
         .frame(maxWidth: .infinity)
@@ -230,19 +263,49 @@ struct NowPlayingView: View {
     /// pane's height as well as its width, so a pane half a folded screen
     /// tall shrinks the art rather than losing it.
     private var artPane: some View {
-        artBlock
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-            .padding(.bottom, 12)
+        Group {
+            if namesBesideArt {
+                // The art's edge is measured, not negotiated: the pane's
+                // height, or what its width leaves after 180 for the
+                // names and title, whichever is less. A stack's priority
+                // sizing gave the art 140 of a 475 strip.
+                GeometryReader { proxy in
+                    let edge = max(0, min(proxy.size.height, proxy.size.width - 16 - 180, 400))
+                    HStack(alignment: .top, spacing: 16) {
+                        art(edge: edge)
+                        VStack(alignment: .leading, spacing: 4) {
+                            artistLine
+                                .font(.headline)
+                            albumLine
+                                .font(.subheadline)
+                            Spacer(minLength: 12)
+                            titleRow
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: edge, alignment: .leading)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            } else {
+                artBlock
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal)
+        .padding(.bottom, 12)
     }
 
-    /// The controls at the head of the queue's pane.
+    /// The controls at the head of the queue's pane, led by the title
+    /// unless it sits beside the art.
     private var controlsPane: some View {
-        controls
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+        VStack(alignment: .leading, spacing: 24) {
+            if !namesBesideArt { titleRow }
+            controls
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 
     /// The context first: whose record is on, and which, then the art.
@@ -261,34 +324,40 @@ struct NowPlayingView: View {
             .padding(.horizontal, 12)
             .padding(.top, style == .phone ? 28 : 8)
 
-            // Edge to edge less a margin, so the art is as big as the
-            // screen allows rather than a fixed 300pt. In the column and
-            // the cover the art is capped so a wide pane in a short window
-            // still leaves room for the queue, and it gives way in height
-            // too: the square fits whatever the pane has left under the
-            // names.
-            Artwork(url: artworkURL, size: nil, corner: 14)
-                .shadow(radius: 12, y: 6)
-                .frame(maxWidth: style == .phone ? nil : 400, maxHeight: style == .phone ? nil : 400, alignment: .leading)
+            art(edge: nil)
                 .padding(.horizontal, 12)
-                // A long press on the art is the track's menu: the way
-                // to its album, and to who hears its artist.
-                .contextMenu {
-                    if let track = player.currentTrack {
-                        TrackMenu(model: model, track: track, placement: .playing)
-                    }
-                }
         }
     }
 
+    /// Edge to edge less a margin, so the art is as big as the screen
+    /// allows rather than a fixed 300pt. In the column and the cover the
+    /// art is capped so a wide pane in a short window still leaves room
+    /// for the queue, and it gives way in height too: the square fits
+    /// whatever the pane has left.
+    private func art(edge: CGFloat?) -> some View {
+        Artwork(url: artworkURL, size: edge, corner: 14)
+            .shadow(radius: 12, y: 6)
+            // A measured edge needs no cap; a flexible frame around it
+            // only centred the square in the room it didn't take.
+            .frame(maxWidth: style == .phone || edge != nil ? nil : 400,
+                   maxHeight: style == .phone || edge != nil ? nil : 400, alignment: .leading)
+            // A long press on the art is the track's menu: the way
+            // to its album, and to who hears its artist.
+            .contextMenu {
+                if let track = player.currentTrack {
+                    TrackMenu(model: model, track: track, placement: .playing)
+                }
+            }
+    }
+
     /// The track itself, after the art, where the heart can sit beside
-    /// it; then the scrubber and the transport.
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top, spacing: 8) {
+    /// it.
+    private var titleRow: some View {
+        HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(player.currentTrack?.title ?? "Nothing playing")
                         .font(.title3.bold())
+                        .lineLimit(3)
                     // The credited artist on a compilation or a feature;
                     // the album artist is already at the top.
                     if let credited = player.currentTrack?.trackArtist {
@@ -302,11 +371,14 @@ struct NowPlayingView: View {
                 // title, level with its first line.
                 HeartButton(model: model, track: player.currentTrack)
                     .frame(width: 44, height: 26)
-            }
-            .padding(.horizontal, 12)
+        }
+        .padding(.horizontal, 12)
+    }
 
+    /// The scrubber and the transport.
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 24) {
             scrubber
-
             transport
         }
     }
@@ -537,4 +609,15 @@ struct RowButtonStyle: ButtonStyle {
 
 extension ButtonStyle where Self == RowButtonStyle {
     static var row: RowButtonStyle { RowButtonStyle() }
+}
+
+/// Reports which way a split arrangement laid out the pane it sits in.
+@available(iOS 27.1, *)
+private struct SplitAxisProbe: View {
+    let report: (Axis?) -> Void
+    @Environment(\.splitArrangementAxis) private var axis
+
+    var body: some View {
+        Color.clear.onChange(of: axis, initial: true) { _, axis in report(axis) }
+    }
 }
