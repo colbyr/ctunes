@@ -34,17 +34,27 @@ had none of those, so this note is about the layout.
   about 375pt and still regular, where the 180pt floor gave one tile
   across. Under 560 the floor is the phone's 100, so three across.
 - **Now Playing's header is two panes of an `ArrangementView`** (iOS
-  27.1, `.split`): the artist, album and art as the primary, the
-  title, scrubber and transport over the queue as the secondary. Flat,
-  the split is stacked in the column and the portrait cover and side by
-  side in a cover wider than tall; half folded like a laptop the fold is
-  the division, so the art sits on the top half and the controls by the
-  hands. The art pane asks for two fifths of a stacked split
-  (`splitArrangementLayoutRatio`): a 669pt column then shows art of
-  about 180 and a queue row and a half under the transport, where the
-  old 400pt art left no room for the queue at all. The art's frame caps
-  height as well as width so a short pane shrinks it instead of
-  dropping it. On iOS 27.0 the panes are the `VStack` they replaced.
+  27.1, `.split`): the art pane as the primary, the scrubber and
+  transport over the queue as the secondary. Flat, the split is stacked
+  in the column and the portrait cover and side by side in a cover
+  wider than tall; half folded like a laptop the fold is the division,
+  so the art sits on the top half and the controls by the hands. The
+  art pane asks for 45% of a stacked split (`splitArrangementLayoutRatio`).
+  **In a stacked split the art pane is wider than tall**, so the names
+  and title sit beside the art rather than under it (`namesBesideArt`,
+  off `splitArrangementAxis` in the environment through `SplitAxisProbe`),
+  and the art's edge is measured in a `GeometryReader`: the pane's
+  height, or the width left after 180pt for the text. A 669pt column
+  then shows art of 223 and two queue rows under the transport, where
+  the old 400pt art left no room for the queue at all. A side-by-side
+  split, and iOS 27.0's `VStack`, keep the names over the art.
+- **The column has no `NavigationStack` any more.** Beside the browser's
+  stack on a Duo a second stack reserved a trailing inset the width of
+  the vertical bar (about 85pt), so the column's content ran 335pt wide
+  in a 475pt column. `toolbarVerticalBehavior(.disabled)` on that stack
+  turned the bar off for the whole window instead. A 44pt title row
+  padded 26 keeps the panes level with the inline bar beside them; the
+  cover keeps its stack for the close button.
 - **Search joins the vertical strip.** `VerticalBarProbe` reads
   `toolbarVerticalEdge` (27.1) into `LibraryNavigator.hasVerticalBar`;
   with it set, every browse screen adds `SearchBarItem`, a Search
@@ -62,6 +72,9 @@ had none of those, so this note is about the layout.
   reliable lever.
 - Without a ratio the split is about 55/45; the old header (art plus
   transport) in the top pane squeezed the art to nothing.
+- An `HStack` of a flexible square and a text column gave the square
+  140pt of a 419pt strip whatever the `layoutPriority` and `minWidth`;
+  measuring the edge is the reliable way.
 - The strip's inset is about 95pt in landscape on the inner display.
 - Text-only items (Done, Sign out) stay horizontal, as Apple says;
   symbol items (back, ···, Play, Shuffle, Settings, Search) stack.
