@@ -34,7 +34,6 @@ struct MusicView: View {
     @State private var showingSettings = false
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage("albumView") private var view: AlbumView = .mostPlayed
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
     @AppStorage("browseSubject") private var subject: BrowseSubject = .albums
@@ -250,12 +249,8 @@ struct MusicView: View {
 
     /// Matches the nav bar's large title and the bottom pills.
     private static let margin: CGFloat = 16
-    /// Three across on a phone; on an iPad the same minimum gave nine tiny
-    /// tiles, so the floor rises to keep the covers legible. 180 rather than 150:
-    /// on a Mac window the smaller floor still packed six across, and the
-    /// covers read as thumbnails rather than art.
-    private var tileMinimum: CGFloat { sizeClass == .regular ? 180 : 100 }
-    /// The screen's width, for the hero cards' layout.
+    private var tileMinimum: CGFloat { BrowseTile.minimum(forWidth: width) }
+    /// The screen's width, for the hero cards' layout and the tile floor.
     @State private var width: CGFloat = 0
     /// Two shortcut cards across need about 400pt each before a title
     /// like "Mix Albums Bon Jovi" and its count stop wrapping.

@@ -58,11 +58,25 @@ struct LibraryView: View {
     private static let wideColumnThreshold: CGFloat = 800
     /// The window's height, beside the width, for the wide rule.
     @State private var height: CGFloat = 0
-    /// Half the window, capped: on a Duo open in landscape the halves are
-    /// the two pages of the fold, with Now Playing on the left page and
-    /// the browser on the right; a wider window keeps the browser the
-    /// bigger side.
-    private var columnWidth: CGFloat { min(width / 2, 560) }
+    /// Where a vertical fold runs, from the window's leading edge, on a
+    /// device that has one (iOS 27.1 reports it flat as well as folded).
+    /// The column ends there, so its edge is the crease: half the usable
+    /// width stopped 50pt short of it, since the vertical bar's inset is
+    /// all on the trailing side.
+    @State private var foldX: CGFloat?
+    /// Up to the fold where there is one, so the player is the left page
+    /// and the browser the right; otherwise half the window, capped, so a
+    /// wider window keeps the browser the bigger side.
+    private var columnWidth: CGFloat {
+        if let foldX { return foldX - 0.5 }
+        return min(width / 2, 560)
+    }
+
+    /// What the host measures: the window's usable size and the fold.
+    private struct Geometry: Equatable {
+        var size: CGSize
+        var foldX: CGFloat?
+    }
 
     /// The cover while the window is narrow.
     private var presented: Binding<Bool> {
@@ -237,9 +251,21 @@ struct LibraryView: View {
             Text("The playlist is removed from your Plex account. Nothing is removed from your library.")
         }
         .removeDownloadConfirmation(Bindable(navigator).removing)
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+        .onGeometryChange(for: Geometry.self) { proxy in
+            var foldX: CGFloat?
+            if #available(iOS 27.1, *) {
+                // The fold as a division region, inactive while flat but
+                // still placed; only one running top to bottom is a page
+                // boundary, the horizontal one of the laptop pose isn't.
+                let folds = proxy.reservedRegions(kind: .division, options: .includeInactive)
+                foldX = folds.first { $0.frame.height > $0.frame.width }?.frame.midX
+            }
+            return Geometry(size: proxy.size, foldX: foldX)
+        } action: { geometry in
+            let size = geometry.size
             width = size.width
             height = size.height
+            foldX = geometry.foldX
             let column = size.width >= Self.columnThreshold
                 || (size.width > size.height && size.width >= Self.wideColumnThreshold)
             guard column != nowPlaying.isColumn else { return }

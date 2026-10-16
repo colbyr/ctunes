@@ -1,3 +1,4 @@
+import OSLog
 import PlexKit
 import SwiftUI
 
@@ -204,9 +205,22 @@ struct VerticalBarProbe: View {
     @Environment(\.toolbarVerticalEdge) private var edge
 
     var body: some View {
-        Color.clear.onChange(of: edge, initial: true) { _, edge in
-            navigator.hasVerticalBar = edge != nil
-        }
+        Color.clear
+            .onChange(of: edge, initial: true) { _, edge in
+                navigator.hasVerticalBar = edge != nil
+            }
+            // The fold can't be driven from the terminal, so a debug
+            // build logs it; `log stream` on the simulator shows the pose.
+            #if DEBUG
+            .onHingeChange { _, context in
+                let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ctunes", category: "Layout")
+                if let hinge = context.hinge {
+                    log.info("hinge \(String(describing: hinge.status), privacy: .public) \(Int(hinge.angle.degrees))°")
+                } else {
+                    log.info("hinge none")
+                }
+            }
+            #endif
     }
 }
 
