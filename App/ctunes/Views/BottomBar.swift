@@ -190,7 +190,9 @@ struct SearchBarItem: ToolbarContent {
 
     var body: some ToolbarContent {
         if navigator.hasVerticalBar {
-            ToolbarItem(placement: .topBarTrailing) {
+            // The bottom bar's items land at the foot of the strip, so
+            // search stays where the pill was, by the thumb.
+            ToolbarItem(placement: .bottomBar) {
                 Button("Search", systemImage: "magnifyingglass") { navigator.searchRequested = true }
             }
         }
