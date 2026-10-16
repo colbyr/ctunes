@@ -48,10 +48,16 @@ struct LibraryView: View {
 
     /// Narrower than this and Now Playing is a presentation: the phone
     /// layout. An iPad is a column in landscape and a cover in portrait,
-    /// where a column would leave two tiles across. An iPhone Duo open in
-    /// landscape is 951pt, so the line sits under it, and above an 11"
-    /// iPad's 834pt portrait.
-    private static let columnThreshold: CGFloat = 900
+    /// where a column would leave two tiles across.
+    private static let columnThreshold: CGFloat = 960
+    /// A window wider than it is tall takes the column from here. An
+    /// iPhone Duo open in landscape is 951pt less the vertical bar's
+    /// inset, about 850 usable, where two pages of 425 fit the browser's
+    /// tiles two across; an 11" iPad's 834pt portrait is taller than wide
+    /// and keeps the cover.
+    private static let wideColumnThreshold: CGFloat = 800
+    /// The window's height, beside the width, for the wide rule.
+    @State private var height: CGFloat = 0
     /// Half the window, capped: on a Duo open in landscape the halves are
     /// the two pages of the fold, with Now Playing on the left page and
     /// the browser on the right; a wider window keeps the browser the
@@ -126,6 +132,18 @@ struct LibraryView: View {
             guard let route else { return }
             navigator.open(route)
             links.route = nil
+        }
+        // The vertical bar's search item opens the pill the way its own
+        // icon does.
+        .onChange(of: navigator.searchRequested) { _, wanted in
+            guard wanted else { return }
+            navigator.searchRequested = false
+            searching = true
+        }
+        .background {
+            if #available(iOS 27.1, *) {
+                VerticalBarProbe(navigator: navigator)
+            }
         }
         .onChange(of: navigator.requested) { _, route in
             guard let route else { return }
@@ -219,9 +237,11 @@ struct LibraryView: View {
             Text("The playlist is removed from your Plex account. Nothing is removed from your library.")
         }
         .removeDownloadConfirmation(Bindable(navigator).removing)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-            self.width = width
-            let column = width >= Self.columnThreshold
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+            width = size.width
+            height = size.height
+            let column = size.width >= Self.columnThreshold
+                || (size.width > size.height && size.width >= Self.wideColumnThreshold)
             guard column != nowPlaying.isColumn else { return }
             nowPlaying.isColumn = column
             // Crossing either way closes the presentation: into the column

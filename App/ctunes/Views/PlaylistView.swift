@@ -117,6 +117,7 @@ struct PlaylistView: View {
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarItems }
+            .toolbar { SearchBarItem() }
             // Keyed on both generations: going offline, or coming back,
             // reloads from whichever library is current, and an add from
             // another screen's menu lands here too.

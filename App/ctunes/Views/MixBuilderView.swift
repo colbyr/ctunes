@@ -321,6 +321,7 @@ struct MixBuilderView: View {
         }
         .navigationTitle(editing.flatMap { model.shortcut($0)?.name } ?? "Mix")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { SearchBarItem() }
         .toolbar {
             // Keeps the picks as a shortcut on the Music screen; declared
             // first so it sits leftmost, ahead of the play icons.

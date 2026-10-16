@@ -167,6 +167,7 @@ struct FavoritesView: View {
         .navigationTitle("Favorites")
         .navigationSubtitle(subtitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { SearchBarItem() }
         .toolbar {
             // The page's own menu, like the album and artist pages: the
             // offline pin lives here. Read-only offline, so nothing then.

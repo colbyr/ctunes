@@ -71,21 +71,33 @@ struct NowPlayingView: View {
                 Group {
                     // An arrangement rather than a plain stack: on an
                     // iPhone Duo half folded like a laptop the fold is a
-                    // horizontal division, and the split snaps the header
-                    // to the top pane and the queue to the bottom one.
-                    // Flat, a vertical split is the stack it replaces. The
-                    // header keeps its own height; the queue takes the rest.
+                    // horizontal division, and the split puts the art on
+                    // the top pane and the transport over the queue on the
+                    // bottom one, the controls by the hands. Flat, the
+                    // split follows the shape: halves stacked in the
+                    // column and the portrait cover, where the art fits
+                    // the top half, and side by side in a cover wider than
+                    // it is tall.
                     if #available(iOS 27.1, *) {
                         ArrangementView {
-                            header
-                                .splitArrangementFixedLayoutSize(horizontal: false, vertical: true)
+                            // Two fifths of a stacked pane: in a 669pt
+                            // column (a Duo open in landscape) that is
+                            // art of about 180 and three queue rows under
+                            // the transport; a tall cover caps the art
+                            // at 400 anyway.
+                            artPane
+                                .splitArrangementLayoutRatio(idealHorizontal: 0.5, idealVertical: 0.4)
                         } secondary: {
-                            queueList
+                            VStack(spacing: 0) {
+                                controlsPane
+                                queueList
+                            }
                         }
-                        .arrangementViewStyle(.split.axes(.vertical))
+                        .arrangementViewStyle(.split)
                     } else {
                         VStack(spacing: 0) {
-                            header
+                            artPane
+                            controlsPane
                             queueList
                         }
                     }
@@ -109,6 +121,9 @@ struct NowPlayingView: View {
         List { queueSection }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            // The transport above is the gap; the list's own top inset
+            // cost a row in a 669pt column.
+            .contentMargins(.top, 0, for: .scrollContent)
     }
 
     /// Up Next. No header once the queue has ended: there is nothing next.
@@ -199,43 +214,77 @@ struct NowPlayingView: View {
         .listRowSeparator(.hidden)
     }
 
+    /// The phone's header row: the art block over the controls, scrolling
+    /// away with the queue.
     private var header: some View {
         VStack(alignment: .leading, spacing: 24) {
-            // The context first: whose record is on, and which. The track
-            // itself comes after the art, where the heart can sit beside
-            // it. Everything is leading-aligned on the art's left edge; a
-            // centred title beside one 44pt well read as off-centre. On the
-            // phone the sheet's drag indicator sits over the top, so the
-            // text clears it. In the column the toolbar already does.
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    artistLine
-                        .font(.headline)
-                    albumLine
-                        .font(.subheadline)
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, style == .phone ? 28 : 8)
+            artBlock
+            controls
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
 
-                // Edge to edge less a margin, so the art is as big as the
-                // screen allows rather than a fixed 300pt. In the column
-                // the art is capped so a wide column in a short window
-                // still leaves room for the queue, and it gives way in
-                // height too: in a pane half a folded screen tall the art
-                // shrinks and the transport stays on.
-                Artwork(url: artworkURL, size: nil, corner: 14)
-                    .shadow(radius: 12, y: 6)
-                    .frame(maxWidth: style == .phone ? nil : 400, maxHeight: style == .phone ? nil : 400)
-                    .padding(.horizontal, 12)
-                    // A long press on the art is the track's menu: the way
-                    // to its album, and to who hears its artist.
-                    .contextMenu {
-                        if let track = player.currentTrack {
-                            TrackMenu(model: model, track: track, placement: .playing)
-                        }
-                    }
+    /// The art block as the arrangement's first pane. The art fits the
+    /// pane's height as well as its width, so a pane half a folded screen
+    /// tall shrinks the art rather than losing it.
+    private var artPane: some View {
+        artBlock
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.bottom, 12)
+    }
+
+    /// The controls at the head of the queue's pane.
+    private var controlsPane: some View {
+        controls
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+    }
+
+    /// The context first: whose record is on, and which, then the art.
+    /// Everything is leading-aligned on the art's left edge; a centred
+    /// title beside one 44pt well read as off-centre. On the phone the
+    /// sheet's drag indicator sits over the top, so the text clears it.
+    /// In the column the toolbar already does.
+    private var artBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                artistLine
+                    .font(.headline)
+                albumLine
+                    .font(.subheadline)
             }
+            .padding(.horizontal, 12)
+            .padding(.top, style == .phone ? 28 : 8)
 
+            // Edge to edge less a margin, so the art is as big as the
+            // screen allows rather than a fixed 300pt. In the column and
+            // the cover the art is capped so a wide pane in a short window
+            // still leaves room for the queue, and it gives way in height
+            // too: the square fits whatever the pane has left under the
+            // names.
+            Artwork(url: artworkURL, size: nil, corner: 14)
+                .shadow(radius: 12, y: 6)
+                .frame(maxWidth: style == .phone ? nil : 400, maxHeight: style == .phone ? nil : 400, alignment: .leading)
+                .padding(.horizontal, 12)
+                // A long press on the art is the track's menu: the way
+                // to its album, and to who hears its artist.
+                .contextMenu {
+                    if let track = player.currentTrack {
+                        TrackMenu(model: model, track: track, placement: .playing)
+                    }
+                }
+        }
+    }
+
+    /// The track itself, after the art, where the heart can sit beside
+    /// it; then the scrubber and the transport.
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(player.currentTrack?.title ?? "Nothing playing")
@@ -260,9 +309,6 @@ struct NowPlayingView: View {
 
             transport
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal)
-        .padding(.bottom, 8)
     }
 
     /// The album artist, the one with a page to open. The credited artist

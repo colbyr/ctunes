@@ -363,6 +363,7 @@ struct MusicView: View {
             }
         }
         .navigationTitle("Tunes")
+        .toolbar { SearchBarItem() }
         .toolbar {
             // A playlist with nothing in it yet, named here; online only,
             // like every playlist write.

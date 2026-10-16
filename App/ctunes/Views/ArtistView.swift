@@ -122,6 +122,7 @@ struct ArtistView: View {
         .navigationTitle(route.title)
         .navigationSubtitle(loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { SearchBarItem() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

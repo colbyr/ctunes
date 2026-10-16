@@ -131,6 +131,7 @@ struct PlaylistsView: View {
         .navigationTitle("Playlists")
         .navigationSubtitle(model.playlists.isEmpty ? "" : "\(playlists.count) playlist\(playlists.count == 1 ? "" : "s")")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { SearchBarItem() }
         .toolbar {
             // Online only, like every playlist write.
             if !offline {

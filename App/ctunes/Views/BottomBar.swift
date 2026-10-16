@@ -23,6 +23,7 @@ struct BottomBar: View {
     @Binding var searching: Bool
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
     @Namespace private var glass
     /// The home indicator inset under the bar. The stack ignores the
     /// keyboard's safe area, so this never includes it.
@@ -46,8 +47,12 @@ struct BottomBar: View {
                     }
                     .glassEffectID("player", in: glass)
                 }
-                SearchPill(query: $query, searching: $searching)
-                    .glassEffectID("search", in: glass)
+                // With a vertical bar the icon is a toolbar item there
+                // (`SearchBarItem`); the pill only comes back as the field.
+                if searching || !navigator.hasVerticalBar {
+                    SearchPill(query: $query, searching: $searching)
+                        .glassEffectID("search", in: glass)
+                }
                 if searching {
                     Button {
                         query = ""
@@ -172,6 +177,36 @@ private struct MiniPlayerPill: View {
         // A long press is the playing track's menu, the same one the art
         // in Now Playing has.
         .contextMenu { TrackMenu(model: model, track: track, placement: .playing) }
+    }
+}
+
+/// Search as a toolbar item, for a window whose bars run down a vertical
+/// strip: the bottom pill hands its icon to the strip, beside the other
+/// icons, and comes back as the field once a search is open. Nothing
+/// where the bars are horizontal.
+struct SearchBarItem: ToolbarContent {
+    @Environment(LibraryNavigator.self) private var navigator
+
+    var body: some ToolbarContent {
+        if navigator.hasVerticalBar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Search", systemImage: "magnifyingglass") { navigator.searchRequested = true }
+            }
+        }
+    }
+}
+
+/// Tells the navigator whether the window's bars are vertical, read off
+/// the environment, which only iOS 27.1 has.
+@available(iOS 27.1, *)
+struct VerticalBarProbe: View {
+    let navigator: LibraryNavigator
+    @Environment(\.toolbarVerticalEdge) private var edge
+
+    var body: some View {
+        Color.clear.onChange(of: edge, initial: true) { _, edge in
+            navigator.hasVerticalBar = edge != nil
+        }
     }
 }
 
