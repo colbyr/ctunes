@@ -5,6 +5,15 @@ import SwiftUI
 /// layout, a row for the list. The root, the artist page and the mix
 /// pools all draw from here so an album reads the same everywhere.
 
+/// The grid's tile floor for a pane this wide: three across on a phone
+/// and on the page beside the Now Playing column, where a Duo leaves
+/// about 375pt; from 560 the floor rises so an iPad or a Mac window
+/// doesn't pack thumbnails. By width, not size class: a regular-width
+/// pane can be narrower than a phone.
+enum BrowseTile {
+    static func minimum(forWidth width: CGFloat) -> CGFloat { width >= 560 ? 180 : 100 }
+}
+
 /// One cover with its title and either the artist or the year under it.
 struct AlbumTile: View {
     let model: AppModel

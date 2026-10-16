@@ -15,7 +15,8 @@ struct PlaylistsView: View {
     let catalog: LibraryCatalog
     @Binding var path: NavigationPath
     @Environment(LibraryNavigator.self) private var navigator
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The page's width, for the tile floor.
+    @State private var width: CGFloat = 0
     @State private var loaded = false
     /// Its own sort, A to Z until arranged otherwise.
     @AppStorage("playlistsView") private var sort: AlbumView = .artist
@@ -26,7 +27,7 @@ struct PlaylistsView: View {
 
     private static let margin: CGFloat = 16
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 180 : 100), spacing: 12, alignment: .top)]
+        [GridItem(.adaptive(minimum: BrowseTile.minimum(forWidth: width)), spacing: 12, alignment: .top)]
     }
 
     private var playlists: [PlexPlaylist] {

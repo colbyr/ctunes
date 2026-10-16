@@ -47,7 +47,8 @@ struct MixBuilderView: View {
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
     @Environment(NowPlayingPresentation.self) private var nowPlaying
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The pool's width, for the tile floor.
+    @State private var width: CGFloat = 0
     /// What the pool lists: albums, artists or playlists (with the
     /// favorites at their head).
     @AppStorage("mixSubject") private var subject: BrowseSubject = .albums
@@ -236,7 +237,7 @@ struct MixBuilderView: View {
     private static let poolAnchor = "pool"
     /// Same floor as the album browser: wider tiles on a regular width.
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 180 : 100), spacing: 12, alignment: .top)]
+        [GridItem(.adaptive(minimum: BrowseTile.minimum(forWidth: width)), spacing: 12, alignment: .top)]
     }
 
     var body: some View {

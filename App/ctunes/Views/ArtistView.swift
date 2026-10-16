@@ -21,7 +21,6 @@ struct ArtistView: View {
     @Binding var path: NavigationPath
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
-    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var albums: [PlexAlbum] = []
     /// Every artist in the section as the listener sheet wants them, for
@@ -61,13 +60,16 @@ struct ArtistView: View {
     private static let margin: CGFloat = 16
     /// Same floor as the album browser: wider tiles on a regular width.
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 180 : 100), spacing: 12, alignment: .top)]
+        [GridItem(.adaptive(minimum: BrowseTile.minimum(forWidth: width)), spacing: 12, alignment: .top)]
     }
     /// Nothing hidden: an album a listening rider vetoed stays on the
     /// page, dimmed, since the page was opened on purpose.
     private var groups: [AlbumGroup] {
         AlbumBrowse.groups(albums, view: view, scope: .discography)
     }
+
+    /// The page's width, for the tile floor.
+    @State private var width: CGFloat = 0
 
     var body: some View {
         ScrollView {
@@ -105,6 +107,7 @@ struct ArtistView: View {
             }
         }
         .artworkBackground(artworkURL)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .scrollPosition($scrollPosition)
         .scrollEdgeEffectStyle(.soft, for: .top)
         // Past the portrait, the avatars and the cards.
