@@ -198,12 +198,21 @@ extension**; the metadata is extracted at build time
 (`Metadata.appintents` in the bundle, five actions).
 
 The app runs on iPhone and iPad (and so on Apple silicon Macs as "Designed
-for iPad"). Now Playing has one host, in `LibraryView`, driven by the
-`NowPlayingPresentation` flag in the environment: in a window narrower
-than 960pt it is a sheet on a compact width (the header scrolls with the
+for iPad"), and on iPhone Duo (`notes/iphone-duo.md`). Now Playing has one host, in `LibraryView`, driven by the
+`NowPlayingPresentation` flag in the environment: in a narrow window it
+is a sheet on a compact width (the header scrolls with the
 queue and the system drag closes it) and a full-screen cover with a title
-bar on a regular one, a trailing column beside the stack (36% of the width,
-360–560pt) in a wider one. An artist tapped in Now Playing, or any route from an
+bar on a regular one; a window 960pt or wider, or wider than tall and at
+least 800 (a Duo open in landscape is ~850 usable), gets a **leading
+column** beside the stack, half the width capped at 560, the left page
+of the fold. The column and the cover lay the header out as an
+`ArrangementView` (iOS 27.1): the art as one pane, the transport over
+the queue as the other, so the laptop fold divides them; the art pane
+asks for 40% of a stacked split. **A vertical bar** (the Duo closed, or
+open in landscape) is read off `toolbarVerticalEdge` by
+`VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; every browse
+screen then adds `SearchBarItem` to its toolbar and the bottom bar drops
+the search pill until a search is open. An artist tapped in Now Playing, or any route from an
 item menu, goes through `LibraryNavigator.open(_:)` in the environment,
 since the host owns the path. The host measures the window itself rather than
 reading the size class: a Mac window only turns compact a hair above its
