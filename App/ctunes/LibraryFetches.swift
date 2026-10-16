@@ -58,8 +58,15 @@ extension AppModel {
             do {
                 return FavoritesSort.recent.sorted(try await library.favoriteTracks(inSection: section.key))
             } catch {
-                guard await connectionLost(error), let current = self.library else { return [] }
-                return FavoritesSort.recent.sorted((try? await current.favoriteTracks(inSection: section.key)) ?? [])
+                // The server moved: ask the address that answered. Nothing
+                // answering, or a link too weak to carry the list: what was
+                // saved last, so the card plays what is on disk rather than
+                // reporting no favorites (`notes/offline-degraded.md`).
+                if await connectionLost(error), let current = self.library,
+                   let fresh = try? await current.favoriteTracks(inSection: section.key) {
+                    return FavoritesSort.recent.sorted(fresh)
+                }
+                return FavoritesSort.recent.sorted(await savedFavorites())
             }
         case .playlist(let key, let title, _):
             return await items(of: PlexPlaylist(ratingKey: key, title: title), known: nil).map(\.track)

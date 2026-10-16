@@ -115,7 +115,15 @@ address pings it with a 3s timeout first (`checkConnection`) so the
 screens don't each sit on the 10s timeout. Discovery, reconnection and
 the offline flips log under category `Connection`. Hearts are read-only
 offline. Reachability is decided by the server answering, never by
-`NWPathMonitor`.
+`NWPathMonitor`. **A link that is weak rather than dead counts as online**
+(`notes/offline-degraded.md`): the probe is tiny and answers, and every
+fetch then goes to the server. So the album page and Favorites seed their
+list from what is saved before asking (`Downloads.tracks(inAlbum:)`,
+`AppModel.savedFavorites`), a failed refetch leaves the list standing,
+the shortcut's favorites fall back to the saved list, `AppModel.snapshot`
+takes a failed favorites or history fetch as nil and keeps the last
+snapshot's (an empty list once emptied the favorites offline and
+un-pinned their files), and `apiSession` fails a transfer at 60s.
 
 **CarPlay** (`App/ctunes/CarPlay/`, `notes/carplay.md`) is a second
 scene: `CarPlaySceneDelegate` is named in `App/Info.plist` under the

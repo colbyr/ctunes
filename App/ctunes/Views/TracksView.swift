@@ -205,11 +205,20 @@ struct TracksView: View {
 
     private func load() async {
         guard let library = model.library else { return }
+        // The saved list first, so a page opened on a link too weak to
+        // answer reads at once; the fetch replaces it when it lands, and
+        // a failure leaves it standing (`notes/offline-degraded.md`).
+        if tracks.isEmpty {
+            let saved = await model.downloads.tracks(inAlbum: album)
+            if !saved.isEmpty {
+                tracks = saved
+                loaded = true
+            }
+        }
         do {
             tracks = try await library.tracks(inAlbum: album.ratingKey)
         } catch {
             await model.connectionLost(error)
-            if model.library?.isOffline != true { tracks = [] }
             return
         }
         loaded = true

@@ -546,3 +546,4 @@ Each step ends somewhere shippable.
 - A cellular switch for pins, once there is a settings screen.
 - Snapshot refresh on a schedule rather than on each browse.
 - Offline downloads as the Pro IAP tier `notes/launch.md` sketches.
+- A weak link counts as online and the screens never read the saved copies: `notes/offline-degraded.md`, with the targeted fixes and the local-first `CachedLibrary` sketch for when they are not enough.

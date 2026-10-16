@@ -431,7 +431,8 @@ struct MusicView: View {
     /// The fetch: on appear, on a library swap, and on pull to refresh.
     private func load() async {
         guard let library = model.library else { return }
-        var history: [PlayHistoryEntry] = []
+        var history: [PlayHistoryEntry]?
+        var hearted: [PlexTrack]?
         do {
             async let favoriteTracks = library.favoriteTracks(inSection: section.key)
             // Optional: the grid falls back to play counts without it.
@@ -442,10 +443,14 @@ struct MusicView: View {
             async let playlistList: () = model.loadPlaylists()
             catalog.albums = try await library.albums(inSection: section.key)
             catalog.loaded = true
-            history = (try? await plays) ?? []
-            catalog.rotation = Rotation(history: history, albums: albums)
+            history = try? await plays
+            catalog.rotation = Rotation(history: history ?? [], albums: albums)
             catalog.artists = (try? await artistList) ?? []
-            catalog.favorites = try? await favoriteTracks
+            // A failure keeps the last count: on a weak link the albums
+            // land and this doesn't, and nil here once read as no
+            // favorites and was written to the snapshot as such.
+            hearted = try? await favoriteTracks
+            if let hearted { catalog.favorites = hearted }
             await playlistList
         } catch {
             await model.connectionLost(error)
@@ -453,7 +458,7 @@ struct MusicView: View {
             return
         }
         if !library.isOffline {
-            await model.snapshot(albums: albums, favorites: favorites ?? [], history: history)
+            await model.snapshot(albums: albums, favorites: hearted, history: history)
         }
     }
 

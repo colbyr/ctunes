@@ -211,7 +211,6 @@ struct ArtistView: View {
             albums = try await library.albums(forArtist: route.ratingKey, inSection: section.key)
         } catch {
             await model.connectionLost(error)
-            if model.library?.isOffline != true { albums = [] }
             return
         }
         loaded = true

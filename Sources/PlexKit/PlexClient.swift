@@ -12,10 +12,14 @@ public actor PlexClient {
     /// the first byte, not the shared session's sixty: a LAN address the
     /// phone has walked away from (Wi-Fi to cellular) hangs every request,
     /// and a minute per call kept the app stuck on it. Nothing here is a
-    /// long transfer; downloads and streams have their own sessions.
+    /// long transfer; downloads and streams have their own sessions. And a
+    /// minute for the whole transfer: the request timeout is idle time and
+    /// resets on every packet, so a list that trickled over a weak link
+    /// ran for minutes where the saved copy was a stat away.
     public static let apiSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 60
         config.waitsForConnectivity = false
         return URLSession(configuration: config)
     }()

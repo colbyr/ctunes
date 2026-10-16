@@ -296,7 +296,6 @@ struct PlaylistView: View {
             albums = (try? await all) ?? []
         } catch {
             await model.connectionLost(error)
-            if model.library?.isOffline != true { items = [] }
             return
         }
         loaded = true

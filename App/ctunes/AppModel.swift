@@ -505,10 +505,17 @@ final class AppModel {
     /// playlists as last listed, so the next launch can browse without
     /// the server. Keyed by section, so switching libraries snapshots
     /// each on first browse. Also brings the favorites pin up to date
-    /// with the set as the server has it.
-    func snapshot(albums: [PlexAlbum], favorites: [PlexTrack], history: [PlayHistoryEntry]) async {
+    /// with the set as the server has it. A favorites or history fetch
+    /// that failed is nil and keeps the last snapshot's list: on a weak
+    /// link the albums land and the favorites don't, and writing an
+    /// empty list here once emptied the favorites offline and moved every
+    /// pinned favorite into the evictable cache (`notes/offline-degraded.md`).
+    func snapshot(albums: [PlexAlbum], favorites: [PlexTrack]?, history: [PlayHistoryEntry]?) async {
         guard let library, !library.isOffline, let section = selectedSection else { return }
         guard let artists = try? await library.artists(inSection: section.key) else { return }
+        let previous = favorites == nil || history == nil
+            ? await offline.snapshot(server: library.serverIdentifier, section: section.key)
+            : nil
         let snapshot = LibrarySnapshot(
             server: library.serverIdentifier,
             serverName: serverName ?? "",
@@ -516,15 +523,30 @@ final class AppModel {
             section: section,
             albums: albums,
             artists: artists,
-            favorites: favorites,
-            history: history,
+            favorites: favorites ?? previous?.favorites ?? [],
+            history: history ?? previous?.history ?? [],
             playlists: playlists,
             baseURL: (library as? PlexLibrary)?.baseURL
         )
         try? await offline.save(snapshot)
         downloads.setAlbums(albums)
-        await offline.setFavorites(favorites, server: library.serverIdentifier, sources: downloads.sources(library))
+        if let favorites {
+            await offline.setFavorites(favorites, server: library.serverIdentifier, sources: downloads.sources(library))
+        }
         downloads.refresh()
+    }
+
+    /// The favorites as last saved, for a screen on a link too weak to
+    /// ask: the pinned group when the pin is on and has been filled, else
+    /// the snapshot's list.
+    func savedFavorites() async -> [PlexTrack] {
+        guard let library else { return [] }
+        let server = library.serverIdentifier
+        if await offline.favoritesPinned(server: server) {
+            let group = await offline.favoriteTracks(server: server)
+            if !group.isEmpty { return group }
+        }
+        return await offline.snapshot(server: server, section: selectedSection?.key)?.favorites ?? []
     }
 
     /// Remembers an album's tracks as browsed, so offline the page can list

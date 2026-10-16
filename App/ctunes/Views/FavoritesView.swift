@@ -220,13 +220,21 @@ struct FavoritesView: View {
     /// The fetch: on appear, on a library swap, and on pull to refresh.
     private func load() async {
         guard let library = model.library else { return }
+        // The saved list first, as on the album page: a link too weak to
+        // answer reads at once, and a failure leaves the list standing.
+        if tracks.isEmpty {
+            let saved = await model.savedFavorites()
+            if !saved.isEmpty {
+                tracks = saved
+                loaded = true
+            }
+        }
         do {
             async let all = library.albums(inSection: section.key)
             tracks = try await library.favoriteTracks(inSection: section.key)
             albums = (try? await all) ?? []
         } catch {
             await model.connectionLost(error)
-            if model.library?.isOffline != true { tracks = [] }
             return
         }
         loaded = true
