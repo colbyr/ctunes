@@ -91,8 +91,12 @@ struct NowPlayingView: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        // Level with the inline title in the stack beside it.
-                        .padding(.top, 26)
+                        // Level with the inline title in the stack beside
+                        // it. With a vertical bar the window has no status
+                        // bar on top and the stack's title sits 26pt lower
+                        // than its bar alone would; under a status bar
+                        // the inset already lands it there.
+                        .padding(.top, navigator.hasVerticalBar ? 26 : 0)
                     panes
                 }
                 .artworkBackground(artworkURL)
