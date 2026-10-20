@@ -121,6 +121,8 @@ final class AppModel {
     private var auth: PlexAuth?
     private var client: PlexClient?
     private var token: String?
+    /// The last server's own `accessToken`, kept for offline artwork URLs.
+    private var serverToken: String?
 
     /// ASWebAuthenticationSession requires a callback scheme, but Plex never
     /// redirects to one: forwardUrl is ignored for a custom scheme and the
@@ -149,6 +151,9 @@ final class AppModel {
             let stored = try await auth.storedToken()
             if let existing = Self.developmentToken() ?? stored {
                 token = existing
+                if let server = UserDefaults.standard.string(forKey: Self.serverDefaultsKey) {
+                    serverToken = try? await auth.serverToken(for: server)
+                }
                 await connect()
             } else {
                 state = .signedOut
@@ -283,6 +288,7 @@ final class AppModel {
                 sections.count == 1 ? $0 : nil
             }
             UserDefaults.standard.set(server.machineIdentifier, forKey: Self.serverDefaultsKey)
+            rememberServerToken(server)
             libraryGeneration += 1
             errorMessage = nil
             state = .signedIn
@@ -356,6 +362,13 @@ final class AppModel {
         }
     }
 
+    private func rememberServerToken(_ server: PlexServer) {
+        guard let accessToken = server.accessToken, accessToken != serverToken else { return }
+        serverToken = accessToken
+        let auth = auth
+        Task { try? await auth?.setServerToken(accessToken, for: server.machineIdentifier) }
+    }
+
     private func cancelOfflineRetry() {
         offlineRetry?.cancel()
         offlineRetry = nil
@@ -369,7 +382,7 @@ final class AppModel {
     }
 
     private func enterOffline(_ snapshot: LibrarySnapshot, state: State = .offline) {
-        library = OfflineLibrary(snapshot: snapshot, store: offline, token: token)
+        library = OfflineLibrary(snapshot: snapshot, store: offline, token: serverToken ?? token)
         serverName = snapshot.serverName
         sections = snapshot.sections
         selectedSection = snapshot.section
@@ -482,6 +495,7 @@ final class AppModel {
                 log.notice("server moved to \(server.baseURL.host() ?? "?", privacy: .public) local=\(server.isLocal)")
                 library = PlexLibrary(client: client, server: server, token: token)
                 serverName = server.name
+                rememberServerToken(server)
             } else {
                 log.notice("same address answered, retrying")
             }
@@ -1061,8 +1075,9 @@ final class AppModel {
     func signOut() async {
         guard let auth else { return }
         do {
-            try await auth.signOut()
+            try await auth.signOut(server: UserDefaults.standard.string(forKey: Self.serverDefaultsKey))
             token = nil
+            serverToken = nil
             library = nil
             serverName = nil
             sections = []

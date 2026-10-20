@@ -6,10 +6,12 @@ public actor PlexLibrary {
     private let server: PlexServer
     private let token: String
 
+    /// `token` is the account's; a server's own `accessToken` wins, since
+    /// a shared server rejects the account token.
     public init(client: PlexClient, server: PlexServer, token: String) {
         self.client = client
         self.server = server
-        self.token = token
+        self.token = server.accessToken ?? token
     }
 
     public nonisolated var baseURL: URL { server.baseURL }

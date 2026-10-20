@@ -7,6 +7,17 @@ public struct PlexServer: Sendable, Equatable {
     public let machineIdentifier: String
     public let baseURL: URL
     public let isLocal: Bool
+    /// The resource's `accessToken`, what every request to this server
+    /// carries. Nil falls back to the account token.
+    public let accessToken: String?
+
+    public init(name: String, machineIdentifier: String, baseURL: URL, isLocal: Bool, accessToken: String? = nil) {
+        self.name = name
+        self.machineIdentifier = machineIdentifier
+        self.baseURL = baseURL
+        self.isLocal = isLocal
+        self.accessToken = accessToken
+    }
 }
 
 private struct IdentityResponse: Decodable, Sendable {
@@ -54,6 +65,7 @@ public actor PlexServerDirectory {
         let servers = try await resources(token: token).filter(\.isServer)
 
         for resource in servers {
+            let serverToken = resource.accessToken ?? token
             let ranked = resource.connections.enumerated().sorted {
                 ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset)
             }
@@ -73,7 +85,7 @@ public actor PlexServerDirectory {
                         let server = await self.probe(
                             connection,
                             resourceName: resource.name,
-                            token: token,
+                            token: serverToken,
                             timeout: timeout
                         )
                         return (order, server)
@@ -143,7 +155,8 @@ public actor PlexServerDirectory {
                 name: resourceName,
                 machineIdentifier: identity.mediaContainer.machineIdentifier,
                 baseURL: base,
-                isLocal: connection.local
+                isLocal: connection.local,
+                accessToken: token
             )
         } catch {
             Self.log.info("probe \(url.host() ?? "?", privacy: .public) failed: \(String(describing: error), privacy: .public)")

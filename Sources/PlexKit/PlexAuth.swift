@@ -26,9 +26,23 @@ public actor PlexAuth {
         try store.string(for: Self.tokenKey)
     }
 
-    public func signOut() throws {
+    public func signOut(server: String? = nil) throws {
         try store.remove(for: Self.tokenKey)
+        if let server { try store.remove(for: Self.serverTokenKey(server)) }
     }
+
+    /// The last `accessToken` a server was opened with, so offline artwork
+    /// asks the image cache for the URLs it saw online: a shared server's
+    /// token isn't the account's.
+    public func serverToken(for server: String) throws -> String? {
+        try store.string(for: Self.serverTokenKey(server))
+    }
+
+    public func setServerToken(_ token: String, for server: String) throws {
+        try store.set(token, for: Self.serverTokenKey(server))
+    }
+
+    static func serverTokenKey(_ server: String) -> String { "server-token.\(server)" }
 
     // MARK: - PIN flow
 

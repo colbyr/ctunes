@@ -533,6 +533,11 @@ appears to offer.
   per network interface, several of which are virtual adapters. Probe every
   connection concurrently and let reachability decide; rank only breaks ties.
   Probing in rank order stalls for the full timeout on each dead address.
+- **A server shared with the account 401s the account's plex.tv token.**
+  Each `/api/v2/resources` entry carries its own `accessToken`; probes,
+  the library and every stream and artwork URL use it (`PlexServer.accessToken`).
+  An owned server takes either, which is why this only shows on a shared
+  account. The last one is kept in the keychain for offline artwork URLs.
 - **`Accept: application/json` is required** or the server answers in XML and
   decoding fails with an unrelated-looking error.
 - **`X-Plex-Client-Identifier` must be stable across launches**, or every launch

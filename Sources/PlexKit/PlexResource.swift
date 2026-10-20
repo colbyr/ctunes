@@ -7,6 +7,10 @@ public struct PlexResource: Decodable, Sendable {
     public let clientIdentifier: String
     public let provides: String
     public let owned: Bool
+    /// The token this server takes. The account's own plex.tv token only
+    /// works on servers it owns; a server shared with the account rejects
+    /// it with a 401 and answers to this one instead.
+    public let accessToken: String?
     public let connections: [PlexConnection]
 
     public var isServer: Bool {
@@ -14,7 +18,7 @@ public struct PlexResource: Decodable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, clientIdentifier, provides, owned
+        case name, clientIdentifier, provides, owned, accessToken
         case connections = "connections"
     }
 }

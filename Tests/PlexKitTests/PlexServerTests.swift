@@ -62,6 +62,29 @@ struct PlexServerTests {
         #expect(server.baseURL.absoluteString.contains("38-42-101-254"))
     }
 
+    /// A server shared with the account rejects the account's plex.tv
+    /// token; it answers to the resource's own `accessToken`, which the
+    /// library then carries.
+    @Test("probes a shared server with its own access token")
+    func usesResourceAccessToken() async throws {
+        let resources = try Fixture.string("resources")
+            .replacingOccurrences(of: "\"owned\": true", with: "\"owned\": false")
+            .replacingOccurrences(of: "\"accessToken\": \"<REDACTED>\"", with: "\"accessToken\": \"SHARED\"")
+        let directory = directory { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("plex.tv/api/v2/resources") { return .json(resources) }
+            guard request.value(forHTTPHeaderField: "X-Plex-Token") == "SHARED" else {
+                return .init(status: 401, body: Data("unauthorized".utf8))
+            }
+            if url.contains("38-42-101-254") { return Self.identityBody("MACHINE-1") }
+            return .init(status: 500, body: Data("unreachable".utf8))
+        }
+
+        let server = try await directory.selectServer(token: "ACCOUNT")
+        #expect(server.accessToken == "SHARED")
+        #expect(server.baseURL.absoluteString.contains("38-42-101-254"))
+    }
+
     @Test("prefers a local connection when one actually answers")
     func prefersReachableLocal() async throws {
         let resources = try Fixture.string("resources")
