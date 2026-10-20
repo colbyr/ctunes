@@ -5,9 +5,11 @@ import Testing
 @Suite("Listener roster")
 struct ListenerRosterTests {
     private static func artist(_ key: String) -> Veto { Veto(artistKey: key, title: key.uppercased()) }
+    private static let music = LibraryID(server: "s1", section: "1")
+    private static let other = LibraryID(server: "s2", section: "1")
 
     private func roster() -> (ListenerRoster, Listener, Listener) {
-        var roster = ListenerRoster()
+        var roster = ListenerRoster(library: Self.music)
         let laura = roster.add(name: "Laura", paletteSize: 3)
         let kids = roster.add(name: "Kids", paletteSize: 3)
         roster.toggleVeto(Self.artist("av"), for: laura.id)
@@ -112,33 +114,40 @@ struct ListenerRosterTests {
         #expect(roster.hidden.isEmpty)
     }
 
-    @Test("an older roster decodes as saved, no entry added")
-    func legacyRoster() throws {
-        let legacy = #"{"listeners":[{"id":"7B0E4D5E-5B7E-4E7A-9B6E-1C2D3E4F5A6B","name":"Laura","colorIndex":0,"vetoedArtistKeys":["av"]}],"activeIDs":["7B0E4D5E-5B7E-4E7A-9B6E-1C2D3E4F5A6B"]}"#
-        let roster = try JSONDecoder().decode(ListenerRoster.self, from: Data(legacy.utf8))
-        #expect(roster.listeners.map(\.name) == ["Laura"])
+    @Test("a veto saved before vetoes were filed by library is dropped")
+    func legacyVetoes() throws {
+        let legacy = #"{"listeners":[{"id":"7B0E4D5E-5B7E-4E7A-9B6E-1C2D3E4F5A6B","name":"Laura","colorIndex":0,"vetoes":[{"kind":"artist","key":"av","title":"AV"}],"vetoedArtistKeys":["av"]}],"activeIDs":["7B0E4D5E-5B7E-4E7A-9B6E-1C2D3E4F5A6B"]}"#
+        var roster = try JSONDecoder().decode(ListenerRoster.self, from: Data(legacy.utf8))
+        roster.library = Self.music
         #expect(roster.active.map(\.name) == ["Laura"])
-        #expect(roster.hidden.artists == ["av"])
+        #expect(roster.allListeners.first?.vetoes.isEmpty == true)
+        #expect(roster.hidden.isEmpty)
     }
 
-    @Test("artist-only vetoes migrate, and are still written for older builds")
-    func legacyVetoes() throws {
-        let legacy = #"{"id":"7B0E4D5E-5B7E-4E7A-9B6E-1C2D3E4F5A6B","name":"Laura","colorIndex":0,"vetoedArtistKeys":["bd","av"]}"#
-        let listener = try JSONDecoder().decode(Listener.self, from: Data(legacy.utf8))
-        #expect(listener.vetoes == [Veto(artistKey: "av", title: ""), Veto(artistKey: "bd", title: "")])
+    @Test("vetoes list and apply only in the library they were made in")
+    func perLibrary() throws {
+        var (roster, laura, _) = roster()
+        roster.toggleActive(laura.id)
+        roster.library = Self.other
+        #expect(roster.listener(laura.id)?.vetoes.isEmpty == true, "another library's are not listed")
+        #expect(roster.hidden.isEmpty, "nor applied")
+        // The same key on the other server is another item, vetoed apart.
+        roster.toggleVeto(Self.artist("av"), for: laura.id)
+        #expect(roster.hidden.artists == ["av"])
+        roster.removeVeto(.artist("av"), for: laura.id)
+        #expect(roster.hidden.isEmpty)
+        roster.library = Self.music
+        #expect(roster.hidden.artists == ["av", "bd"], "removing it there left this library's alone")
+        roster.library = nil
+        #expect(roster.hidden.isEmpty, "no library open, nothing hidden")
+        roster.toggleVeto(Self.artist("zz"), for: laura.id)
+        #expect(roster.allListeners.first?.vetoes.count == 2, "and nothing filed")
 
-        var updated = listener
-        updated.vetoes.append(Veto(.album("al"), title: "OK Computer", subtitle: "Radiohead"))
-        updated.vetoes.append(Veto(.track("t"), title: "Creep"))
-        let data = try JSONEncoder().encode(updated)
+        let data = try JSONEncoder().encode(roster)
         let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(Set(json["vetoedArtistKeys"] as? [String] ?? []) == ["av", "bd"])
-        let vetoes = try #require(json["vetoes"] as? [[String: Any]])
-        #expect(vetoes.map { $0["kind"] as? String } == ["artist", "artist", "album", "track"])
-        #expect(vetoes[2]["subtitle"] as? String == "Radiohead")
-        #expect(vetoes[3]["subtitle"] == nil)
-        // The new field wins when both are present.
-        #expect(try JSONDecoder().decode(Listener.self, from: data) == updated)
+        let listeners = try #require(json["listeners"] as? [[String: Any]])
+        let vetoes = try #require(listeners.first?["vetoes"] as? [[String: Any]])
+        #expect(vetoes.compactMap { ($0["library"] as? [String: String])?["server"] } == ["s1", "s1"])
     }
 
     @Test("veto toggles round-trip")
@@ -193,7 +202,7 @@ struct ListenerRosterTests {
 
     @Test("colors cycle through the palette")
     func colors() {
-        var roster = ListenerRoster()
+        var roster = ListenerRoster(library: Self.music)
         let indices = (0..<4).map { roster.add(name: "L\($0)", paletteSize: 3).colorIndex }
         #expect(indices == [0, 1, 2, 0])
     }
@@ -204,7 +213,9 @@ struct ListenerRosterTests {
         roster.toggleActive(laura.id)
         roster.toggleVeto(Veto(track: Self.track("t", album: "al", artist: "ar")), for: laura.id)
         let data = try JSONEncoder().encode(roster)
-        let decoded = try JSONDecoder().decode(ListenerRoster.self, from: data)
+        var decoded = try JSONDecoder().decode(ListenerRoster.self, from: data)
+        #expect(decoded.library == nil, "the open library is never saved")
+        decoded.library = Self.music
         #expect(decoded == roster)
     }
 

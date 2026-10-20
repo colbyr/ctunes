@@ -64,7 +64,16 @@ final class AppModel {
     /// expose several (audiobooks also report type "artist"), so the choice is
     /// remembered rather than asked for on every launch.
     private(set) var sections: [PlexSection] = []
-    private(set) var selectedSection: PlexSection?
+    /// Set after `library` whenever either changes, so `libraryID` is
+    /// always the pair and the state filed under it follows.
+    private(set) var selectedSection: PlexSection? {
+        didSet { libraryChanged() }
+    }
+
+    /// The library open, once a section is chosen. What is kept per
+    /// library (the shortcuts, the listeners' vetoes, the favorites group,
+    /// the mix builder's picks) is read and written under it.
+    private(set) var libraryID: LibraryID?
 
     /// The section's playlists, fetched with the browse root's other
     /// requests and after every edit, so the Add to Playlist submenu is
@@ -89,18 +98,25 @@ final class AppModel {
     private(set) var roster = ListenerRoster()
 
     /// The play buttons at the top of the Music screen: mixes saved from
-    /// the builder, in their order. Synced like the listeners: the whole
-    /// list under one iCloud key, last writer wins, a copy in
-    /// `UserDefaults` so launch never waits. A first launch starts with
+    /// the builder, in their order. Per library, since every pick is that
+    /// library's content: one list per library under
+    /// `shortcuts.<server>.<section>` in iCloud, last writer wins, a copy
+    /// in `UserDefaults` under the same key so launch never waits. Empty
+    /// until a library is open. A library's first open starts with
     /// Shuffle Favorites; an emptied list stays empty.
     private(set) var shortcuts: [SavedMix] = []
 
+    /// Per server: `selected-section-key.<server>`. Section keys are small
+    /// numbers that every server reuses.
     private static let sectionDefaultsKey = "selected-section-key"
     private static let rosterDefaultsKey = "listeners"
     private static let listenersCloudKey = "listeners"
-    private static let shortcutsDefaultsKey = "shortcuts"
-    private static let shortcutsCloudKey = "shortcuts"
+    private static let shortcutsKey = "shortcuts"
     private static let serverDefaultsKey = "last-server-id"
+
+    private static func sectionKey(server: String) -> String {
+        "\(sectionDefaultsKey).\(server)"
+    }
 
     private var auth: PlexAuth?
     private var client: PlexClient?
@@ -116,7 +132,6 @@ final class AppModel {
         self.offline = offline
         downloads = Downloads(store: offline, cache: cache)
         roster = Self.loadRoster()
-        shortcuts = Self.loadShortcuts()
         seedDevelopmentListeners()
         startCloudSync()
         // A new download quality re-asks every pin for what it still wants.
@@ -263,7 +278,7 @@ final class AppModel {
             self.library = library
             serverName = server.name
             self.sections = sections
-            let saved = UserDefaults.standard.string(forKey: Self.sectionDefaultsKey)
+            let saved = UserDefaults.standard.string(forKey: Self.sectionKey(server: server.machineIdentifier))
             selectedSection = sections.first { $0.key == saved } ?? sections.first.flatMap {
                 sections.count == 1 ? $0 : nil
             }
@@ -349,7 +364,7 @@ final class AppModel {
 
     private func lastSnapshot() async -> LibrarySnapshot? {
         guard let server = UserDefaults.standard.string(forKey: Self.serverDefaultsKey) else { return nil }
-        let section = UserDefaults.standard.string(forKey: Self.sectionDefaultsKey)
+        let section = UserDefaults.standard.string(forKey: Self.sectionKey(server: server))
         return await offline.snapshot(server: server, section: section)
     }
 
@@ -531,7 +546,8 @@ final class AppModel {
         try? await offline.save(snapshot)
         downloads.setAlbums(albums)
         if let favorites {
-            await offline.setFavorites(favorites, server: library.serverIdentifier, sources: downloads.sources(library))
+            await offline.setFavorites(favorites, server: library.serverIdentifier, section: section.key,
+                                       sources: downloads.sources(library))
         }
         downloads.refresh()
     }
@@ -540,13 +556,13 @@ final class AppModel {
     /// ask: the pinned group when the pin is on and has been filled, else
     /// the snapshot's list.
     func savedFavorites() async -> [PlexTrack] {
-        guard let library else { return [] }
+        guard let library, let section = selectedSection?.key else { return [] }
         let server = library.serverIdentifier
-        if await offline.favoritesPinned(server: server) {
-            let group = await offline.favoriteTracks(server: server)
+        if await offline.favoritesPinned(server: server, section: section) {
+            let group = await offline.favoriteTracks(server: server, section: section)
             if !group.isEmpty { return group }
         }
-        return await offline.snapshot(server: server, section: selectedSection?.key)?.favorites ?? []
+        return await offline.snapshot(server: server, section: section)?.favorites ?? []
     }
 
     /// Remembers an album's tracks as browsed, so offline the page can list
@@ -748,9 +764,9 @@ final class AppModel {
     func setFavoritesPinned(_ enabled: Bool) async {
         guard let library, !library.isOffline, let section = selectedSection else { return }
         let server = library.serverIdentifier
-        await offline.setFavoritesPinned(enabled, server: server)
+        await offline.setFavoritesPinned(enabled, server: server, section: section.key)
         if enabled, let favorites = try? await library.favoriteTracks(inSection: section.key) {
-            await offline.setFavorites(favorites, server: server, sources: downloads.sources(library))
+            await offline.setFavorites(favorites, server: server, section: section.key, sources: downloads.sources(library))
         }
         downloads.refresh()
     }
@@ -759,22 +775,40 @@ final class AppModel {
     /// which also catches hearts set from other clients.
     private func syncFavoritesPin() async {
         guard let library, !library.isOffline, let section = selectedSection,
-              await offline.favoritesPinned(server: library.serverIdentifier),
+              await offline.favoritesPinned(server: library.serverIdentifier, section: section.key),
               let favorites = try? await library.favoriteTracks(inSection: section.key)
         else { return }
-        await offline.setFavorites(favorites, server: library.serverIdentifier, sources: downloads.sources(library))
+        await offline.setFavorites(favorites, server: library.serverIdentifier, section: section.key,
+                                   sources: downloads.sources(library))
         downloads.refresh()
     }
 
     func selectSection(_ section: PlexSection) {
         selectedSection = section
-        UserDefaults.standard.set(section.key, forKey: Self.sectionDefaultsKey)
+        guard let server = library?.serverIdentifier else { return }
+        UserDefaults.standard.set(section.key, forKey: Self.sectionKey(server: server))
     }
 
     /// Returns to the picker so a different library can be chosen.
     func clearSectionChoice() {
         selectedSection = nil
-        UserDefaults.standard.removeObject(forKey: Self.sectionDefaultsKey)
+        guard let server = library?.serverIdentifier else { return }
+        UserDefaults.standard.removeObject(forKey: Self.sectionKey(server: server))
+    }
+
+    /// Files what is kept per library under the one now open: the
+    /// roster answers with its vetoes, the shortcuts are its list, the
+    /// downloads show its favorites.
+    private func libraryChanged() {
+        let id = selectedSection.flatMap { section in
+            library.map { LibraryID(server: $0.serverIdentifier, section: section.key) }
+        }
+        guard id != libraryID else { return }
+        libraryID = id
+        roster.library = id
+        downloads.section = id?.section
+        loadShortcuts()
+        seedDevelopmentVetoes()
     }
 
     // MARK: - Listeners
@@ -862,18 +896,30 @@ final class AppModel {
         shortcuts.first { $0.id == id }
     }
 
-    private static func loadShortcuts() -> [SavedMix] {
-        guard let data = UserDefaults.standard.data(forKey: shortcutsDefaultsKey),
-              let shortcuts = try? JSONDecoder().decode([SavedMix].self, from: data)
-        else { return [.starter] }
-        return shortcuts
+    /// The open library's list: iCloud's when it has one, else this
+    /// device's copy, else the starter, which then seeds iCloud.
+    private func loadShortcuts() {
+        guard let key = libraryID?.key(Self.shortcutsKey) else {
+            shortcuts = []
+            return
+        }
+        if let cloud: [SavedMix] = Self.cloudValue(key) {
+            shortcuts = cloud
+        } else if let data = UserDefaults.standard.data(forKey: key),
+                  let saved = try? JSONDecoder().decode([SavedMix].self, from: data) {
+            shortcuts = saved
+        } else {
+            shortcuts = [.starter]
+        }
+        saveShortcuts()
     }
 
     private func saveShortcuts() {
+        guard let key = libraryID?.key(Self.shortcutsKey) else { return }
         if let data = try? JSONEncoder().encode(shortcuts) {
-            UserDefaults.standard.set(data, forKey: Self.shortcutsDefaultsKey)
+            UserDefaults.standard.set(data, forKey: key)
         }
-        Self.push(shortcuts, toCloudKey: Self.shortcutsCloudKey)
+        Self.push(shortcuts, toCloudKey: key)
     }
 
     // MARK: Cloud sync
@@ -896,9 +942,6 @@ final class AppModel {
         if store.data(forKey: Self.listenersCloudKey) == nil {
             pushListenersToCloud()
         }
-        if store.data(forKey: Self.shortcutsCloudKey) == nil {
-            Self.push(shortcuts, toCloudKey: Self.shortcutsCloudKey)
-        }
         pullFromCloud()
     }
 
@@ -911,23 +954,25 @@ final class AppModel {
     }
 
     private func pullFromCloud() {
-        if let listeners: [Listener] = Self.cloudValue(Self.listenersCloudKey), listeners != roster.listeners {
+        if let listeners: [Listener] = Self.cloudValue(Self.listenersCloudKey), listeners != roster.allListeners {
             roster.replaceListeners(with: listeners)
             if let data = try? JSONEncoder().encode(roster) {
                 UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
             }
         }
-        if let shortcuts: [SavedMix] = Self.cloudValue(Self.shortcutsCloudKey), shortcuts != self.shortcuts {
+        if let key = libraryID?.key(Self.shortcutsKey),
+           let shortcuts: [SavedMix] = Self.cloudValue(key), shortcuts != self.shortcuts {
             self.shortcuts = shortcuts
             if let data = try? JSONEncoder().encode(shortcuts) {
-                UserDefaults.standard.set(data, forKey: Self.shortcutsDefaultsKey)
+                UserDefaults.standard.set(data, forKey: key)
             }
         }
     }
 
-    /// Only the listeners go up; the active set is this device's alone.
+    /// Only the listeners go up, with every library's vetoes; the active
+    /// set is this device's alone.
     private func pushListenersToCloud() {
-        Self.push(roster.listeners, toCloudKey: Self.listenersCloudKey)
+        Self.push(roster.allListeners, toCloudKey: Self.listenersCloudKey)
     }
 
     private static func cloudValue<T: Decodable>(_ key: String) -> T? {
@@ -947,7 +992,8 @@ final class AppModel {
     /// simulator without tapping through setup. The value is an artist
     /// ratingKey Laura vetoes, so the hidden line and the album header can
     /// be checked too, or `album:<key>` / `track:<key>` for the narrower
-    /// vetoes; `1` seeds without a veto. Compiled out of release.
+    /// vetoes; `1` seeds without a veto. The vetoes wait for a library to
+    /// be filed under (`seedDevelopmentVetoes`). Compiled out of release.
     private func seedDevelopmentListeners() {
         #if DEBUG
         guard let value = ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS"],
@@ -956,17 +1002,27 @@ final class AppModel {
         _ = addListener(name: "Kids")
         toggleListening(laura.id)
         guard value != "1" else { return }
-        for value in value.split(separator: ",").map(String.init) {
-            let veto: Veto = if value.hasPrefix("album:") {
+        developmentVetoes = value.split(separator: ",").map(String.init).map { value in
+            if value.hasPrefix("album:") {
                 Veto(.album(String(value.dropFirst(6))), title: "")
             } else if value.hasPrefix("track:") {
                 Veto(.track(String(value.dropFirst(6))), title: "")
             } else {
                 Veto(artistKey: value, title: "")
             }
-            toggleVeto(veto, for: laura.id)
         }
+        developmentVetoer = laura.id
         #endif
+    }
+
+    @ObservationIgnored private var developmentVetoes: [Veto] = []
+    @ObservationIgnored private var developmentVetoer: Listener.ID?
+
+    private func seedDevelopmentVetoes() {
+        guard libraryID != nil, let id = developmentVetoer else { return }
+        for veto in developmentVetoes { toggleVeto(veto, for: id) }
+        developmentVetoes = []
+        developmentVetoer = nil
     }
 
     // MARK: - Favorites
@@ -992,10 +1048,11 @@ final class AppModel {
         }
         // Keep the pinned favorites group in step without a full refetch.
         let server = library.serverIdentifier
-        guard await offline.favoritesPinned(server: server) else { return }
-        var group = await offline.favoriteTracks(server: server).filter { $0.ratingKey != track.ratingKey }
+        guard let section = selectedSection?.key,
+              await offline.favoritesPinned(server: server, section: section) else { return }
+        var group = await offline.favoriteTracks(server: server, section: section).filter { $0.ratingKey != track.ratingKey }
         if favorite { group.append(track) }
-        await offline.setFavorites(group, server: server, sources: downloads.sources(library))
+        await offline.setFavorites(group, server: server, section: section, sources: downloads.sources(library))
         downloads.refresh()
     }
 

@@ -68,6 +68,11 @@ final class Downloads {
     private let store: OfflineStore
     private let cache: TrackCache
     private(set) var server: String?
+    /// The library open, whose favorites group the inventory carries.
+    /// Set by the model whenever the library changes.
+    var section: String? {
+        didSet { if section != oldValue { refresh() } }
+    }
     private var offline = false
     @ObservationIgnored private var events: Task<Void, Never>?
     @ObservationIgnored private var refreshing = false
@@ -368,7 +373,7 @@ final class Downloads {
             return
         }
         refreshing = true
-        let offline = offline
+        let offline = offline, section = section
         Task {
             defer {
                 refreshing = false
@@ -377,10 +382,10 @@ final class Downloads {
                     refresh()
                 }
             }
-            let inventory = await store.inventory(server: server)
+            let inventory = await store.inventory(server: server, section: section)
             let available = offline ? await store.availableAlbums(server: server) : []
             let availablePlaylists = offline ? await store.availablePlaylists(server: server) : []
-            guard self.server == server else { return }
+            guard self.server == server, self.section == section else { return }
             self.inventory = inventory
             self.available = available
             self.availablePlaylists = availablePlaylists

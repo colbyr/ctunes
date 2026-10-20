@@ -225,8 +225,9 @@ private struct ListenerDetail: View {
         )
     }
 
-    /// A veto with the minus: the title it was saved with, or for an
-    /// artist vetoed before titles were kept, the library's name for it.
+    /// A veto with the minus: the title it was saved with, or for one
+    /// seeded with none (a debug hook), the library's name for it. Only
+    /// the open library's vetoes reach here.
     /// The caption tells the kinds apart: an artist's album count, or
     /// "Album" / "Track".
     private func vetoRow(_ veto: Veto) -> some View {

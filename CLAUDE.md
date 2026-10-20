@@ -374,10 +374,13 @@ pool has a Playlists subject with the favorites at its head, so the
 default Shuffle Favorites (under the fixed `SavedMix.starterID`) is a
 saved mix like any other; an emptied list stays empty. Save (the
 builder's bookmark) asks for a name, prefilled by `suggestedName`, and
-opened on a saved mix (`MixRoute(mixID:)`) updates it. The list syncs
-like the listeners, whole, under the iCloud key `shortcuts`, last
-writer wins, with a `UserDefaults` copy; `AppModel.startCloudSync`
-handles both keys. The card's body plays through
+opened on a saved mix (`MixRoute(mixID:)`) updates it. **The list is
+per library** (a pick is that library's content): it syncs whole under
+the iCloud key `shortcuts.<server>.<section>` (`LibraryID.key`), last
+writer wins, with a `UserDefaults` copy under the same key, and
+`AppModel.libraryChanged` swaps it in when the library changes; none
+show before a library is open. The builder's last selection is kept the
+same way (`mixSelection.<server>.<section>`). The card's body plays through
 `LibraryActions.play(_ mix:)`, which fetches every pick concurrently
 (`tracks(of picks:)`, pick order kept, each track once), applies every
 veto since a mix is a mixed bag, and orders by the style; the builder
@@ -455,9 +458,14 @@ launch never waits on iCloud. The store needs the
 iCloud enabled on the App ID; a build signed without it silently stores
 locally and nothing syncs. **A veto is a `Veto`: an artist, album or track
 target plus the title it was saved with**, since a track can't be named
-from any list the app holds; `vetoes` replaces the old `vetoedArtistKeys`,
-which still decodes (titles empty, named from the library) and is still
-written for older builds. `roster.hidden` is a `VetoSet` of the active
+from any list the app holds. **A veto belongs to the library it was made
+in** (`Veto.library`, a `LibraryID`): the roster stores every library's
+in `allListeners` (what is saved and synced) and answers for one,
+`roster.library`, which `AppModel.libraryChanged` sets; `listeners`,
+`hidden` and every count carry only that library's, and a toggle files
+the veto under it. A veto from another library is neither listed nor
+applied. A decoded veto with no library (from before this) is dropped.
+`roster.hidden` is a `VetoSet` of the active
 listeners' keys per kind, with one rule everywhere: an item is hidden by
 its own veto or any wider one (`hides(album)`, `hides(track)`), and
 playing a collection skips only what is hidden *inside* it
@@ -474,7 +482,9 @@ telling the kinds apart; artists are added there from the library, albums
 and tracks only from their menus and pages.
 
 `OfflineStore` (PlexKit actor, `notes/offline.md`, `notes/downloads.md`)
-owns the pins (artists, albums, tracks, and the favorites toggle), the
+owns the pins (artists, albums, tracks, and the favorites toggle per
+library: `favoriteSections` in the manifest, the group at
+`<server>/<section>/favorites.json`), the
 track list of every album browsed, the library snapshot and the covers and
 portraits under `Application Support/ctunes/Offline/<server>/`. It hands
 `TrackSource`s to the cache and reads the file system for status; per-track
@@ -569,7 +579,9 @@ appears to offer.
 - Response typing is loose: `ratingKey` is a string, `hasThumbnail` is `"1"`.
   Write DTOs against captured fixtures, not assumptions.
 - A server can expose several libraries of type `artist` (audiobooks included),
-  so the section choice is persisted rather than inferred.
+  so the section choice is persisted rather than inferred, per server
+  (`selected-section-key.<server>`): section keys are small numbers every
+  server reuses.
 - **Ratings: `PUT /:/rate?identifier=com.plexapp.plugins.library&key={ratingKey}&rating=N`**,
   `N` in 0–10, `-1` clears. The app treats only a full 10 as a favorite. Query
   favorite tracks with `/library/sections/{key}/all?type=10&userRating=10` —
@@ -653,7 +665,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_FAVORITES` | `1` pushes the Favorites page |
 | `CTUNES_DEV_ENQUEUE` | `1` appends the album to the queue again, so Up Next has duplicates |
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
-| `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura, as does `album:<ratingKey>` or `track:<ratingKey>`, comma-separated for several (seeded with no title, so the listener page reads "Unknown track") |
+| `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura, as does `album:<ratingKey>` or `track:<ratingKey>`, comma-separated for several (seeded with no title, so the listener page reads "Unknown track"; filed under the first library opened) |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the page of the first listener with a veto, else the first listener's |
 | `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page; `shortcuts` on the Shortcuts page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |

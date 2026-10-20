@@ -28,12 +28,17 @@ public enum VetoKind: String, Codable, Sendable, CaseIterable {
 
 /// One thing a listener would rather not hear. The title and subtitle
 /// are kept with the key so the listener's page can name a track or an
-/// album without a fetch, on any device the roster syncs to; identity is
-/// the target alone.
+/// album without a fetch, on any device the roster syncs to. A veto
+/// belongs to the library it was made in: the roster stamps `library`
+/// when one is added, and lists and applies only the open library's.
+/// Within a library, identity is the target alone.
 public struct Veto: Codable, Sendable, Hashable, Identifiable {
     public let target: VetoTarget
     public var title: String
     public var subtitle: String?
+    /// Nil until the roster files it; a decoded veto without one is
+    /// dropped.
+    public var library: LibraryID?
 
     public var id: VetoTarget { target }
     public var kind: VetoKind { target.kind }
@@ -59,7 +64,7 @@ public struct Veto: Codable, Sendable, Hashable, Identifiable {
                   subtitle: parts.isEmpty ? nil : parts.joined(separator: " · "))
     }
 
-    enum CodingKeys: String, CodingKey { case kind, key, title, subtitle }
+    enum CodingKeys: String, CodingKey { case kind, key, title, subtitle, library }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -72,6 +77,7 @@ public struct Veto: Codable, Sendable, Hashable, Identifiable {
         }
         self.init(target, title: try c.decodeIfPresent(String.self, forKey: .title) ?? "",
                   subtitle: try c.decodeIfPresent(String.self, forKey: .subtitle))
+        library = try c.decodeIfPresent(LibraryID.self, forKey: .library)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -80,6 +86,7 @@ public struct Veto: Codable, Sendable, Hashable, Identifiable {
         try c.encode(target.key, forKey: .key)
         try c.encode(title, forKey: .title)
         try c.encodeIfPresent(subtitle, forKey: .subtitle)
+        try c.encodeIfPresent(library, forKey: .library)
     }
 }
 
@@ -131,7 +138,9 @@ public struct Listener: Codable, Sendable, Identifiable, Hashable {
     /// Index into a palette the app owns; kept as a number so the package
     /// stays free of UI types.
     public var colorIndex: Int
-    /// In the order they were added; each target at most once.
+    /// In the order they were added; each target at most once per
+    /// library. Every library's in storage, only the open library's in
+    /// `ListenerRoster.listeners`.
     public var vetoes: [Veto]
 
     public init(
@@ -163,33 +172,25 @@ public struct Listener: Codable, Sendable, Identifiable, Hashable {
     /// it is a listener like any other, renamed or removed the same way.
     public static let starterID = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
 
-    // A roster written before albums and tracks could be vetoed holds
-    // `vetoedArtistKeys` alone; those become artist vetoes with no title,
-    // which the listener's page names from the library. The old key is
-    // still written so a device on an older build keeps the artist vetoes
-    // it understands.
-    enum CodingKeys: String, CodingKey { case id, name, colorIndex, vetoes, vetoedArtistKeys }
+    enum CodingKeys: String, CodingKey { case id, name, colorIndex, vetoes }
 
+    /// A veto saved before vetoes were filed by library is dropped: it
+    /// can't be told which library it named.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let vetoes = try c.decodeIfPresent([Veto].self, forKey: .vetoes)
-            ?? (try c.decodeIfPresent(Set<String>.self, forKey: .vetoedArtistKeys) ?? [])
-                .sorted().map { Veto(artistKey: $0, title: "") }
         self.init(
             id: try c.decode(UUID.self, forKey: .id),
             name: try c.decode(String.self, forKey: .name),
             colorIndex: try c.decode(Int.self, forKey: .colorIndex),
-            vetoes: vetoes
+            vetoes: (try c.decodeIfPresent([Veto].self, forKey: .vetoes) ?? []).filter { $0.library != nil }
         )
     }
 
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(name, forKey: .name)
-        try c.encode(colorIndex, forKey: .colorIndex)
-        try c.encode(vetoes, forKey: .vetoes)
-        try c.encode(Set(vetoes(of: .artist).map(\.target.key)), forKey: .vetoedArtistKeys)
+    /// Only the vetoes filed under `library`; none for nil.
+    func scoped(to library: LibraryID?) -> Listener {
+        var copy = self
+        copy.vetoes = library.map { library in vetoes.filter { $0.library == library } } ?? []
+        return copy
     }
 }
 
@@ -251,13 +252,36 @@ public struct VetoSet: Equatable, Sendable {
 /// union of the active listeners' vetoes. The listeners sync across
 /// devices; who is listening is per device, since the phone in the car and
 /// the Mac at home differ.
+///
+/// The roster holds every library's vetoes but answers for one, `library`:
+/// `listeners` carries only the vetoes filed under it, so every list,
+/// count and `hidden` is that library's, and a veto added is filed under
+/// it. A veto from another library waits in `allListeners` and applies
+/// again when that library is open.
 public struct ListenerRoster: Codable, Sendable, Equatable {
-    public private(set) var listeners: [Listener] = []
+    /// Every library's vetoes: what is saved and synced.
+    public private(set) var allListeners: [Listener] = []
     public private(set) var activeIDs: Set<UUID> = []
+    /// The library open; nil (none chosen yet) has no vetoes. Never saved.
+    public var library: LibraryID?
 
-    public init(listeners: [Listener] = [], activeIDs: Set<UUID> = []) {
-        self.listeners = listeners
+    public init(listeners: [Listener] = [], activeIDs: Set<UUID> = [], library: LibraryID? = nil) {
+        allListeners = listeners
         self.activeIDs = activeIDs.intersection(listeners.map(\.id))
+        self.library = library
+    }
+
+    /// Every listener, with only the open library's vetoes.
+    public var listeners: [Listener] {
+        allListeners.map { $0.scoped(to: library) }
+    }
+
+    enum CodingKeys: String, CodingKey { case listeners, activeIDs }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(allListeners, forKey: .listeners)
+        try c.encode(activeIDs, forKey: .activeIDs)
     }
 
     /// A first launch's roster: one listener, "You", listening, in the
@@ -301,7 +325,7 @@ public struct ListenerRoster: Codable, Sendable, Equatable {
     }
 
     public func listener(_ id: UUID) -> Listener? {
-        listeners.first { $0.id == id }
+        allListeners.first { $0.id == id }?.scoped(to: library)
     }
 
     public func isActive(_ id: UUID) -> Bool { activeIDs.contains(id) }
@@ -310,14 +334,14 @@ public struct ListenerRoster: Codable, Sendable, Equatable {
     public mutating func add(name: String, paletteSize: Int) -> Listener {
         let listener = Listener(
             name: name,
-            colorIndex: paletteSize > 0 ? listeners.count % paletteSize : 0
+            colorIndex: paletteSize > 0 ? allListeners.count % paletteSize : 0
         )
-        listeners.append(listener)
+        allListeners.append(listener)
         return listener
     }
 
     public mutating func remove(_ id: UUID) {
-        listeners.removeAll { $0.id == id }
+        allListeners.removeAll { $0.id == id }
         activeIDs.remove(id)
     }
 
@@ -326,34 +350,40 @@ public struct ListenerRoster: Codable, Sendable, Equatable {
         if activeIDs.contains(id) { activeIDs.remove(id) } else { activeIDs.insert(id) }
     }
 
-    /// Adds the veto, or removes the one already on the same target.
-    /// Vetoes never absorb each other: an artist veto beside an album
-    /// veto leaves the album hidden when the artist is allowed again.
+    /// Adds the veto to the open library, or removes the one already on
+    /// the same target there. Vetoes never absorb each other: an artist
+    /// veto beside an album veto leaves the album hidden when the artist
+    /// is allowed again. Nothing happens with no library open.
     public mutating func toggleVeto(_ veto: Veto, for id: UUID) {
+        guard let library else { return }
         update(id) {
-            if let index = $0.vetoes.firstIndex(where: { $0.target == veto.target }) {
+            if let index = $0.vetoes.firstIndex(where: { $0.library == library && $0.target == veto.target }) {
                 $0.vetoes.remove(at: index)
             } else {
+                var veto = veto
+                veto.library = library
                 $0.vetoes.append(veto)
             }
         }
     }
 
     public mutating func removeVeto(_ target: VetoTarget, for id: UUID) {
-        update(id) { $0.vetoes.removeAll { $0.target == target } }
+        guard let library else { return }
+        update(id) { $0.vetoes.removeAll { $0.library == library && $0.target == target } }
     }
 
     /// Adopts another device's listeners wholesale, keeping only the active
     /// picks that still name someone. Last writer wins; there is no per-field
     /// merge, which is fine for a list this small.
     public mutating func replaceListeners(with listeners: [Listener]) {
-        self.listeners = listeners
+        allListeners = listeners
         activeIDs = activeIDs.intersection(listeners.map(\.id))
     }
 
+    /// Changes the stored listener, which holds every library's vetoes.
     public mutating func update(_ id: UUID, _ change: (inout Listener) -> Void) {
-        guard let index = listeners.firstIndex(where: { $0.id == id }) else { return }
-        change(&listeners[index])
+        guard let index = allListeners.firstIndex(where: { $0.id == id }) else { return }
+        change(&allListeners[index])
     }
 
     /// "Laura", "Laura & Kids", "Laura, Kids & Sam".

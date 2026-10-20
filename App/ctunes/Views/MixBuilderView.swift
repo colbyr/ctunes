@@ -59,8 +59,18 @@ struct MixBuilderView: View {
     @AppStorage("mixView.playlist") private var playlistSort: AlbumView = .artist
     @AppStorage("mixLayout") private var layout: BrowseLayout = .grid
     @AppStorage("mixDownloadedOnly.album") private var downloadedOnly = false
-    /// Comma-joined pick ids, so the last mix is waiting next time.
-    @AppStorage("mixSelection") private var savedSelection = ""
+    /// Comma-joined pick ids under `mixSelection.<server>.<section>`, so
+    /// the last mix is waiting next time in the library it was made in.
+    private var savedSelection: [String] {
+        get {
+            guard let key = model.libraryID?.key("mixSelection") else { return [] }
+            return (UserDefaults.standard.string(forKey: key) ?? "").split(separator: ",").map(String.init)
+        }
+        nonmutating set {
+            guard let key = model.libraryID?.key("mixSelection") else { return }
+            UserDefaults.standard.set(newValue.joined(separator: ","), forKey: key)
+        }
+    }
 
     /// Debug-only preselection from `CTUNES_DEV_MIX=<kind>:<key>,<key>`,
     /// the keys taken as that kind. Nil without a colon, so the saved
@@ -350,11 +360,11 @@ struct MixBuilderView: View {
                 editing = id
                 selected = mix.picks.map(\.id)
             } else if selected.isEmpty {
-                selected = Self.developmentSelection ?? savedSelection.split(separator: ",").map(String.init)
+                selected = Self.developmentSelection ?? savedSelection
             }
         }
         .onDisappear { building = false }
-        .onChange(of: selected) { savedSelection = selected.joined(separator: ",") }
+        .onChange(of: selected) { savedSelection = selected }
         .task(id: model.libraryGeneration) {
             await load()
             #if DEBUG

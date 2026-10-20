@@ -178,8 +178,8 @@ struct OfflineStoreTests {
         let shared = Support.track(id: 1, album: "9", artist: "A")
         let only = Support.track(id: 2, album: "9", artist: "A")
         await pin(store, album("9"), [shared, only])
-        await store.setFavoritesPinned(true, server: Self.server)
-        await store.setFavorites([shared], server: Self.server, sources: sources)
+        await store.setFavoritesPinned(true, server: Self.server, section: "1")
+        await store.setFavorites([shared], server: Self.server, section: "1", sources: sources)
         try await cache.drain()
 
         await store.unpinAlbum("9", server: Self.server)
@@ -223,21 +223,21 @@ struct OfflineStoreTests {
         let a = Support.track(id: 1, album: "9", artist: "A")
         let b = Support.track(id: 2, album: "9", artist: "A")
         let c = Support.track(id: 3, album: "9", artist: "A")
-        await store.setFavoritesPinned(true, server: Self.server)
-        await store.setFavorites([a, b], server: Self.server, sources: sources)
+        await store.setFavoritesPinned(true, server: Self.server, section: "1")
+        await store.setFavorites([a, b], server: Self.server, section: "1", sources: sources)
         try await cache.drain()
         #expect(counter.count == 2)
 
-        await store.setFavorites([b, c], server: Self.server, sources: sources)
+        await store.setFavorites([b, c], server: Self.server, section: "1", sources: sources)
         try await cache.drain()
 
         #expect(counter.count == 3)
         #expect(!cache.isPinned(server: Self.server, part: a.part!))
         #expect(cache.isPinned(server: Self.server, part: b.part!))
         #expect(cache.isPinned(server: Self.server, part: c.part!))
-        #expect(await store.favoriteTracks(server: Self.server) == [b, c])
+        #expect(await store.favoriteTracks(server: Self.server, section: "1") == [b, c])
 
-        await store.setFavoritesPinned(false, server: Self.server)
+        await store.setFavoritesPinned(false, server: Self.server, section: "1")
         #expect(!cache.isPinned(server: Self.server, part: b.part!))
         #expect(await cache.usage() == 3 * 1024)
     }
@@ -245,9 +245,30 @@ struct OfflineStoreTests {
     @Test("favorites are ignored until the pin is on")
     func favoritesOff() async throws {
         let (store, cache, counter) = try makeStore()
-        await store.setFavorites(tracks([1], album: "9"), server: Self.server, sources: sources)
+        await store.setFavorites(tracks([1], album: "9"), server: Self.server, section: "1", sources: sources)
         try await cache.drain()
         #expect(counter.count == 0)
+    }
+
+    @Test("favorites are kept per library: each section's group pins on its own")
+    func favoritesPerSection() async throws {
+        let (store, cache, _) = try makeStore()
+        let a = Support.track(id: 1, album: "9", artist: "A")
+        let b = Support.track(id: 2, album: "8", artist: "B")
+        await store.setFavoritesPinned(true, server: Self.server, section: "1")
+        await store.setFavoritesPinned(true, server: Self.server, section: "2")
+        await store.setFavorites([a], server: Self.server, section: "1", sources: sources)
+        await store.setFavorites([b], server: Self.server, section: "2", sources: sources)
+        try await cache.drain()
+
+        #expect(await store.favoriteTracks(server: Self.server, section: "2") == [b])
+        #expect(await store.inventory(server: Self.server, section: "1").favorites == [a])
+        #expect(await store.inventory(server: Self.server).favoritesPinned == false, "no library, no favorites")
+
+        await store.setFavoritesPinned(false, server: Self.server, section: "2")
+        #expect(!cache.isPinned(server: Self.server, part: b.part!))
+        #expect(cache.isPinned(server: Self.server, part: a.part!), "the other library's group is untouched")
+        #expect(await store.favoritesPinned(server: Self.server, section: "1"))
     }
 
     // MARK: - Status
@@ -318,8 +339,8 @@ struct OfflineStoreTests {
     func favoritesAlbum() async throws {
         let (store, cache, _) = try makeStore()
         let favorite = Support.track(id: 1, album: "9", artist: "A")
-        await store.setFavoritesPinned(true, server: Self.server)
-        await store.setFavorites([favorite], server: Self.server, sources: sources)
+        await store.setFavoritesPinned(true, server: Self.server, section: "1")
+        await store.setFavorites([favorite], server: Self.server, section: "1", sources: sources)
         try await cache.drain()
 
         #expect(await store.availableAlbums(server: Self.server) == ["9"], "never browsed, still playable")
@@ -356,8 +377,8 @@ struct OfflineStoreTests {
         let favorite = Support.track(id: 4, album: "7", artist: "A")
         await pin(store, album("9", artist: "A"), first)
         await pin(store, album("8", artist: "B"), second)
-        await store.setFavoritesPinned(true, server: Self.server)
-        await store.setFavorites([favorite, first[0]], server: Self.server, sources: sources)
+        await store.setFavoritesPinned(true, server: Self.server, section: "1")
+        await store.setFavorites([favorite, first[0]], server: Self.server, section: "1", sources: sources)
         try await cache.drain()
 
         let snapshot = try Self.fixtureSnapshot()
@@ -550,7 +571,7 @@ struct OfflineStoreTests {
         let tracks = tracks([1], album: "9")
         await store.saveTracks(tracks, inAlbum: "9", server: Self.server)
         let old = """
-        {"albums":{"9":{"title":"Album 9","section":"1","pinnedAt":"2025-01-01T00:00:00Z"}},"favoritesPinned":true}
+        {"albums":{"9":{"title":"Album 9","section":"1","pinnedAt":"2025-01-01T00:00:00Z"}},"favoriteSections":["1"]}
         """
         try Data(old.utf8).write(to: store.directory.appending(path: "M/manifest.json"))
 
@@ -558,7 +579,7 @@ struct OfflineStoreTests {
         await fresh.resume(server: Self.server, sources: sources)
         try await cache.drain()
 
-        let inventory = await fresh.inventory(server: Self.server)
+        let inventory = await fresh.inventory(server: Self.server, section: "1")
         #expect(inventory.artists.isEmpty)
         #expect(inventory.favoritesPinned)
         #expect(inventory.albums.count == 1)
@@ -670,12 +691,12 @@ struct OfflineStoreTests {
     func playlistManifestMigration() async throws {
         let (store, cache, _) = try makeStore()
         let old = """
-        {"albums":{},"favoritesPinned":true}
+        {"albums":{},"favoriteSections":["1"]}
         """
         try FileManager.default.createDirectory(at: store.directory.appending(path: "M"), withIntermediateDirectories: true)
         try Data(old.utf8).write(to: store.directory.appending(path: "M/manifest.json"))
         let fresh = OfflineStore(directory: store.directory, cache: cache)
-        let inventory = await fresh.inventory(server: Self.server)
+        let inventory = await fresh.inventory(server: Self.server, section: "1")
         #expect(inventory.playlists.isEmpty)
         #expect(inventory.favoritesPinned)
 
