@@ -5,17 +5,19 @@ import SwiftUI
 /// pushes it when the search pill opens and pops it when the pill closes.
 struct SearchRoute: Hashable {}
 
-/// What was opened from search, newest first, per server, kept in
-/// `UserDefaults`. A track is stored whole so it can play again later.
+/// What was opened from search, newest first, per account and library
+/// (`recentSearches.<account>.<server>.<section>`), kept in `UserDefaults`.
+/// A track is stored whole so it can play again later.
 @MainActor @Observable
 final class RecentSearches {
     private(set) var items: [SearchHit] = []
     @ObservationIgnored private var key = ""
     private static let limit = 20
 
-    func load(server: String) {
-        key = "recentSearches.\(server)"
-        guard let data = UserDefaults.standard.data(forKey: key),
+    /// Nil, signed out or with no library open, is an empty list.
+    func load(key: String?) {
+        self.key = key ?? ""
+        guard let key, let data = UserDefaults.standard.data(forKey: key),
               let saved = try? JSONDecoder().decode([SearchHit].self, from: data)
         else { items = []; return }
         items = saved
@@ -138,8 +140,8 @@ struct SearchView: View {
         }
         .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.large)
-        .task(id: model.library?.serverIdentifier) {
-            recents.load(server: model.library?.serverIdentifier ?? "")
+        .task(id: model.storageKey("recentSearches")) {
+            recents.load(key: model.storageKey("recentSearches"))
         }
         // A short settle so a fast typist doesn't send a request per
         // key; the artists and albums above answer at once regardless.

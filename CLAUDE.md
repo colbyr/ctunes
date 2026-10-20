@@ -62,7 +62,13 @@ live in a SwiftUI view's `.task` or `.onChange`.**
 `AppModel` (`@MainActor @Observable`) owns the state machine:
 `loading → signedOut → linking → connecting → signedIn`, plus `connectFailed`
 and `offline`. On launch it restores a keychain token, discovers a server, and
-opens a `PlexLibrary`. When discovery fails and a `LibrarySnapshot` exists for
+opens a `PlexLibrary`. **What a person keeps is filed under the Plex
+account** (`AppModel.account`, the `uuid` from plex.tv's `/api/v2/user`,
+looked up at sign-in and kept in the keychain beside the token so it
+answers offline): the listeners, the shortcuts, the mix builder's
+picks, recent searches and the section choice, the library-scoped ones
+through `AppModel.storageKey(_:)`. Device settings, downloads, the play
+cache and artwork tints are not. When discovery fails and a `LibrarySnapshot` exists for
 the last server, it opens an `OfflineLibrary` over it instead and enters
 `.offline`, a peer of `.signedIn` rendered by the same `LibraryView` under one
 `case` label so the stack and the queue survive the switch. Views read
@@ -315,7 +321,7 @@ and keeps the query, so back lands on the same results. `LibraryView`
 tracks where the page sits as `searchDepth`; under a mix builder the pill
 filters the builder's pool instead and no page is pushed. The page shows
 what was opened from it before while the field is empty ("Recently
-Searched", `RecentSearches`, 20 per server in `UserDefaults`, a track
+Searched", `RecentSearches`, 20 per account and library in `UserDefaults`, a track
 stored whole so it can play again), otherwise up to three names to finish
 the query with and one ranked list of artists, albums and songs
 (`LibrarySearch.hits`): an item's own name first, prefix before word
@@ -375,12 +381,13 @@ default Shuffle Favorites (under the fixed `SavedMix.starterID`) is a
 saved mix like any other; an emptied list stays empty. Save (the
 builder's bookmark) asks for a name, prefilled by `suggestedName`, and
 opened on a saved mix (`MixRoute(mixID:)`) updates it. **The list is
-per library** (a pick is that library's content): it syncs whole under
-the iCloud key `shortcuts.<server>.<section>` (`LibraryID.key`), last
+per account and library** (a pick is that library's content): it syncs
+whole under the iCloud key `shortcuts.<account>.<server>.<section>`
+(`AppModel.storageKey`), last
 writer wins, with a `UserDefaults` copy under the same key, and
 `AppModel.libraryChanged` swaps it in when the library changes; none
 show before a library is open. The builder's last selection is kept the
-same way (`mixSelection.<server>.<section>`). The card's body plays through
+same way (`mixSelection.<account>.<server>.<section>`). The card's body plays through
 `LibraryActions.play(_ mix:)`, which fetches every pick concurrently
 (`tracks(of picks:)`, pick order kept, each track once), applies every
 veto since a mix is a mixed bag, and orders by the style; the builder
@@ -446,8 +453,9 @@ URL, or skipped offline. Keep the stream fallback and the `-1005` retry:
 the cache is an optimisation, never the only path.
 
 Listeners (`ListenerRoster`, owned by `AppModel`, `notes/listeners.md`)
-sync through `NSUbiquitousKeyValueStore` under one `listeners` key holding
-the `[Listener]` JSON, last writer wins. Every listener is the same:
+sync through `NSUbiquitousKeyValueStore` under one `listeners.<account>`
+key holding the `[Listener]` JSON, last writer wins: the roster is the
+signed-in Plex account's, empty while signed out. Every listener is the same:
 renamed, recolored, removed; there is no owner. A first launch starts with
 one, "You", listening (`ListenerRoster.starter`), under the fixed
 `Listener.starterID` so two devices set up before iCloud syncs agree on
@@ -584,8 +592,8 @@ appears to offer.
 - Response typing is loose: `ratingKey` is a string, `hasThumbnail` is `"1"`.
   Write DTOs against captured fixtures, not assumptions.
 - A server can expose several libraries of type `artist` (audiobooks included),
-  so the section choice is persisted rather than inferred, per server
-  (`selected-section-key.<server>`): section keys are small numbers every
+  so the section choice is persisted rather than inferred, per account and
+  server (`selected-section-key.<account>.<server>`): section keys are small numbers every
   server reuses.
 - **Ratings: `PUT /:/rate?identifier=com.plexapp.plugins.library&key={ratingKey}&rating=N`**,
   `N` in 0–10, `-1` clears. The app treats only a full 10 as a favorite. Query

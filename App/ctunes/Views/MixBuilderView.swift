@@ -59,15 +59,15 @@ struct MixBuilderView: View {
     @AppStorage("mixView.playlist") private var playlistSort: AlbumView = .artist
     @AppStorage("mixLayout") private var layout: BrowseLayout = .grid
     @AppStorage("mixDownloadedOnly.album") private var downloadedOnly = false
-    /// Comma-joined pick ids under `mixSelection.<server>.<section>`, so
-    /// the last mix is waiting next time in the library it was made in.
+    /// Comma-joined pick ids under `mixSelection.<account>.<server>.<section>`,
+    /// so the last mix is waiting next time in the library it was made in.
     private var savedSelection: [String] {
         get {
-            guard let key = model.libraryID?.key("mixSelection") else { return [] }
+            guard let key = model.storageKey("mixSelection") else { return [] }
             return (UserDefaults.standard.string(forKey: key) ?? "").split(separator: ",").map(String.init)
         }
         nonmutating set {
-            guard let key = model.libraryID?.key("mixSelection") else { return }
+            guard let key = model.storageKey("mixSelection") else { return }
             UserDefaults.standard.set(newValue.joined(separator: ","), forKey: key)
         }
     }

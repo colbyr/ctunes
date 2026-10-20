@@ -137,6 +137,26 @@ struct PlexAuthTests {
             try await auth.requestPin()
         }
     }
+
+    @Test("lookUpAccount stores the account's uuid, and sign-out drops it")
+    func lookUpAccount() async throws {
+        let store = InMemorySecretStore()
+        let seen = Locked<URLRequest?>(nil)
+        let auth = makeAuth(store: store) { request in
+            seen.set(request)
+            return .json(try! Fixture.string("user"))
+        }
+
+        let account = try await auth.lookUpAccount(token: "tok_secret")
+        #expect(account == "0a1b2c3d4e5f6a7b")
+        #expect(try await auth.storedAccount() == "0a1b2c3d4e5f6a7b")
+        let request = try #require(seen.get())
+        #expect(request.url?.path() == "/api/v2/user")
+        #expect(request.value(forHTTPHeaderField: "X-Plex-Token") == "tok_secret")
+
+        try await auth.signOut()
+        #expect(try await auth.storedAccount() == nil)
+    }
 }
 
 /// Small lock box so mock handlers can record across concurrency domains.

@@ -11,6 +11,7 @@ import Foundation
 ///   3. `waitForAuthorization(pin:)` polls until they approve it
 public actor PlexAuth {
     static let tokenKey = "auth-token"
+    static let accountKey = "account-id"
 
     private let client: PlexClient
     private let store: any SecretStore
@@ -28,6 +29,7 @@ public actor PlexAuth {
 
     public func signOut(server: String? = nil) throws {
         try store.remove(for: Self.tokenKey)
+        try store.remove(for: Self.accountKey)
         if let server { try store.remove(for: Self.serverTokenKey(server)) }
     }
 
@@ -43,6 +45,23 @@ public actor PlexAuth {
     }
 
     static func serverTokenKey(_ server: String) -> String { "server-token.\(server)" }
+
+    // MARK: - Account
+
+    /// The account the stored token belongs to, as last looked up, so
+    /// per-account state opens offline too.
+    public func storedAccount() throws -> String? {
+        try store.string(for: Self.accountKey)
+    }
+
+    /// Asks plex.tv whose `token` is and stores the answer: the account's
+    /// `uuid`, stable across tokens and devices.
+    public func lookUpAccount(token: String) async throws -> String {
+        let url = URL(string: "https://plex.tv/api/v2/user")!
+        let account = try await client.get(PlexAccount.self, url: url, token: token)
+        try store.set(account.uuid, for: Self.accountKey)
+        return account.uuid
+    }
 
     // MARK: - PIN flow
 

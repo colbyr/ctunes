@@ -75,6 +75,26 @@ final class AppModel {
     /// the mix builder's picks) is read and written under it.
     private(set) var libraryID: LibraryID?
 
+    /// The signed-in plex.tv account's `uuid`, kept in the keychain beside
+    /// the token. Two accounts can open the same server and section, so
+    /// what a person keeps (the listeners, the shortcuts, the mix
+    /// builder's picks, recent searches, the section chosen) is filed
+    /// under it as well; nil signed out, and before the first lookup.
+    private(set) var account: String? {
+        didSet {
+            guard account != oldValue else { return }
+            accountChanged()
+        }
+    }
+
+    /// The `UserDefaults` or iCloud key for what this account keeps about
+    /// the open library: `<prefix>.<account>.<server>.<section>`. Nil
+    /// until both are known.
+    func storageKey(_ prefix: String) -> String? {
+        guard let account, let libraryID else { return nil }
+        return libraryID.key("\(prefix).\(account)")
+    }
+
     /// The section's playlists, fetched with the browse root's other
     /// requests and after every edit, so the Add to Playlist submenu is
     /// synchronous and every screen agrees on the names.
@@ -90,32 +110,38 @@ final class AppModel {
     private var favoriteOverrides: [String: Bool] = [:]
 
     /// People who share the phone and the artists they'd rather skip. Never
-    /// in Plex, so it survives sign-out like any setting. The listeners live
-    /// in the iCloud key-value store so every device on the Apple ID shares
-    /// them; who is currently listening stays on this device, since the
-    /// phone in the car and the Mac at home differ. `UserDefaults` keeps a
-    /// full copy so launch never waits on iCloud.
+    /// in Plex, but per account (`listeners.<account>`), since another
+    /// account is another household: empty while signed out, back on
+    /// signing in again. The listeners live in the iCloud key-value store
+    /// so every device on the Apple ID shares them; who is currently
+    /// listening stays on this device, since the phone in the car and the
+    /// Mac at home differ. `UserDefaults` keeps a full copy so launch never
+    /// waits on iCloud.
     private(set) var roster = ListenerRoster()
 
     /// The play buttons at the top of the Music screen: mixes saved from
     /// the builder, in their order. Per library, since every pick is that
-    /// library's content: one list per library under
-    /// `shortcuts.<server>.<section>` in iCloud, last writer wins, a copy
-    /// in `UserDefaults` under the same key so launch never waits. Empty
-    /// until a library is open. A library's first open starts with
-    /// Shuffle Favorites; an emptied list stays empty.
+    /// library's content: one list per account and library under
+    /// `shortcuts.<account>.<server>.<section>` in iCloud, last writer
+    /// wins, a copy in `UserDefaults` under the same key so launch never
+    /// waits. Empty until a library is open. A library's first open
+    /// starts with Shuffle Favorites; an emptied list stays empty.
     private(set) var shortcuts: [SavedMix] = []
 
-    /// Per server: `selected-section-key.<server>`. Section keys are small
-    /// numbers that every server reuses.
+    /// Per account and server: `selected-section-key.<account>.<server>`.
+    /// Section keys are small numbers that every server reuses.
     private static let sectionDefaultsKey = "selected-section-key"
-    private static let rosterDefaultsKey = "listeners"
-    private static let listenersCloudKey = "listeners"
+    /// `listeners.<account>`, in `UserDefaults` and iCloud alike.
+    private static let listenersKey = "listeners"
     private static let shortcutsKey = "shortcuts"
     private static let serverDefaultsKey = "last-server-id"
 
-    private static func sectionKey(server: String) -> String {
-        "\(sectionDefaultsKey).\(server)"
+    private func sectionKey(server: String) -> String {
+        "\(Self.sectionDefaultsKey).\(account ?? "").\(server)"
+    }
+
+    private var rosterKey: String? {
+        account.map { "\(Self.listenersKey).\($0)" }
     }
 
     private var auth: PlexAuth?
@@ -133,8 +159,6 @@ final class AppModel {
     init(offline: OfflineStore, cache: TrackCache) {
         self.offline = offline
         downloads = Downloads(store: offline, cache: cache)
-        roster = Self.loadRoster()
-        seedDevelopmentListeners()
         startCloudSync()
         // A new download quality re-asks every pin for what it still wants.
         downloads.pinsChanged = { [weak self] in await self?.resumeDownloads() }
@@ -151,6 +175,16 @@ final class AppModel {
             let stored = try await auth.storedToken()
             if let existing = Self.developmentToken() ?? stored {
                 token = existing
+                // A development token may be another account's than the
+                // one the keychain last looked up.
+                var found: String?
+                if Self.developmentToken() != nil {
+                    found = try? await auth.lookUpAccount(token: existing)
+                }
+                if found == nil {
+                    found = try? await auth.storedAccount()
+                }
+                account = found
                 if let server = UserDefaults.standard.string(forKey: Self.serverDefaultsKey) {
                     serverToken = try? await auth.serverToken(for: server)
                 }
@@ -215,6 +249,7 @@ final class AppModel {
                 return
             }
             token = found
+            account = try? await auth.lookUpAccount(token: found)
             await connect()
         } catch {
             errorMessage = error.localizedDescription
@@ -277,13 +312,17 @@ final class AppModel {
             default: .zero
             }
             let server = try await discover(client: client, token: token, patience: patience)
+            // Signed in while plex.tv was away: discovery just reached it.
+            if account == nil, let auth {
+                account = try? await auth.lookUpAccount(token: token)
+            }
             let library = PlexLibrary(client: client, server: server, token: token)
             let sections = try await library.musicSections()
 
             self.library = library
             serverName = server.name
             self.sections = sections
-            let saved = UserDefaults.standard.string(forKey: Self.sectionKey(server: server.machineIdentifier))
+            let saved = UserDefaults.standard.string(forKey: sectionKey(server: server.machineIdentifier))
             selectedSection = sections.first { $0.key == saved } ?? sections.first.flatMap {
                 sections.count == 1 ? $0 : nil
             }
@@ -377,7 +416,7 @@ final class AppModel {
 
     private func lastSnapshot() async -> LibrarySnapshot? {
         guard let server = UserDefaults.standard.string(forKey: Self.serverDefaultsKey) else { return nil }
-        let section = UserDefaults.standard.string(forKey: Self.sectionKey(server: server))
+        let section = UserDefaults.standard.string(forKey: sectionKey(server: server))
         return await offline.snapshot(server: server, section: section)
     }
 
@@ -800,24 +839,24 @@ final class AppModel {
     func selectSection(_ section: PlexSection) {
         selectedSection = section
         guard let server = library?.serverIdentifier else { return }
-        UserDefaults.standard.set(section.key, forKey: Self.sectionKey(server: server))
+        UserDefaults.standard.set(section.key, forKey: sectionKey(server: server))
     }
 
     /// Returns to the picker so a different library can be chosen.
     func clearSectionChoice() {
         selectedSection = nil
         guard let server = library?.serverIdentifier else { return }
-        UserDefaults.standard.removeObject(forKey: Self.sectionKey(server: server))
+        UserDefaults.standard.removeObject(forKey: sectionKey(server: server))
     }
 
     /// Files what is kept per library under the one now open: the
     /// roster answers with its vetoes, the shortcuts are its list, the
     /// downloads show its favorites.
-    private func libraryChanged() {
+    private func libraryChanged(force: Bool = false) {
         let id = selectedSection.flatMap { section in
             library.map { LibraryID(server: $0.serverIdentifier, section: section.key) }
         }
-        guard id != libraryID else { return }
+        guard force || id != libraryID else { return }
         libraryID = id
         roster.library = id
         downloads.section = id?.section
@@ -863,16 +902,34 @@ final class AppModel {
         saveRoster()
     }
 
-    private static func loadRoster() -> ListenerRoster {
-        guard let data = UserDefaults.standard.data(forKey: rosterDefaultsKey),
-              let roster = try? JSONDecoder().decode(ListenerRoster.self, from: data)
-        else { return .starter(paletteSize: ListenerPalette.colors.count) }
-        return roster
+    /// The account's roster from this device's copy, else the starter,
+    /// which then seeds iCloud unless iCloud already holds one; signed
+    /// out, none. Then what is kept per library, read again under the
+    /// new account.
+    private func accountChanged() {
+        if let key = rosterKey {
+            if let data = UserDefaults.standard.data(forKey: key),
+               let saved = try? JSONDecoder().decode(ListenerRoster.self, from: data) {
+                roster = saved
+            } else {
+                roster = .starter(paletteSize: ListenerPalette.colors.count)
+            }
+            roster.library = libraryID
+            if NSUbiquitousKeyValueStore.default.data(forKey: key) == nil {
+                pushListenersToCloud()
+            }
+            pullFromCloud()
+            seedDevelopmentListeners()
+        } else {
+            roster = ListenerRoster(library: libraryID)
+        }
+        libraryChanged(force: true)
     }
 
     private func saveRoster() {
+        guard let key = rosterKey else { return }
         if let data = try? JSONEncoder().encode(roster) {
-            UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+            UserDefaults.standard.set(data, forKey: key)
         }
         pushListenersToCloud()
     }
@@ -913,7 +970,7 @@ final class AppModel {
     /// The open library's list: iCloud's when it has one, else this
     /// device's copy, else the starter, which then seeds iCloud.
     private func loadShortcuts() {
-        guard let key = libraryID?.key(Self.shortcutsKey) else {
+        guard let key = storageKey(Self.shortcutsKey) else {
             shortcuts = []
             return
         }
@@ -929,7 +986,7 @@ final class AppModel {
     }
 
     private func saveShortcuts() {
-        guard let key = libraryID?.key(Self.shortcutsKey) else { return }
+        guard let key = storageKey(Self.shortcutsKey) else { return }
         if let data = try? JSONEncoder().encode(shortcuts) {
             UserDefaults.standard.set(data, forKey: key)
         }
@@ -953,10 +1010,6 @@ final class AppModel {
             Task { @MainActor in self?.pullFromCloud() }
         }
         store.synchronize()
-        if store.data(forKey: Self.listenersCloudKey) == nil {
-            pushListenersToCloud()
-        }
-        pullFromCloud()
     }
 
     /// Called when the scene comes forward so a change made on another
@@ -968,13 +1021,14 @@ final class AppModel {
     }
 
     private func pullFromCloud() {
-        if let listeners: [Listener] = Self.cloudValue(Self.listenersCloudKey), listeners != roster.allListeners {
+        if let key = rosterKey,
+           let listeners: [Listener] = Self.cloudValue(key), listeners != roster.allListeners {
             roster.replaceListeners(with: listeners)
             if let data = try? JSONEncoder().encode(roster) {
-                UserDefaults.standard.set(data, forKey: Self.rosterDefaultsKey)
+                UserDefaults.standard.set(data, forKey: key)
             }
         }
-        if let key = libraryID?.key(Self.shortcutsKey),
+        if let key = storageKey(Self.shortcutsKey),
            let shortcuts: [SavedMix] = Self.cloudValue(key), shortcuts != self.shortcuts {
             self.shortcuts = shortcuts
             if let data = try? JSONEncoder().encode(shortcuts) {
@@ -986,7 +1040,8 @@ final class AppModel {
     /// Only the listeners go up, with every library's vetoes; the active
     /// set is this device's alone.
     private func pushListenersToCloud() {
-        Self.push(roster.allListeners, toCloudKey: Self.listenersCloudKey)
+        guard let key = rosterKey else { return }
+        Self.push(roster.allListeners, toCloudKey: key)
     }
 
     private static func cloudValue<T: Decodable>(_ key: String) -> T? {
@@ -1087,6 +1142,7 @@ final class AppModel {
             state = .signedOut
             cancelOfflineRetry()
             await offline.clear()
+            account = nil
             downloads.attach(server: nil, offline: false)
         } catch {
             errorMessage = error.localizedDescription
