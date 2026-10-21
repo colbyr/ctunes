@@ -46,6 +46,10 @@ struct MixBuilderView: View {
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
+    /// The cards' icons in the bar: once the cards scroll away, or under
+    /// a vertical bar, where the strip holds them from the start and the
+    /// page shows no cards at all.
+    private var iconsInBar: Bool { !actionsVisible || navigator.hasVerticalBar }
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     /// The pool's width, for the tile floor.
     @State private var width: CGFloat = 0
@@ -255,9 +259,12 @@ struct MixBuilderView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    MixActions(styles: styles, loading: loadingMix, action: play)
-                        // Bottom inset clears the card's shadow; see `cardShadow`.
-                        .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    // Under a vertical bar the strip has these from the start.
+                    if !navigator.hasVerticalBar {
+                        MixActions(styles: styles, loading: loadingMix, action: play)
+                            // Bottom inset clears the card's shadow; see `cardShadow`.
+                            .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    }
                     Group {
                         if picks.isEmpty {
                             emptySelection
@@ -341,7 +348,7 @@ struct MixBuilderView: View {
                     .disabled(!loaded)
             }
             // The cards' actions follow you down the pool as icons.
-            if !actionsVisible {
+            if iconsInBar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ForEach(styles) { style in
                         Button(style.verb, systemImage: style.symbol) { play(style) }

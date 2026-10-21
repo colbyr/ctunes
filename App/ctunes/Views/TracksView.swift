@@ -15,7 +15,12 @@ struct TracksView: View {
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
     @State private var scrollPosition = ScrollPosition()
+    /// The cards' icons in the bar: once the cards scroll away, or under
+    /// a vertical bar, where the strip holds them from the start and the
+    /// page shows no cards at all.
+    private var iconsInBar: Bool { !actionsVisible || navigator.hasVerticalBar }
     @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
 
     private var offline: Bool { model.library?.isOffline ?? false }
     private var hidden: VetoSet { model.roster.hidden }
@@ -159,7 +164,7 @@ struct TracksView: View {
                 }
             }
             // The cards' actions follow you down the list as icons.
-            if !actionsVisible {
+            if iconsInBar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Play", systemImage: "play.fill", action: play)
                         .disabled(playableTracks.isEmpty)
@@ -263,7 +268,7 @@ struct TracksView: View {
         } label: {
             // The bar centres the title at rest and moves it to the leading
             // edge once the cards' icons scroll in, so the two lines follow.
-            VStack(alignment: actionsVisible ? .center : .leading, spacing: 1) {
+            VStack(alignment: iconsInBar ? .leading : .center, spacing: 1) {
                 Text(album.title)
                     .font(.headline)
                     .foregroundStyle(Color.ink)
@@ -304,13 +309,16 @@ struct TracksView: View {
                 .padding(.bottom, 8)
             ListenerVetoes(model: model, scope: scope)
             HiddenRightNowLabel(model: model, scope: scope)
-            HStack(spacing: 12) {
-                MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
-                              enabled: !playableTracks.isEmpty, loading: false, tint: nil, action: play)
-                MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
-                              enabled: !playableTracks.isEmpty, loading: false, tint: nil, action: shuffle)
+            // Under a vertical bar the strip has these from the start.
+            if !navigator.hasVerticalBar {
+                HStack(spacing: 12) {
+                    MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
+                                  enabled: !playableTracks.isEmpty, loading: false, tint: nil, action: play)
+                    MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
+                                  enabled: !playableTracks.isEmpty, loading: false, tint: nil, action: shuffle)
+                }
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
             if case .complete(let count) = state, count > 0 {
                 Text("\(count) track\(count == 1 ? "" : "s") can't be downloaded")
                     .font(.footnote)

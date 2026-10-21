@@ -43,7 +43,7 @@ struct BottomBar: View {
                 // In a wide window the column is always up, and the pill
                 // would only duplicate its transport.
                 if let track = player.currentTrack, !nowPlaying.isColumn {
-                    MiniPlayerPill(model: model, track: track, compact: searching) {
+                    MiniPlayerPill(model: model, track: track, compact: searching, short: navigator.hasVerticalBar && !searching) {
                         nowPlaying.isShown = true
                     }
                     .glassEffectID("player", in: glass)
@@ -75,11 +75,17 @@ struct BottomBar: View {
         }
         // Tighter to the edges while the keyboard is up: the field wants
         // the width, and the keyboard's own margins already frame it.
-        .padding(.horizontal, keyboardUp ? 12 : 20)
+        .padding(.leading, keyboardUp ? 12 : 20)
+        // Against a vertical strip's inset: the strip's search item sits
+        // 12pt inside it, so no padding leaves the pills' own gap between
+        // the mini player and the item, where 20 left 30pt.
+        .padding(.trailing, navigator.hasVerticalBar ? 0 : keyboardUp ? 12 : 20)
         // Pulled into the home-indicator inset so the gap below the pills is
         // a little more than the 20pt at their sides. With the keyboard up
-        // the pills sit a fixed gap above its top edge instead.
-        .padding(.bottom, keyboardUp ? keyboard.height - bottomInset + 8 : 26 - bottomInset)
+        // the pills sit a fixed gap above its top edge instead. Beside a
+        // vertical strip the mini player sits level with the search item
+        // at its foot, whose glass runs 25pt up from the window's edge.
+        .padding(.bottom, keyboardUp ? keyboard.height - bottomInset + 8 : (navigator.hasVerticalBar ? 25 : 26) - bottomInset)
         .background {
             GeometryReader { proxy in
                 Color.clear.onChange(of: proxy.safeAreaInsets.bottom, initial: true) { _, inset in
@@ -127,6 +133,9 @@ private struct MiniPlayerPill: View {
     let model: AppModel
     let track: PlexTrack
     let compact: Bool
+    /// 48pt rather than 52, the height of the glass item at the foot of a
+    /// vertical strip, so the two read as one row.
+    let short: Bool
     let open: () -> Void
     @Environment(AudioPlayer.self) private var player
 
@@ -166,7 +175,8 @@ private struct MiniPlayerPill: View {
                 .transition(.opacity)
             }
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, short ? 8 : 10)
         // A touch more air before the art than around it; not when the
         // pill is just the art in a circle, where it would sit off-centre.
         .padding(.leading, compact ? 0 : 4)

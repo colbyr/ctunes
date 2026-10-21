@@ -21,6 +21,7 @@ struct ArtistView: View {
     @Binding var path: NavigationPath
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
 
     @State private var albums: [PlexAlbum] = []
     /// Every artist in the section as the listener sheet wants them, for
@@ -42,6 +43,10 @@ struct ArtistView: View {
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
     @State private var scrollPosition = ScrollPosition()
+    /// The cards' icons in the bar: once the cards scroll away, or under
+    /// a vertical bar, where the strip holds them from the start and the
+    /// page shows no cards at all.
+    private var iconsInBar: Bool { !actionsVisible || navigator.hasVerticalBar }
     @State private var nothingToPlay = false
     /// The page's own sort, release order by default; the layout is the
     /// app's. No play history is fetched here, so On Rotation reads the
@@ -135,7 +140,7 @@ struct ArtistView: View {
                 }
             }
             // The cards' actions follow you down the grid as icons.
-            if !actionsVisible {
+            if iconsInBar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Mix Albums", systemImage: "square.stack") { play(.mixAlbums) }
                         .disabled(albums.isEmpty || loading != nil)
@@ -243,13 +248,16 @@ struct ArtistView: View {
                 .padding(.bottom, 8)
             ListenerVetoes(model: model, scope: scope)
             HiddenRightNowLabel(model: model, scope: scope)
-            HStack(spacing: 12) {
-                MixActionCard(systemImage: "square.stack", title: "Mix Albums", subtitle: nil,
-                              enabled: !albums.isEmpty && loading == nil, loading: loading == .mixAlbums, tint: nil) { play(.mixAlbums) }
-                MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
-                              enabled: !albums.isEmpty && loading == nil, loading: loading == .shuffle, tint: nil) { play(.shuffle) }
+            // Under a vertical bar the strip has these from the start.
+            if !navigator.hasVerticalBar {
+                HStack(spacing: 12) {
+                    MixActionCard(systemImage: "square.stack", title: "Mix Albums", subtitle: nil,
+                                  enabled: !albums.isEmpty && loading == nil, loading: loading == .mixAlbums, tint: nil) { play(.mixAlbums) }
+                    MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
+                                  enabled: !albums.isEmpty && loading == nil, loading: loading == .shuffle, tint: nil) { play(.shuffle) }
+                }
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
         }
         .frame(maxWidth: .infinity)
     }

@@ -65,6 +65,10 @@ struct PlaylistView: View {
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
+    /// The cards' icons in the bar: once the cards scroll away, or under
+    /// a vertical bar, where the strip holds them from the start and the
+    /// page shows no cards at all.
+    private var iconsInBar: Bool { !actionsVisible || navigator.hasVerticalBar }
     @State private var scrollPosition = ScrollPosition()
     @State private var editMode: EditMode = .inactive
 
@@ -201,7 +205,7 @@ struct PlaylistView: View {
             }
         }
         // The cards' actions follow you down the list as icons.
-        if !actionsVisible {
+        if iconsInBar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Play", systemImage: "play.fill", action: play)
                     .disabled(playable.isEmpty)
@@ -236,17 +240,20 @@ struct PlaylistView: View {
     /// The cards, the rule and the hidden line, as list rows that edit
     /// mode leaves alone.
     @ViewBuilder private var header: some View {
-        HStack(spacing: 12) {
-            MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
-                          enabled: !playable.isEmpty, loading: false, tint: nil, action: play)
-            MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
-                          enabled: !playable.isEmpty, loading: false, tint: nil, action: shuffle)
+        // Under a vertical bar the strip has these from the start.
+        if !navigator.hasVerticalBar {
+            HStack(spacing: 12) {
+                MixActionCard(systemImage: "play.fill", title: "Play", subtitle: nil,
+                              enabled: !playable.isEmpty, loading: false, tint: nil, action: play)
+                MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
+                              enabled: !playable.isEmpty, loading: false, tint: nil, action: shuffle)
+            }
+            .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .moveDisabled(true)
+            .deleteDisabled(true)
         }
-        .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .moveDisabled(true)
-        .deleteDisabled(true)
         Rectangle()
             .fill(Color.divider)
             .frame(height: 1)
