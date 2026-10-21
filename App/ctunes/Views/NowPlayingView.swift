@@ -12,6 +12,25 @@ final class NowPlayingPresentation {
     /// column has to give way to the cover well before the window is
     /// that narrow.
     var isColumn = false
+
+    /// Narrower than this and Now Playing is a presentation: the phone
+    /// layout. An iPad is a column in landscape and a cover in portrait,
+    /// where a column would leave two tiles across.
+    static let columnThreshold: CGFloat = 960
+    /// A window wider than it is tall takes the column from here. An
+    /// iPhone Duo open in landscape is 951pt less the vertical bar's
+    /// inset, about 850 usable, where two pages of 425 fit the browser's
+    /// tiles two across; an 11" iPad's 834pt portrait is taller than wide
+    /// and keeps the cover.
+    static let wideColumnThreshold: CGFloat = 800
+
+    /// Whether a window of this size shows the column. The host decides
+    /// from its own size, and the cover from its own, since a full-screen
+    /// presentation takes the host's view out of the window.
+    static func wantsColumn(_ size: CGSize) -> Bool {
+        size.width >= columnThreshold
+            || (size.width > size.height && size.width >= wideColumnThreshold)
+    }
 }
 
 /// How Now Playing is on screen. The cover pins the header and scrolls
@@ -48,12 +67,13 @@ struct NowPlayingView: View {
     @State private var columnSize: CGSize = .zero
 
     /// Edge to edge of the column, as on the phone, less the header's and
-    /// the art block's margins, but no taller than half the column: a Duo
-    /// open in landscape is 669pt tall, and art the full 419pt width
-    /// left nothing of the transport on screen.
+    /// the art block's margins, but no taller than 40% of the column: a
+    /// Duo open in landscape is 669pt tall, and art the full 419pt width
+    /// left nothing of the transport on screen; half the height still
+    /// crowded it.
     private var columnArtEdge: CGFloat? {
         guard columnSize.width > 0 else { return nil }
-        return min(columnSize.width - 56, columnSize.height / 2)
+        return min(columnSize.width - 56, columnSize.height * 0.4)
     }
 
     /// The art pane lays the names and title beside the art rather than
@@ -121,6 +141,15 @@ struct NowPlayingView: View {
                             Button("Hide Now Playing", systemImage: "xmark") { presentation.isShown = false }
                         }
                     }
+            }
+            // The cover gives way to the column itself: a full-screen
+            // presentation takes the host's view out of the window, so
+            // the host never measures the window turning wide. On an
+            // iPhone Duo opened from its outer display to landscape the
+            // cover stayed over the whole screen, the column never came,
+            // and nothing but the × closed it.
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                if NowPlayingPresentation.wantsColumn(size) { presentation.isShown = false }
             }
         }
     }
@@ -352,6 +381,9 @@ struct NowPlayingView: View {
 
             art(edge: style == .column ? columnArtEdge : nil)
                 .padding(.horizontal, 12)
+                // Centred in the column, where it no longer spans the
+                // width; the names and title keep the leading edge.
+                .frame(maxWidth: .infinity, alignment: style == .column ? .center : .leading)
         }
     }
 

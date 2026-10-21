@@ -46,16 +46,6 @@ struct LibraryView: View {
     /// see `NowPlayingPresentation.isColumn`.
     @State private var width: CGFloat = 0
 
-    /// Narrower than this and Now Playing is a presentation: the phone
-    /// layout. An iPad is a column in landscape and a cover in portrait,
-    /// where a column would leave two tiles across.
-    private static let columnThreshold: CGFloat = 960
-    /// A window wider than it is tall takes the column from here. An
-    /// iPhone Duo open in landscape is 951pt less the vertical bar's
-    /// inset, about 850 usable, where two pages of 425 fit the browser's
-    /// tiles two across; an 11" iPad's 834pt portrait is taller than wide
-    /// and keeps the cover.
-    private static let wideColumnThreshold: CGFloat = 800
     /// The window's height, beside the width, for the wide rule.
     @State private var height: CGFloat = 0
     /// Where a vertical fold runs, from the window's leading edge, on a
@@ -266,8 +256,7 @@ struct LibraryView: View {
             width = size.width
             height = size.height
             foldX = geometry.foldX
-            let column = size.width >= Self.columnThreshold
-                || (size.width > size.height && size.width >= Self.wideColumnThreshold)
+            let column = NowPlayingPresentation.wantsColumn(size)
             guard column != nowPlaying.isColumn else { return }
             nowPlaying.isColumn = column
             // Crossing either way closes the presentation: into the column

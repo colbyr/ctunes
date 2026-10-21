@@ -40,11 +40,20 @@ had none of those, so this note is about the layout.
   transport over the queue) beside the browser read as a different
   screen from the one the phone shows. The art is sized from a
   measurement of the column (`columnArtEdge`: the width less 56 of
-  margins, no taller than half the column), since a List row whose
-  height follows its width recurses on the Mac during a live resize;
-  full-width art of 419pt in a 669pt column also pushed the transport
-  off screen, so it is 335 there. The laptop fold no longer divides
-  the column.
+  margins, no taller than 40% of the column, centred), since a List row
+  whose height follows its width recurses on the Mac during a live
+  resize; full-width art of 419pt in a 669pt column also pushed the
+  transport off screen, and half the height still crowded it, so it is
+  268 there. The laptop fold no longer divides the column.
+- **The cover closes itself when the window turns wide.** Now Playing
+  opened on the outer display, then the device opened to landscape: the
+  window turned regular with the flag still set, the cover presented,
+  and a full-screen presentation takes the host's view out of the
+  window, so the host's `onGeometryChange` never saw the width and the
+  column never came. The cover measures its own size against
+  `NowPlayingPresentation.wantsColumn` (the one rule, shared with the
+  host) and drops the flag; the host's view returns, measures, and
+  shows the column.
 - **The cover keeps the two-pane header**: an `ArrangementView` (iOS
   27.1, `.split`), the art pane as the primary, the scrubber and
   transport over the queue as the secondary. Flat, the split is stacked
@@ -119,8 +128,9 @@ in the strip, and the browse root at three tiles across. The iPad Pro
 13 on iOS 27.0 showed the leading column over the fallback stack. Not
 yet seen: the inner display in portrait (the cover's stacked split),
 the laptop pose, the pill beside the strip's search item after the
-48pt change (the pose is the user's; the numbers are measured), and
-the column during a live resize on the Mac.
+48pt change (the pose is the user's; the numbers are measured), the
+cover giving way on the open-to-landscape move itself, and the column
+during a live resize on the Mac.
 
 ## Next
 
