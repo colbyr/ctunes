@@ -33,27 +33,37 @@ had none of those, so this note is about the layout.
   (`BrowseTile.minimum(forWidth:)`): the browser beside the column is
   about 375pt and still regular, where the 180pt floor gave one tile
   across. Under 560 the floor is the phone's 100, so three across.
-- **Now Playing's header is two panes of an `ArrangementView`** (iOS
-  27.1, `.split`): the art pane as the primary, the scrubber and
+- **The column is the phone's Now Playing, half the screen wide.** The
+  same `List` as the sheet: names over the art, the title, the
+  transport, then Up Next, all scrolling together under a "Now Playing"
+  title row. A pinned split header (the art beside the names, the
+  transport over the queue) beside the browser read as a different
+  screen from the one the phone shows. The art is sized from a
+  measurement of the column (`columnArtEdge`: the width less 56 of
+  margins, no taller than half the column), since a List row whose
+  height follows its width recurses on the Mac during a live resize;
+  full-width art of 419pt in a 669pt column also pushed the transport
+  off screen, so it is 335 there. The laptop fold no longer divides
+  the column.
+- **The cover keeps the two-pane header**: an `ArrangementView` (iOS
+  27.1, `.split`), the art pane as the primary, the scrubber and
   transport over the queue as the secondary. Flat, the split is stacked
-  in the column and the portrait cover and side by side in a cover
-  wider than tall; half folded like a laptop the fold is the division,
-  so the art sits on the top half and the controls by the hands. The
-  art pane asks for 45% of a stacked split (`splitArrangementLayoutRatio`).
-  **In a stacked split the art pane is wider than tall**, so the names
-  and title sit beside the art rather than under it (`namesBesideArt`,
-  off `splitArrangementAxis` in the environment through `SplitAxisProbe`),
+  in the portrait cover and side by side in a cover wider than tall;
+  half folded like a laptop the fold is the division, so the art sits
+  on the top half and the controls by the hands. The art pane asks for
+  45% of a stacked split (`splitArrangementLayoutRatio`). **In a
+  stacked split the art pane is wider than tall**, so the names and
+  title sit beside the art rather than under it (`namesBesideArt`, off
+  `splitArrangementAxis` in the environment through `SplitAxisProbe`),
   and the art's edge is measured in a `GeometryReader`: the pane's
-  height, or the width left after 180pt for the text. A 669pt column
-  then shows art of 223 and two queue rows under the transport, where
-  the old 400pt art left no room for the queue at all. A side-by-side
+  height, or the width left after 180pt for the text. A side-by-side
   split, and iOS 27.0's `VStack`, keep the names over the art.
-- **The column has no `NavigationStack` any more.** Beside the browser's
+- **The column has no `NavigationStack`.** Beside the browser's
   stack on a Duo a second stack reserved a trailing inset the width of
   the vertical bar (about 85pt), so the column's content ran 335pt wide
   in a 475pt column. `toolbarVerticalBehavior(.disabled)` on that stack
   turned the bar off for the whole window instead. A 44pt title row
-  padded 26 keeps the panes level with the inline bar beside them; the
+  padded 26 keeps the list level with the inline bar beside it; the
   cover keeps its stack for the close button.
 - **Search joins the vertical strip.** `VerticalBarProbe` reads
   `toolbarVerticalEdge` (27.1) into `LibraryNavigator.hasVerticalBar`;
@@ -62,6 +72,19 @@ had none of those, so this note is about the layout.
   and `BottomBar` drops its search pill until a search is open, when the
   pill comes back as the field. The mini player pill stays at the
   bottom; it is a custom view, and the strip takes only bar items.
+- **The play cards join the strip too.** The album, artist, playlist,
+  Favorites and mix builder pages already hand their Play and Shuffle
+  (Mix Albums and Shuffle) cards to the toolbar as icons once the cards
+  scroll away; under a vertical bar (`iconsInBar`) the icons are there
+  from the start and the page shows no cards, so the strip reads back,
+  ···, Play, Shuffle, Search down one edge.
+- **The mini player sits level with Search.** The strip's bottom item
+  is a 47pt glass circle whose foot is 25pt from the window's edge, 12pt
+  inside the strip's 82pt inset; the pill was 52pt, 26pt up, with 20pt
+  of trailing padding, so its top sat 6pt higher and 30pt of air lay
+  between the two. Under a vertical bar the pill is 48pt (`short`),
+  25pt up, with no trailing padding: 12pt of air, tops and feet within
+  a point. Measured off a 3x screenshot of the closed outer display.
 
 ## Measured
 
@@ -91,10 +114,13 @@ had none of those, so this note is about the layout.
 Checked in the Xcode 27.1 Duo simulator: closed, the browse root, the
 album page scrolled, the Now Playing sheet and Settings; open in
 landscape, flat and in the book pose, the column on the crease beside
-the album page and the browse root at three tiles across. The iPad Pro
-13 on iOS 27.0 showed the leading column over the fallback stack. Not yet seen: the inner display in portrait
-(the cover's stacked split), the laptop pose and the book pose, which
-the simulator only folds from DeviceHub.
+the album page, the artist page and the mix builder with their cards
+in the strip, and the browse root at three tiles across. The iPad Pro
+13 on iOS 27.0 showed the leading column over the fallback stack. Not
+yet seen: the inner display in portrait (the cover's stacked split),
+the laptop pose, the pill beside the strip's search item after the
+48pt change (the pose is the user's; the numbers are measured), and
+the column during a live resize on the Mac.
 
 ## Next
 

@@ -14,8 +14,9 @@ final class NowPlayingPresentation {
     var isColumn = false
 }
 
-/// How Now Playing is on screen. The column and the cover pin the header
-/// and scroll only the queue; the phone scrolls the header away with it.
+/// How Now Playing is on screen. The cover pins the header and scrolls
+/// only the queue; the phone and the column scroll the header away with
+/// it.
 enum NowPlayingStyle {
     /// A phone: a sheet, the header scrolling with the queue. Dragging it
     /// down closes it, as any sheet does.
@@ -24,6 +25,8 @@ enum NowPlayingStyle {
     /// a close button in its toolbar.
     case fullScreen
     /// Beside the stack in a wide window. Always there; nothing closes it.
+    /// The phone's layout under a title, half the screen wide: the
+    /// cover's split header beside the browser read as another screen.
     case column
 }
 
@@ -39,6 +42,19 @@ struct NowPlayingView: View {
     /// Which way the arrangement split its panes, from the environment
     /// inside the art pane; nil before it reports, and on iOS 27.0.
     @State private var paneAxis: Axis?
+    /// The column's size, for the art's edge: a square that follows the
+    /// row's width recurses in a List during a live resize on the Mac, so
+    /// the column's art is sized from a measurement instead.
+    @State private var columnSize: CGSize = .zero
+
+    /// Edge to edge of the column, as on the phone, less the header's and
+    /// the art block's margins, but no taller than half the column: a Duo
+    /// open in landscape is 669pt tall, and art the full 419pt width
+    /// left nothing of the transport on screen.
+    private var columnArtEdge: CGFloat? {
+        guard columnSize.width > 0 else { return nil }
+        return min(columnSize.width - 56, columnSize.height / 2)
+    }
 
     /// The art pane lays the names and title beside the art rather than
     /// under it: in a stacked split every art pane is wider than tall (a
@@ -46,7 +62,7 @@ struct NowPlayingView: View {
     /// pane's height and the width is the text's. A side-by-side split
     /// gives a pane taller than wide and keeps the stack.
     private var namesBesideArt: Bool {
-        guard style != .phone else { return false }
+        guard style == .fullScreen else { return false }
         if #available(iOS 27.1, *) { return paneAxis != .horizontal }
         return false
     }
@@ -58,79 +74,85 @@ struct NowPlayingView: View {
     }
 
     var body: some View {
-        if style == .phone {
-            List {
-                // The header scrolls with the queue, Spotify-style, so Up Next
-                // gets the whole screen rather than whatever is left under the art.
-                Section {
-                    header
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-                queueSection
+        switch style {
+        case .phone:
+            scrollingList
+                .artworkBackground(artworkURL)
+        case .column:
+            // The phone's screen beside the browser: the same hierarchy,
+            // scrolling the same way, half the width. No navigation stack
+            // in the column: beside the browser's stack on an iPhone Duo a
+            // second one reserved a trailing inset the width of the
+            // vertical bar, about 85pt, though the bar sits beside the
+            // browser, and the column's content ran 335pt wide in a 475pt
+            // column. A title row the height of the inline bar keeps the
+            // list level with the stack beside it.
+            VStack(spacing: 0) {
+                Text("Now Playing")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    // Level with the inline title in the stack beside
+                    // it. With a vertical bar the window has no status
+                    // bar on top and the stack's title sits 26pt lower
+                    // than its bar alone would; under a status bar
+                    // the inset already lands it there.
+                    .padding(.top, navigator.hasVerticalBar ? 26 : 0)
+                scrollingList
             }
-            .listStyle(.plain)
+            // On the stack, so the title row sits on the wash too.
             .artworkBackground(artworkURL)
-        } else {
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { columnSize = $0 }
+        case .fullScreen:
             // The header lives outside the List on purpose. A List row whose
-            // height follows the width (the art is a square of the column)
+            // height follows the width (the art is a square of the cover)
             // recurses in UICollectionView's layout during a live window
             // resize on the Mac; a plain VStack does not. The queue rows are
             // fixed height, so they stay in a List and keep swipe to remove.
-            if style == .column {
-                // No navigation stack in the column: beside the browser's
-                // stack on an iPhone Duo a second one reserved a trailing
-                // inset the width of the vertical bar, about 85pt, though
-                // the bar sits beside the browser, and the column's
-                // content ran 335pt wide in a 475pt column. A title row
-                // the height of the inline bar keeps the panes level with
-                // the stack beside it.
-                VStack(spacing: 0) {
-                    Text("Now Playing")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        // Level with the inline title in the stack beside
-                        // it. With a vertical bar the window has no status
-                        // bar on top and the stack's title sits 26pt lower
-                        // than its bar alone would; under a status bar
-                        // the inset already lands it there.
-                        .padding(.top, navigator.hasVerticalBar ? 26 : 0)
-                    panes
-                }
-                .artworkBackground(artworkURL)
-            } else {
-                // The cover's own stack, so its close button is a real
-                // toolbar item.
-                NavigationStack {
-                    panes
-                        .artworkBackground(artworkURL)
-                        .navigationTitle("Now Playing")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button("Hide Now Playing", systemImage: "xmark") { presentation.isShown = false }
-                            }
+            // The cover's own stack, so its close button is a real
+            // toolbar item.
+            NavigationStack {
+                panes
+                    .artworkBackground(artworkURL)
+                    .navigationTitle("Now Playing")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Hide Now Playing", systemImage: "xmark") { presentation.isShown = false }
                         }
-                }
+                    }
             }
         }
     }
 
-    /// The art, then the transport over the queue. An arrangement rather
-    /// than a plain stack: on an iPhone Duo half folded like a laptop the
-    /// fold is a horizontal division, and the split puts the art on the
-    /// top pane and the controls on the bottom one, by the hands. Flat,
-    /// the split follows the shape: halves stacked in the column and the
+    /// The header scrolling with the queue, Spotify-style, so Up Next gets
+    /// the whole screen rather than whatever is left under the art.
+    private var scrollingList: some View {
+        List {
+            Section {
+                header
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
+            queueSection
+        }
+        .listStyle(.plain)
+    }
+
+    /// The cover's header: the art, then the transport over the queue. An
+    /// arrangement rather than a plain stack: on an iPhone Duo half folded
+    /// like a laptop the fold is a horizontal division, and the split puts
+    /// the art on the top pane and the controls on the bottom one, by the
+    /// hands. Flat, the split follows the shape: halves stacked in the
     /// portrait cover, side by side in a cover wider than it is tall.
     @ViewBuilder private var panes: some View {
         if #available(iOS 27.1, *) {
             ArrangementView {
-                // Under half of a stacked split: in a 669pt column (a Duo
-                // open in landscape) that is art of about 220 beside the
-                // names and two queue rows under the transport; a tall
-                // cover caps the art at 400 anyway.
+                // Under half of a stacked split: in a 669pt cover that is
+                // art of about 220 beside the names and two queue rows
+                // under the transport; a tall cover caps the art at 400
+                // anyway.
                 artPane
                     .splitArrangementLayoutRatio(idealHorizontal: 0.5, idealVertical: 0.45)
                     .background {
@@ -250,8 +272,8 @@ struct NowPlayingView: View {
         .listRowSeparator(.hidden)
     }
 
-    /// The phone's header row: the art block over the controls, scrolling
-    /// away with the queue.
+    /// The phone's and the column's header row: the art block over the
+    /// controls, scrolling away with the queue.
     private var header: some View {
         VStack(alignment: .leading, spacing: 24) {
             artBlock
@@ -316,7 +338,7 @@ struct NowPlayingView: View {
     /// Everything is leading-aligned on the art's left edge; a centred
     /// title beside one 44pt well read as off-centre. On the phone the
     /// sheet's drag indicator sits over the top, so the text clears it.
-    /// In the column the toolbar already does.
+    /// In the column the title row already does.
     private var artBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -328,7 +350,7 @@ struct NowPlayingView: View {
             .padding(.horizontal, 12)
             .padding(.top, style == .phone ? 28 : 8)
 
-            art(edge: nil)
+            art(edge: style == .column ? columnArtEdge : nil)
                 .padding(.horizontal, 12)
         }
     }

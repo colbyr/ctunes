@@ -211,21 +211,28 @@ queue and the system drag closes it) and a full-screen cover with a title
 bar on a regular one; a window 960pt or wider, or wider than tall and at
 least 800 (a Duo open in landscape is ~850 usable), gets a **leading
 column** beside the stack, half the width capped at 560, the left page
-of the fold. The column and the cover lay the header out as an
-`ArrangementView` (iOS 27.1): the art as one pane, the transport over
-the queue as the other, so the laptop fold divides them; the art pane
-asks for 40% of a stacked split. **A vertical bar** (the Duo closed, or
+of the fold. The cover lays the header out as an `ArrangementView`
+(iOS 27.1): the art as one pane, the transport over the queue as the
+other, so the laptop fold divides them; the art pane asks for 45% of a
+stacked split. **The column is the phone's screen under a title row**:
+one `List` scrolling the header away with the queue, the art sized from
+a measurement of the column (its width less the margins, no taller than
+half its height) rather than the row's width, and no `NavigationStack`,
+which beside the browser's stack reserved the vertical bar's inset.
+**A vertical bar** (the Duo closed, or
 open in landscape) is read off `toolbarVerticalEdge` by
 `VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; every browse
-screen then adds `SearchBarItem` to its toolbar and the bottom bar drops
-the search pill until a search is open. An artist tapped in Now Playing, or any route from an
+screen then adds `SearchBarItem` to its toolbar, the album, artist,
+playlist, Favorites and mix builder pages keep their Play and Shuffle
+cards off the page and in the strip from the start (`iconsInBar`), and
+the bottom bar drops the search pill until a search is open and sets
+the mini player 48pt tall against the strip's inset, level with the
+search item at its foot. An artist tapped in Now Playing, or any route from an
 item menu, goes through `LibraryNavigator.open(_:)` in the environment,
 since the host owns the path. The host measures the window itself rather than
 reading the size class: a Mac window only turns compact a hair above its
-640pt minimum, so `.inspector` kept the column at every usable width. The
-column pins the header and scrolls only the queue, in its own
-`NavigationStack` so the close button is a toolbar item level with
-Settings. Screens set the flag; none presents the cover themselves. **The
+640pt minimum, so `.inspector` kept the column at every usable width.
+Screens set the flag; none presents the cover themselves. **The
 cover must be handed `.environment(player)`, `.environment(nowPlaying)`
 and `.environment(navigator)` explicitly**: when a Mac window is dragged across the compact/regular
 boundary UIKit re-hosts the open presentation without the inherited
