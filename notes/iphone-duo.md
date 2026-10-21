@@ -45,15 +45,21 @@ had none of those, so this note is about the layout.
   resize; full-width art of 419pt in a 669pt column also pushed the
   transport off screen, and half the height still crowded it, so it is
   268 there. The laptop fold no longer divides the column.
-- **The cover closes itself when the window turns wide.** Now Playing
-  opened on the outer display, then the device opened to landscape: the
-  window turned regular with the flag still set, the cover presented,
-  and a full-screen presentation takes the host's view out of the
-  window, so the host's `onGeometryChange` never saw the width and the
-  column never came. The cover measures its own size against
-  `NowPlayingPresentation.wantsColumn` (the one rule, shared with the
-  host) and drops the flag; the host's view returns, measures, and
-  shows the column.
+- **The sheet and the cover follow a lagging size class.** Now Playing
+  opened as the sheet on the outer display, then the device opened to
+  landscape: the size class flipped to regular, the body was evaluated
+  with the flag still set, and the cover binding (live on a regular
+  width) presented a cover in the same pass as the host's
+  `onChange(of: sizeClass)` dropped the flag. The log showed the flag
+  false and the column chosen while the cover measured itself on
+  screen: a presentation SwiftUI took as dismissed, so the × (setting
+  an already-false flag) and nothing else could close it. The bindings
+  now read `presentingIn`, a state the size-class change sets after
+  dropping the flag, so the pass that sees the new size class sees no
+  flag either. The cover also measures itself against
+  `NowPlayingPresentation.wantsColumn` and drops the flag when the
+  window is column-wide, since a full-screen presentation takes the
+  host's view out of the window and the host can't.
 - **The cover keeps the two-pane header**: an `ArrangementView` (iOS
   27.1, `.split`), the art pane as the primary, the scrubber and
   transport over the queue as the secondary. Flat, the split is stacked
@@ -128,9 +134,10 @@ in the strip, and the browse root at three tiles across. The iPad Pro
 13 on iOS 27.0 showed the leading column over the fallback stack. Not
 yet seen: the inner display in portrait (the cover's stacked split),
 the laptop pose, the pill beside the strip's search item after the
-48pt change (the pose is the user's; the numbers are measured), the
-cover giving way on the open-to-landscape move itself, and the column
-during a live resize on the Mac.
+48pt change (the pose is the user's; the numbers are measured), and
+the column during a live resize on the Mac. The open-to-landscape move
+with the sheet up was replayed by hand after the fix: the sheet went,
+the column came.
 
 ## Next
 

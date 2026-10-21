@@ -220,10 +220,14 @@ and sized from a measurement of the column (its width less the margins,
 no taller than 40% of its height) rather than the row's width, and no
 `NavigationStack`, which beside the browser's stack reserved the
 vertical bar's inset. The column rule is
-`NowPlayingPresentation.wantsColumn`, and **the cover applies it to its
-own size too**: a full-screen presentation takes the host's view out of
-the window, so a Duo opened from its outer display to landscape left
-the cover over the whole screen with the host never measuring the turn.
+`NowPlayingPresentation.wantsColumn`, and the cover applies it to its
+own size too, since a full-screen presentation takes the host's view
+out of the window. **The sheet and the cover are bound to
+`presentingIn`, the size class one update behind the environment**: a
+Duo opened from its outer display with the sheet up flipped the size
+class with the flag still set, and the cover binding presented a cover
+in the same pass that dropped the flag, one SwiftUI took as dismissed
+and nothing could close.
 **A vertical bar** (the Duo closed, or
 open in landscape) is read off `toolbarVerticalEdge` by
 `VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; every browse

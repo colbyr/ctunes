@@ -42,6 +42,15 @@ struct LibraryView: View {
     /// header scrolling; regular but too narrow for the column (an iPad in
     /// portrait, a small Mac window) covers it with a title bar instead.
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The size class the sheet and the cover are bound to: `sizeClass`
+    /// one update behind. Bound to the environment itself, a flip of the
+    /// size class with the sheet up (an iPhone Duo opened from its outer
+    /// display) evaluated the body with the flag still set and the cover
+    /// binding live, so a cover was presented in the pass that also
+    /// dropped the flag: on screen, but one SwiftUI took as dismissed,
+    /// which nothing could close. The flag drops first now, and the
+    /// bindings follow.
+    @State private var presentingIn: UserInterfaceSizeClass?
     /// The window's width, measured rather than read off the size class:
     /// see `NowPlayingPresentation.isColumn`.
     @State private var width: CGFloat = 0
@@ -113,14 +122,14 @@ struct LibraryView: View {
         // On a phone it is a sheet, so dragging it down closes it the way
         // any sheet does; a regular width too narrow for the column gets
         // the cover, since a sheet there is a card floating mid-screen.
-        .sheet(isPresented: sizeClass == .compact ? presented : .constant(false)) {
+        .sheet(isPresented: presentingIn == .compact ? presented : .constant(false)) {
             NowPlayingView(model: model, style: .phone)
                 .environment(player)
                 .environment(nowPlaying)
                 .environment(navigator)
                 .presentationDragIndicator(.visible)
         }
-        .fullScreenCover(isPresented: sizeClass == .compact ? .constant(false) : presented) {
+        .fullScreenCover(isPresented: presentingIn == .compact ? .constant(false) : presented) {
             NowPlayingView(model: model, style: .fullScreen)
                 .environment(player)
                 .environment(nowPlaying)
@@ -128,7 +137,10 @@ struct LibraryView: View {
         }
         // Crossing compact/regular would swap the sheet for the cover
         // under the user; close instead, as the column threshold does.
-        .onChange(of: sizeClass) { _, _ in nowPlaying.isShown = false }
+        .onChange(of: sizeClass, initial: true) { _, new in
+            nowPlaying.isShown = false
+            presentingIn = new
+        }
         // A route from a menu, or the artist tapped in Now Playing: the
         // cover has closed itself (or the column stays), and the page goes
         // onto the stack behind it.
