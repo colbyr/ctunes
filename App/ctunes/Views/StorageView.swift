@@ -22,7 +22,7 @@ struct StorageList: View {
 
     private var downloads: Downloads { model.downloads }
     private var inventory: DownloadInventory { downloads.inventory }
-    private var offline: Bool { model.state == .offline }
+    private var offline: Bool { !model.isConnected }
 
     var body: some View {
         List {

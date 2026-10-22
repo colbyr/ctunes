@@ -73,7 +73,12 @@ final class Downloads {
     var section: String? {
         didSet { if section != oldValue { refresh() } }
     }
-    private var offline = false
+    /// Whether the server answers: with none, nothing is being fetched,
+    /// so a pin still coming down reads as waiting, and the grid needs
+    /// to know which albums have a file to play.
+    var connected = false {
+        didSet { if connected != oldValue { refresh() } }
+    }
     @ObservationIgnored private var events: Task<Void, Never>?
     @ObservationIgnored private var refreshing = false
     @ObservationIgnored private var refreshAgain = false
@@ -126,9 +131,8 @@ final class Downloads {
     }
 
     /// The server whose pins to show; nil clears everything.
-    func attach(server: String?, offline: Bool) {
+    func attach(server: String?) {
         self.server = server
-        self.offline = offline
         if server == nil { albums = [] }
         refresh()
     }
@@ -153,7 +157,7 @@ final class Downloads {
     /// fetched, so a pin still coming down reads as waiting rather than in
     /// flight; every state read goes through here.
     private func settled(_ state: DownloadState) -> DownloadState {
-        offline || !downloadsAllowed ? state.waiting : state
+        !connected || !downloadsAllowed ? state.waiting : state
     }
 
     func state(_ album: PlexAlbum) -> DownloadState {
@@ -219,7 +223,7 @@ final class Downloads {
     /// the cache is waiting out its backoff, or the server is away.
     func isWaiting(_ track: PlexTrack) -> Bool {
         guard let server, inventory.isDownloading(track, server: server) else { return false }
-        return offline || !downloadsAllowed || inventory.isFailed(track, server: server)
+        return !connected || !downloadsAllowed || inventory.isFailed(track, server: server)
     }
 
     /// The row glyph's state for one track, so a track reads like an album.
@@ -373,7 +377,7 @@ final class Downloads {
             return
         }
         refreshing = true
-        let offline = offline, section = section
+        let offline = !connected, section = section
         Task {
             defer {
                 refreshing = false

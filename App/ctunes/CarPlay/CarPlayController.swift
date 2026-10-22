@@ -141,7 +141,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
                 subtitle: model.errorMessage ?? "No Plex server answered.",
                 retry: true
             )
-        case .signedIn, .offline, .reconnecting:
+        case .signedIn:
             guard model.selectedSection != nil else {
                 return .message(
                     title: "Choose a library on your iPhone",

@@ -149,13 +149,13 @@ struct MixBuilderView: View {
     /// plays what was saved from it.
     private func item(playlist: PlexPlaylist) -> Item {
         Item(pick: MixPick(playlist: playlist), subtitle: playlist.subtitle, vetoed: false,
-             unavailable: model.state == .offline && !model.downloads.hasDownloads(playlist),
+             unavailable: model.connection == .unreachable && !model.downloads.hasDownloads(playlist),
              download: model.downloads.state(playlist))
     }
 
     private var favoritesItem: Item {
         Item(pick: .favorites, subtitle: "Hearted tracks", vetoed: false,
-             unavailable: model.state == .offline && !model.isFavoritesPinned)
+             unavailable: model.connection == .unreachable && !model.isFavoritesPinned)
     }
 
     /// Under the album pool's Artists view the header names the artist, so
@@ -165,7 +165,7 @@ struct MixBuilderView: View {
             pick: MixPick(album: album),
             subtitle: album.subtitle(showArtist: showArtist),
             vetoed: hidden.hides(album),
-            unavailable: model.state == .offline && !model.downloads.hasDownloads(album),
+            unavailable: model.connection == .unreachable && !model.downloads.hasDownloads(album),
             download: model.downloads.state(album)
         )
     }

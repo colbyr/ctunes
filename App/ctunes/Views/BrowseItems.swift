@@ -23,7 +23,7 @@ struct AlbumTile: View {
     var body: some View {
         let state = model.downloads.state(album)
         let playable = model.downloads.hasDownloads(album)
-        let offline = model.state == .offline
+        let offline = model.connection == .unreachable
         VStack(alignment: .leading, spacing: 6) {
             Artwork(url: model.library?.artworkURL(album.thumb), size: nil, corner: 8)
                 .artworkShadow()
@@ -59,7 +59,7 @@ struct AlbumRow<Menu: View>: View {
             title: album.title,
             subtitle: album.subtitle(showArtist: showArtist),
             download: model.downloads.state(album),
-            dimmed: model.state == .offline && !model.downloads.hasDownloads(album),
+            dimmed: model.connection == .unreachable && !model.downloads.hasDownloads(album),
             action: action,
             menu: menu
         )
@@ -128,7 +128,7 @@ struct PlaylistTile: View {
     let playlist: PlexPlaylist
 
     var body: some View {
-        let offline = model.state == .offline
+        let offline = model.connection == .unreachable
         VStack(alignment: .leading, spacing: 6) {
             Artwork(url: model.library?.artworkURL(playlist.composite), size: nil, corner: 8, placeholder: "music.note.list")
                 .artworkShadow()
@@ -245,7 +245,7 @@ struct PlaylistRow<Menu: View>: View {
             title: playlist.title,
             subtitle: playlist.subtitle,
             download: model.downloads.state(playlist),
-            dimmed: model.state == .offline && !model.downloads.hasDownloads(playlist),
+            dimmed: model.connection == .unreachable && !model.downloads.hasDownloads(playlist),
             action: action,
             menu: menu
         )

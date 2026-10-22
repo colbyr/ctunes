@@ -80,6 +80,11 @@ public actor CachedLibrary: LibrarySource {
         for key in loadedKeys where await isStale(key) { revalidate(key) }
     }
 
+    /// What `server.json` now says, after a connect refreshed it.
+    public func updateRecord(_ record: ServerRecord) {
+        recordBox.withLock { $0 = record }
+    }
+
     /// Nothing answers. Saved copies keep serving; a miss throws.
     public func detach() {
         guard connection != nil else { return }

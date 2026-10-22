@@ -39,7 +39,10 @@ struct MusicView: View {
     @AppStorage("browseSubject") private var subject: BrowseSubject = .albums
     @AppStorage("browseLayout") private var layout: BrowseLayout = .grid
 
-    private var offline: Bool { model.state == .offline }
+    /// Nothing answers: tiles with no file dim. A search still out is
+    /// not offline; the banner says so once it has run a while.
+    private var offline: Bool { model.connection == .unreachable }
+    private var connected: Bool { model.isConnected }
     private var hidden: VetoSet { model.roster.hidden }
     /// Filtered before the pure grouping and search, so those stay pure.
     /// Anything with a file to play, so an album still downloading shows.
@@ -267,8 +270,8 @@ struct MusicView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if offline {
-                    OfflineBanner(reconnecting: model.reconnecting) {
+                if offline || model.searchingSlow {
+                    OfflineBanner(searching: !offline) {
                         Task { await model.reconnect(force: true) }
                     }
                     .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
@@ -330,7 +333,7 @@ struct MusicView: View {
                     } description: {
                         Text("Make one from any track, album or artist's menu.")
                     } actions: {
-                        if !offline {
+                        if connected {
                             Button("New Playlist") { navigator.composing = [] }
                                 .buttonStyle(.bordered)
                                 .buttonBorderShape(.capsule)
@@ -362,7 +365,7 @@ struct MusicView: View {
         .toolbar {
             // A playlist with nothing in it yet, named here; online only,
             // like every playlist write.
-            if subject == .playlists, !offline {
+            if subject == .playlists, connected {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("New Playlist", systemImage: "plus") { navigator.composing = [] }
                 }
@@ -607,7 +610,9 @@ struct MusicView: View {
 /// First row of the browse root while the server is away. Same chrome as
 /// the shuffle card, so it reads as part of the page rather than an alert.
 private struct OfflineBanner: View {
-    let reconnecting: Bool
+    /// Discovery is still out: a spinner and no button, since one is
+    /// already running.
+    let searching: Bool
     let retry: () -> Void
 
     var body: some View {
@@ -618,11 +623,12 @@ private struct OfflineBanner: View {
                 .frame(width: 44, height: 44)
                 .background(.fill.tertiary, in: .circle)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Offline").font(.headline)
-                Text("Playing downloaded music").font(.subheadline).foregroundStyle(.secondary)
+                Text(searching ? "Looking for your server" : "Offline").font(.headline)
+                Text(searching ? "Showing your saved library" : "Playing downloaded music")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
-            if reconnecting {
+            if searching {
                 ProgressView()
             } else {
                 Button("Try again", action: retry)

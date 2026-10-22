@@ -61,7 +61,7 @@ struct IntentPlayback {
         case .signedOut, .linking: throw IntentFailure.signedOut
         case .connectFailed: throw IntentFailure.unreachable
         case .loading, .connecting: throw IntentFailure.connecting
-        case .signedIn, .offline, .reconnecting: break
+        case .signedIn: break
         }
         guard let library = runtime.model.library else { throw IntentFailure.connecting }
         guard let section = runtime.model.selectedSection else { throw IntentFailure.noSection }

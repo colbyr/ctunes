@@ -95,13 +95,7 @@ final class AppRuntime {
         ) { _ in
             Task { @MainActor in
                 model.refreshFromCloud()
-                switch model.state {
-                case .offline: await model.reconnect()
-                case .signedIn:
-                    await model.checkConnection()
-                    await model.resumeDownloads()
-                default: break
-                }
+                await model.sceneActivated()
             }
         }
     }
@@ -116,12 +110,12 @@ final class AppRuntime {
         let model = model, player = player, catalog = catalog
         Task { @MainActor in
             var generation = model.libraryGeneration
-            var connection = model.connectionGeneration
+            var connection = model.connection
             var state = model.state
             var section = model.selectedSection?.key
             for await current in Observations({
                 (state: model.state, generation: model.libraryRevision,
-                 connection: model.connectionGeneration, section: model.selectedSection?.key)
+                 connection: model.connection, section: model.selectedSection?.key)
             }) {
                 if current.generation != generation || current.connection != connection {
                     generation = current.generation
@@ -134,8 +128,7 @@ final class AppRuntime {
                     catalog.reset()
                 }
                 if current.state != state {
-                    let signedOut = current.state == .signedOut
-                        && (state == .signedIn || state == .offline || state == .reconnecting)
+                    let signedOut = current.state == .signedOut && state == .signedIn
                     state = current.state
                     if signedOut { await player.signOut() }
                 }

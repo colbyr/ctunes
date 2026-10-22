@@ -15,16 +15,10 @@ final class AppModel {
         /// Signed in, looking for a reachable server.
         case connecting
         case connectFailed
+        /// A library is open, from the saved copies at once and from the
+        /// server as it answers. Whether it does is `connection`, not a
+        /// state: the stack and the queue outlive every change of it.
         case signedIn
-        /// The server can't be reached but a snapshot can: browsing works
-        /// from it and pinned albums play. A peer of `signedIn`, rendered
-        /// by the same view so the stack and the queue survive the switch.
-        case offline
-        /// A cold start with a snapshot: the library is open from it while
-        /// discovery runs behind it, so the browse root shows at once. Ends
-        /// in `signedIn`, or `offline` once nothing answers. Rendered like
-        /// the two, without the offline banner or the dimmed tiles.
-        case reconnecting
     }
 
     private(set) var state: State = .loading
@@ -36,42 +30,26 @@ final class AppModel {
     /// section changes.
     private(set) var library: (any LibrarySource)?
     private var cached: CachedLibrary?
-    /// The server connection discovery found, attached to the library;
-    /// nil while nothing answers.
-    private var connection: PlexLibrary?
     /// Bumped whenever `library` is replaced.
     private(set) var libraryGeneration = 0
     /// Bumped as every saved copy lands and with the generation: what the
     /// screens key their tasks on, so a page reads again (from disk, the
     /// library's floor keeping the server out of it) when its lists change.
     private(set) var libraryRevision = 0
-    /// Bumped when the connection attaches, moves or detaches, so the
-    /// player adopts the library again.
-    private(set) var connectionGeneration = 0
     private var libraryFollower: Task<Void, Never>?
-    /// True while an offline "Try again" is in flight.
-    private(set) var reconnecting = false
     private(set) var serverName: String?
+
+    /// Whether the server answers, and the finding of it again. The
+    /// screens read `connection` for the banner and the dimming.
+    private let monitor = ConnectionMonitor()
+    var connection: ConnectionMonitor.Connection { monitor.connection }
+    var isConnected: Bool { monitor.isConnected }
+    /// A search that has run long enough to say so on screen.
+    var searchingSlow: Bool { monitor.searchingSlow }
 
     /// Pinned albums and their download state, for the views.
     let downloads: Downloads
     private let offline: OfflineStore
-    private var lastReconnectAttempt: Date = .distantPast
-    private static let reconnectInterval: TimeInterval = 30
-    /// The probe in flight when a signed-in fetch fails, so every screen
-    /// that failed at once waits on the same one.
-    private var rediscovery: Task<Bool, Never>?
-    private var lastRediscovery: Date = .distantPast
-    private static let rediscoverInterval: TimeInterval = 15
-    /// The timer that looks for the server again while offline, so a
-    /// phone in a pocket comes back on its own. Backs off from 10s to a
-    /// minute; a foreground or a tap resets nothing, they just try sooner.
-    private var offlineRetry: Task<Void, Never>?
-    private var offlineRetryDelay: TimeInterval = AppModel.offlineRetryFloor
-    private static let offlineRetryFloor: TimeInterval = 10
-    private static let offlineRetryCeiling: TimeInterval = 60
-    /// Discovery, reconnection and the offline flips, so a report from the
-    /// road can be read back with `log show --predicate 'category == "Connection"'`.
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ctunes", category: "Connection")
 
     /// Music libraries on the server, and the one being browsed. A server can
@@ -173,6 +151,8 @@ final class AppModel {
     init(offline: OfflineStore, cache: TrackCache) {
         self.offline = offline
         downloads = Downloads(store: offline, cache: cache)
+        monitor.reconnect = { [weak self] force in await self?.attemptConnect(tapped: force, patience: .zero) }
+        followMonitor()
         startCloudSync()
         // A new download quality re-asks every pin for what it still wants.
         downloads.pinsChanged = { [weak self] in await self?.resumeDownloads() }
@@ -185,10 +165,12 @@ final class AppModel {
             let auth = PlexAuth(client: client)
             self.client = client
             self.auth = auth
+            monitor.start(client: client, token: "")
 
             let stored = try await auth.storedToken()
             if let existing = Self.developmentToken() ?? stored {
                 token = existing
+                monitor.start(client: client, token: existing)
                 // A development token may be another account's than the
                 // one the keychain last looked up.
                 var found: String?
@@ -283,52 +265,44 @@ final class AppModel {
         #endif
     }
 
-    /// Finds a reachable server and opens the library on it. With a
-    /// snapshot of the last server the library opens from it first and
-    /// discovery runs behind it; without one the connecting screen shows.
-    /// Falls back to the snapshot when nothing answers, so the app is
-    /// still usable with the server off.
+    /// Opens the last library from disk and finds the server behind it;
+    /// without a saved library the connecting screen shows until one
+    /// answers. Nothing answering leaves the library open unreachable,
+    /// so the app is still usable with the server off.
     func connect() async {
-        if state == .offline {
-            await reconnect(force: true)
+        if case .unreachable = connection {
+            await monitor.tryAgain(force: true)
             return
         }
         // The last library opens from disk at once while discovery runs
-        // behind it; a first launch has nothing to show and waits.
-        state = await openSavedLibrary() ? .reconnecting : .connecting
-        await attemptConnect(tapped: false)
+        // behind it, with the patience to ride out a network still coming
+        // up; a first launch has nothing to show and waits, less long.
+        if await openSavedLibrary() {
+            state = .signedIn
+            await attemptConnect(tapped: false, patience: .seconds(20))
+        } else {
+            state = .connecting
+            await attemptConnect(tapped: false, patience: .seconds(10))
+        }
     }
 
-    /// The offline banner's "Try again", and the scene coming back to the
-    /// foreground: throttled unless tapped, and never passes through
-    /// `.connecting`, so the stack stays put.
+    /// The banner's "Try again" (forced) and the scene coming back:
+    /// throttled unless forced, and never through `.connecting`.
     func reconnect(force: Bool = false) async {
-        guard state == .offline, !reconnecting else { return }
-        guard force || Date().timeIntervalSince(lastReconnectAttempt) > Self.reconnectInterval else { return }
-        lastReconnectAttempt = Date()
-        reconnecting = true
-        defer { reconnecting = false }
-        await attemptConnect(tapped: force)
+        await monitor.tryAgain(force: force)
     }
 
-    private func attemptConnect(tapped: Bool) async {
-        guard let client, let token else { return }
+    private func attemptConnect(tapped: Bool, patience: Duration) async {
+        guard let token else { return }
+        monitor.searching()
         do {
-            if Self.forceOffline, !tapped { throw PlexError.noServerReachable }
-            // Behind the saved library there is time to ride out a network
-            // that is still coming up; on the connecting screen less so,
-            // and a tap or the offline timer wants one answer now.
-            let patience: Duration = switch state {
-            case .reconnecting: .seconds(20)
-            case .connecting: .seconds(10)
-            default: .zero
-            }
-            let server = try await discover(client: client, token: token, patience: patience)
+            if ConnectionMonitor.forceOffline, !tapped { throw PlexError.noServerReachable }
+            let server = try await monitor.discover(patience: patience)
             // Signed in while plex.tv was away: discovery just reached it.
             if account == nil, let auth {
                 account = try? await auth.lookUpAccount(token: token)
             }
-            let connection = PlexLibrary(client: client, server: server, token: token)
+            guard let connection = monitor.connection(for: server) else { return }
             let sections = try await connection.musicSections()
             let record = ServerRecord(name: server.name, sections: sections, baseURL: server.baseURL)
             try? await offline.saveServer(record, server: server.machineIdentifier)
@@ -336,78 +310,28 @@ final class AppModel {
             rememberServerToken(server)
             serverName = server.name
             self.sections = sections
-            self.connection = connection
             let saved = UserDefaults.standard.string(forKey: sectionKey(server: server.machineIdentifier))
             let section = sections.first { $0.key == saved } ?? sections.first.flatMap {
                 sections.count == 1 ? $0 : nil
             }
+            // The library first, so the connection attaches to it once.
             await openLibrary(server: server.machineIdentifier, section: section, record: record)
+            await monitor.connected(server, connection)
             errorMessage = nil
             state = .signedIn
-            cancelOfflineRetry()
-            log.notice("connected to \(server.baseURL.host() ?? "?", privacy: .public) local=\(server.isLocal)")
-            downloads.attach(server: server.machineIdentifier, offline: false)
             await resumeDownloads()
             await syncFavoritesPin()
             await syncPlaylistPins()
         } catch {
             errorMessage = error.localizedDescription
             log.error("connect failed: \(String(describing: error), privacy: .public)")
-            defer { if state == .offline { scheduleOfflineRetry() } }
-            // Already offline: stay there; the banner shows the error.
-            guard state != .offline else { return }
-            // Browsing the saved library already: only the banner changes.
-            if state == .reconnecting {
-                state = .offline
-                return
+            let opened = state == .signedIn ? true : await openSavedLibrary()
+            if opened {
+                state = .signedIn
+                await monitor.unreachable()
+            } else {
+                state = .connectFailed
             }
-            state = await openSavedLibrary() ? .offline : .connectFailed
-        }
-    }
-
-    /// Discovery that rides out the handoff between networks. Wi-Fi drops
-    /// a few seconds before cellular is up, and with `waitsForConnectivity`
-    /// off every request in that gap fails at once, so one probe conceded
-    /// to the saved library before the phone had a network to try. A
-    /// transport failure is retried until `patience` runs out; plex.tv
-    /// answering and no connection answering is the server itself away,
-    /// and gets one more try in case the cellular path had just come up
-    /// under it.
-    private func discover(client: PlexClient, token: String, patience: Duration) async throws -> PlexServer {
-        let deadline = ContinuousClock.now + patience
-        var unreachable = 0
-        while true {
-            do {
-                return try await PlexServerDirectory(client: client).selectServer(token: token)
-            } catch {
-                if case PlexError.noServerReachable = error {
-                    unreachable += 1
-                    guard unreachable < 2 else { throw error }
-                } else {
-                    guard error is URLError else { throw error }
-                }
-                guard ContinuousClock.now + .seconds(2) < deadline else { throw error }
-                log.notice("discovery failed, trying again: \(String(describing: error), privacy: .public)")
-                try? await Task.sleep(for: .seconds(2))
-                try Task.checkCancellation()
-            }
-        }
-    }
-
-    /// While offline, looks for the server again on its own: the app went
-    /// offline in the gap between two networks, and nothing else runs
-    /// while the phone is in a pocket playing downloaded music. Backs off
-    /// from 10s to a minute. The process only lives in the background
-    /// while audio plays, so an idle app never probes.
-    private func scheduleOfflineRetry() {
-        offlineRetry?.cancel()
-        let delay = offlineRetryDelay
-        offlineRetryDelay = min(delay * 2, Self.offlineRetryCeiling)
-        offlineRetry = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled, let self, self.state == .offline else { return }
-            self.log.notice("offline retry after \(delay, format: .fixed(precision: 0))s")
-            await self.reconnect(force: true)
         }
     }
 
@@ -418,10 +342,29 @@ final class AppModel {
         Task { try? await auth?.setServerToken(accessToken, for: server.machineIdentifier) }
     }
 
-    private func cancelOfflineRetry() {
-        offlineRetry?.cancel()
-        offlineRetry = nil
-        offlineRetryDelay = Self.offlineRetryFloor
+    /// The monitor's state, mirrored where the app keeps a copy: the
+    /// downloads read as waiting with no server, and a server that
+    /// answered somewhere new is named and its token kept.
+    private func followMonitor() {
+        let monitor = monitor
+        Task { @MainActor [weak self] in
+            for await connection in Observations({ monitor.connection }) {
+                guard let self else { return }
+                if case .connected(let server) = connection {
+                    serverName = server.name
+                    rememberServerToken(server)
+                }
+                downloads.connected = monitor.isConnected
+            }
+        }
+    }
+
+    /// The scene coming to the front while signed in: a reason to look
+    /// for the server, and to pick the downloads up again.
+    func sceneActivated() async {
+        guard state == .signedIn else { return }
+        await monitor.activated()
+        if isConnected { await resumeDownloads() }
     }
 
     // MARK: - The library
@@ -441,7 +384,6 @@ final class AppModel {
         serverName = record.name
         sections = record.sections
         await openLibrary(server: server, section: section, record: record)
-        downloads.attach(server: server, offline: true)
         return true
     }
 
@@ -458,8 +400,8 @@ final class AppModel {
         let id = LibraryID(server: server, section: section.key)
         if let cached, cached.id == id {
             selectedSection = section
-            if let connection { await cached.attach(connection, record: record) }
-            connectionGeneration += 1
+            if let record { await cached.updateRecord(record) }
+            await monitor.watch(cached)
             return
         }
         closeLibrary()
@@ -471,10 +413,10 @@ final class AppModel {
         library = opened
         selectedSection = section
         follow(opened)
-        if let connection { await opened.attach(connection, record: record) }
+        await monitor.watch(opened)
         libraryGeneration += 1
         libraryRevision += 1
-        connectionGeneration += 1
+        downloads.attach(server: id.server)
         playlists = await offline.load([PlexPlaylist].self, for: .playlists, server: id.server, section: id.section) ?? []
         if let albums = await offline.load([PlexAlbum].self, for: .albums, server: id.server, section: id.section) {
             downloads.setAlbums(albums)
@@ -486,6 +428,7 @@ final class AppModel {
         libraryFollower = nil
         cached = nil
         library = nil
+        Task { await monitor.watch(nil) }
     }
 
     /// Mirrors the library's changes: the revision the screens key on,
@@ -529,25 +472,29 @@ final class AppModel {
     /// The server the library is on, or the connection's before a section
     /// is chosen.
     private var currentServer: String? {
-        cached?.id.server ?? connection?.serverIdentifier
+        cached?.id.server ?? monitor.current?.serverIdentifier
     }
 
-    /// Whether launch has settled: a library is open for good, or the app
-    /// knows it can't have one. `reconnecting` is unsettled on purpose: an
-    /// intent that fires with the phone locked should get the server, not
-    /// the saved copy, when the server is a second away.
+    /// Whether launch has settled: a library is open and the server has
+    /// answered or been given up on, or the app knows it can't have one.
+    /// A search still out is unsettled on purpose: an intent that fires
+    /// with the phone locked should get the server, not the saved copy,
+    /// when the server is a second away.
     var isSettled: Bool {
         switch state {
-        case .loading, .connecting, .reconnecting: false
-        case .signedOut, .linking, .connectFailed, .signedIn, .offline: true
+        case .loading, .connecting: return false
+        case .signedOut, .linking, .connectFailed: return true
+        case .signedIn:
+            if case .searching = connection { return false }
+            return true
         }
     }
 
     /// Waits for launch to settle, so an intent that fired with no window
     /// and `bootstrap` still running has a library to play from. Returns
     /// the state it settled in, or the current one after `timeout`: a
-    /// launch still `reconnecting` then plays from what is saved, which
-    /// is what the browse root would show.
+    /// search still out then plays from what is saved, which is what the
+    /// browse root would show.
     func ready(timeout: Duration = .seconds(12)) async -> State {
         // Polled rather than observed: an `Observations` stream raced
         // against a sleep in a task group hits a Swift 6 isolation-checker
@@ -561,114 +508,13 @@ final class AppModel {
 
     // MARK: - Connection
 
-    /// Called by the library when a fetch fails on the transport, and by
-    /// the player when a stream does. The address that failed is not
-    /// necessarily the server: a phone that walked from Wi-Fi to cellular
-    /// still holds the LAN address discovery picked, and the remote one
-    /// answers fine. So the connections are probed again first and the
-    /// library's connection swapped onto whichever answers, in place,
-    /// under the same stack and queue. Only when nothing answers is the
-    /// connection detached: the saved copies and the files on disk keep
-    /// serving. Returns true when a server answered, so the caller can
-    /// retry what failed.
+    /// A fetch or a stream that failed on the transport: the monitor
+    /// probes and moves or detaches the library's connection. True when
+    /// a server answered, so the caller can retry what failed.
     @discardableResult
     func connectionLost(_ error: Error) async -> Bool {
-        guard state == .signedIn, Self.isConnectionError(error) else { return false }
-        log.error("connection lost: \(String(describing: error), privacy: .public)")
-        // A fetch that started before a swap fails on the old address
-        // after it: the move already happened. Asking again inside the
-        // probe's throttle read as nothing answering, and went offline
-        // off a working address.
-        if let failing = (error as? URLError)?.failingURL, let current = connection,
-           failing.host() != current.baseURL.host() {
-            log.notice("failure on an address already left, retrying on the current one")
-            return true
-        }
-        if await rediscover() { return true }
-        // Another caller may have detached while this one waited on the probe.
-        guard state == .signedIn, let cached else { return false }
-        errorMessage = error.localizedDescription
-        log.error("nothing answered, browsing from disk")
-        connection = nil
-        await cached.detach()
-        connectionGeneration += 1
-        state = .offline
-        downloads.attach(server: cached.id.server, offline: true)
-        scheduleOfflineRetry()
-        return false
-    }
-
-    /// The scene coming to the front while signed in. The phone may have
-    /// changed networks in the background, and every screen's fetch would
-    /// otherwise sit on the API timeout before rediscovery ran. A local
-    /// address is pinged with a short timeout and rediscovery runs at once
-    /// when it doesn't answer; a remote address works from anywhere and is
-    /// left alone.
-    func checkConnection() async {
-        guard state == .signedIn, rediscovery == nil,
-              Date().timeIntervalSince(lastRediscovery) > Self.rediscoverInterval,
-              let connection, connection.isLocalConnection
-        else { return }
-        guard await !connection.ping() else { return }
-        guard state == .signedIn, self.connection === connection else { return }
-        log.notice("local address stopped answering while in the background")
-        await connectionLost(URLError(.cannotConnectToHost))
-    }
-
-    /// Runs discovery again and, when the same server answers somewhere,
-    /// attaches a fresh connection on that address. Coalesced: the
-    /// screens that were mid-fetch all fail together and share one probe.
-    /// Not repeated within a few seconds of the last one: a connection
-    /// that keeps failing on an address that just answered is a server
-    /// problem, not a route change, and the saved copies take over.
-    private func rediscover() async -> Bool {
-        if let rediscovery { return await rediscovery.value }
-        guard Date().timeIntervalSince(lastRediscovery) > Self.rediscoverInterval,
-              let client, let token, let current = connection
-        else { return false }
-        let task = Task { () -> Bool in
-            guard let server = try? await discover(client: client, token: token, patience: .seconds(25)),
-                  state == .signedIn, server.machineIdentifier == current.serverIdentifier
-            else { return false }
-            // The same address answering means the failure was a moment,
-            // not a move: the connection stands and the library asks
-            // again for what is on screen.
-            if server.baseURL != current.baseURL {
-                log.notice("server moved to \(server.baseURL.host() ?? "?", privacy: .public) local=\(server.isLocal)")
-                connection = PlexLibrary(client: client, server: server, token: token)
-                serverName = server.name
-                rememberServerToken(server)
-            } else {
-                log.notice("same address answered, asking again")
-            }
-            if let cached, let connection { await cached.attach(connection) }
-            connectionGeneration += 1
-            errorMessage = nil
-            return true
-        }
-        rediscovery = task
-        let recovered = await task.value
-        rediscovery = nil
-        lastRediscovery = Date()
-        return recovered
-    }
-
-    /// A cancelled fetch is the screen going away, not the server.
-    private static func isConnectionError(_ error: Error) -> Bool {
-        if let error = error as? URLError { return error.code != .cancelled }
-        if case PlexError.noServerReachable = error { return true }
-        return false
-    }
-
-    /// Debug-only: skip discovery and open the saved library as if the
-    /// server were unreachable, until "Try again" is tapped, which
-    /// connects for real.
-    private static var forceOffline: Bool {
-        #if DEBUG
-        ProcessInfo.processInfo.environment["CTUNES_DEV_OFFLINE"] == "1"
-        #else
-        false
-        #endif
+        guard state == .signedIn else { return false }
+        return await monitor.failed(error)
     }
 
     // MARK: - Playlists
@@ -1164,7 +1010,7 @@ final class AppModel {
             try await auth.signOut(server: UserDefaults.standard.string(forKey: Self.serverDefaultsKey))
             token = nil
             serverToken = nil
-            connection = nil
+            monitor.stop()
             closeLibrary()
             serverName = nil
             sections = []
@@ -1172,10 +1018,9 @@ final class AppModel {
             playlists = []
             favoriteOverrides = [:]
             state = .signedOut
-            cancelOfflineRetry()
             await offline.clear()
             account = nil
-            downloads.attach(server: nil, offline: false)
+            downloads.attach(server: nil)
         } catch {
             errorMessage = error.localizedDescription
         }
