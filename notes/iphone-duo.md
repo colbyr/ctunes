@@ -35,8 +35,10 @@ had none of those, so this note is about the layout.
   across. Under 560 the floor is the phone's 100, so three across.
 - **The column is the phone's Now Playing, half the screen wide.** The
   same `List` as the sheet: names over the art, the title, the
-  transport, then Up Next, all scrolling together under a "Now Playing"
-  title row. A pinned split header (the art beside the names, the
+  transport, then Up Next, all scrolling together, with no title row
+  (a "Now Playing" heading over the art read as redundant; the artist
+  line is padded to sit level with the stack's inline title instead,
+  38pt under a vertical bar, 12 otherwise). A pinned split header (the art beside the names, the
   transport over the queue) beside the browser read as a different
   screen from the one the phone shows. The art is sized from a
   measurement of the column (`columnArtEdge`: the width less 56 of
@@ -77,9 +79,8 @@ had none of those, so this note is about the layout.
   stack on a Duo a second stack reserved a trailing inset the width of
   the vertical bar (about 85pt), so the column's content ran 335pt wide
   in a 475pt column. `toolbarVerticalBehavior(.disabled)` on that stack
-  turned the bar off for the whole window instead. A 44pt title row
-  padded 26 keeps the list level with the inline bar beside it; the
-  cover keeps its stack for the close button.
+  turned the bar off for the whole window instead. The cover keeps
+  its stack for the close button.
 - **Search joins the vertical strip.** `VerticalBarProbe` reads
   `toolbarVerticalEdge` (27.1) into `LibraryNavigator.hasVerticalBar`;
   with it set, every browse screen adds `SearchBarItem`, a Search

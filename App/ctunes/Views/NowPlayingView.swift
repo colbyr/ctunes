@@ -100,29 +100,16 @@ struct NowPlayingView: View {
                 .artworkBackground(artworkURL)
         case .column:
             // The phone's screen beside the browser: the same hierarchy,
-            // scrolling the same way, half the width. No navigation stack
-            // in the column: beside the browser's stack on an iPhone Duo a
+            // scrolling the same way, half the width, and no title: the
+            // art says what it is. No navigation stack in the column
+            // either: beside the browser's stack on an iPhone Duo a
             // second one reserved a trailing inset the width of the
             // vertical bar, about 85pt, though the bar sits beside the
             // browser, and the column's content ran 335pt wide in a 475pt
-            // column. A title row the height of the inline bar keeps the
-            // list level with the stack beside it.
-            VStack(spacing: 0) {
-                Text("Now Playing")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    // Level with the inline title in the stack beside
-                    // it. With a vertical bar the window has no status
-                    // bar on top and the stack's title sits 26pt lower
-                    // than its bar alone would; under a status bar
-                    // the inset already lands it there.
-                    .padding(.top, navigator.hasVerticalBar ? 26 : 0)
-                scrollingList
-            }
-            // On the stack, so the title row sits on the wash too.
-            .artworkBackground(artworkURL)
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { columnSize = $0 }
+            // column.
+            scrollingList
+                .artworkBackground(artworkURL)
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { columnSize = $0 }
         case .fullScreen:
             // The header lives outside the List on purpose. A List row whose
             // height follows the width (the art is a square of the cover)
@@ -367,7 +354,9 @@ struct NowPlayingView: View {
     /// Everything is leading-aligned on the art's left edge; a centred
     /// title beside one 44pt well read as off-centre. On the phone the
     /// sheet's drag indicator sits over the top, so the text clears it.
-    /// In the column the title row already does.
+    /// In the column the artist line sits level with the inline title
+    /// of the stack beside it: 26pt lower under a vertical bar, where
+    /// the window has no status bar on top.
     private var artBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -377,7 +366,7 @@ struct NowPlayingView: View {
                     .font(.subheadline)
             }
             .padding(.horizontal, 12)
-            .padding(.top, style == .phone ? 28 : 8)
+            .padding(.top, style == .phone ? 28 : style == .column ? (navigator.hasVerticalBar ? 38 : 12) : 8)
 
             art(edge: style == .column ? columnArtEdge : nil)
                 .padding(.horizontal, 12)

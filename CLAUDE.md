@@ -214,8 +214,9 @@ column** beside the stack, half the width capped at 560, the left page
 of the fold. The cover lays the header out as an `ArrangementView`
 (iOS 27.1): the art as one pane, the transport over the queue as the
 other, so the laptop fold divides them; the art pane asks for 45% of a
-stacked split. **The column is the phone's screen under a title row**:
-one `List` scrolling the header away with the queue, the art centred
+stacked split. **The column is the phone's screen with no title**: one
+`List` scrolling the header away with the queue, the artist line level
+with the stack's inline title beside it, the art centred
 and sized from a measurement of the column (its width less the margins,
 no taller than 40% of its height) rather than the row's width, and no
 `NavigationStack`, which beside the browser's stack reserved the
