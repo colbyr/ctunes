@@ -39,6 +39,7 @@ struct MixBuilderView: View {
     @State private var selected: [String] = []
     @State private var loadingMix: PlayStyle?
     @State private var nothingToPlay = false
+    @State private var hooked = false
     /// The saved mix the builder is editing: the route's, or the one just
     /// saved, so a second Save updates rather than adds.
     @State private var editing: SavedMix.ID?
@@ -149,13 +150,13 @@ struct MixBuilderView: View {
     /// plays what was saved from it.
     private func item(playlist: PlexPlaylist) -> Item {
         Item(pick: MixPick(playlist: playlist), subtitle: playlist.subtitle, vetoed: false,
-             unavailable: model.state == .offline && !model.downloads.hasDownloads(playlist),
+             unavailable: model.connection == .unreachable && !model.downloads.hasDownloads(playlist),
              download: model.downloads.state(playlist))
     }
 
     private var favoritesItem: Item {
         Item(pick: .favorites, subtitle: "Hearted tracks", vetoed: false,
-             unavailable: model.state == .offline && !model.isFavoritesPinned)
+             unavailable: model.connection == .unreachable && !model.isFavoritesPinned)
     }
 
     /// Under the album pool's Artists view the header names the artist, so
@@ -165,7 +166,7 @@ struct MixBuilderView: View {
             pick: MixPick(album: album),
             subtitle: album.subtitle(showArtist: showArtist),
             vetoed: hidden.hides(album),
-            unavailable: model.state == .offline && !model.downloads.hasDownloads(album),
+            unavailable: model.connection == .unreachable && !model.downloads.hasDownloads(album),
             download: model.downloads.state(album)
         )
     }
@@ -374,10 +375,12 @@ struct MixBuilderView: View {
         }
         .onDisappear { building = false }
         .onChange(of: selected) { savedSelection = selected }
-        .task(id: model.libraryGeneration) {
+        .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
-            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {
+            // Once: the task runs again on every revision.
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil, !hooked, !albums.isEmpty {
+                hooked = true
                 play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .mixAlbums : .shuffle)
             }
             #endif

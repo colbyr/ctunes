@@ -11,13 +11,21 @@ import Foundation
 ///
 ///     Tracks/<server>/<partId>-<stamp>.<ext>   the cache's pinned root (or `-q128.mp3`, a transcoded copy)
 ///     <server>/manifest.json                   Manifest
-///     <server>/artists/<ratingKey>.json        [PlexAlbum] per pinned artist
-///     <server>/albums/<ratingKey>.json         [PlexTrack] per album ever browsed
+///     <server>/server.json                     ServerRecord: name, sections, address
 ///     <server>/tracks.json                     [PlexTrack] pinned on their own
-///     <server>/playlists/<ratingKey>.json      [PlaylistItem] per playlist ever browsed
-///     <server>/<section>/library.json          LibrarySnapshot
-///     <server>/<section>/favorites.json        [PlexTrack] in that library's favorites group
+///     <server>/albums/<ratingKey>.json         [PlexTrack] per album ever browsed or pinned
+///     <server>/artists/<ratingKey>.json        [PlexAlbum] per artist ever browsed or pinned
+///     <server>/artists/<ratingKey>-tracks.json [PlexTrack] per artist whose tracks were asked for
+///     <server>/playlists/<ratingKey>.json      [PlaylistItem] per playlist ever browsed or pinned
+///     <server>/<section>/albums.json           [PlexAlbum]   the section's lists, one file per
+///     <server>/<section>/artists.json          [PlexArtist]  request (`LibraryKey`), each written
+///     <server>/<section>/favorites.json        [PlexTrack]   only from its own successful fetch
+///     <server>/<section>/history.json          [PlayHistoryEntry]
+///     <server>/<section>/playlists.json        [PlexPlaylist]
 ///     <server>/art/<name>.jpg                  covers, portraits and composites for pinned items
+///
+/// A `library.json` from before the per-request files is split into them
+/// the first time the section is read, and removed.
 ///
 /// The pins form a tree, artist over album over track, and the three kinds
 /// are kept disjoint: pinning an artist absorbs their album and track pins,
@@ -33,12 +41,12 @@ public actor OfflineStore {
     private let session: URLSession
 
     private var manifests: [String: Manifest] = [:]
-    private var albumTracks: [String: [PlexTrack]] = [:]
-    private var artistAlbums: [String: [PlexAlbum]] = [:]
     private var trackPins: [String: [PlexTrack]] = [:]
-    /// By `"<server>/<section>"`.
-    private var favorites: [String: [PlexTrack]] = [:]
-    private var playlistItems: [String: [PlaylistItem]] = [:]
+    /// Every saved request read or written this run, the value boxed as
+    /// `Optional<Value>` so a list known to be missing isn't stat-ed again.
+    private var lists: [StoreKey: any Sendable] = [:]
+    /// Sections whose legacy `library.json` has been looked for this run.
+    private var migrated: Set<String> = []
 
     public init(directory: URL, cache: TrackCache, session: URLSession = .shared) {
         self.directory = directory
@@ -117,8 +125,7 @@ public actor OfflineStore {
         for album in albums { manifest.albums.removeValue(forKey: album.ratingKey) }
         let albumKeys = Set(albums.map(\.ratingKey))
         setTrackPins(trackPins(server: server).filter { !albumKeys.contains($0.parentRatingKey ?? "") }, server: server)
-        try? write(albums, to: artistsDirectory(server).appending(path: "\(key).json"))
-        artistAlbums[albumKey(server, key)] = albums
+        save(albums, for: .artistAlbums(key), server: server)
 
         let grouped = Dictionary(grouping: tracks) { $0.parentRatingKey ?? "" }
         var ordered: [PlexTrack] = []
@@ -140,7 +147,8 @@ public actor OfflineStore {
     /// Drops everything pinned under the artist: the artist pin, and any
     /// album or track pins of theirs, so an artist whose albums were pinned
     /// one by one clears the same way. Unpins every file nothing else still
-    /// wants. The album lists stay, for the pages offline.
+    /// wants. The artist's album list and the albums' track lists stay, for
+    /// the pages offline; the manifest alone says what is pinned.
     public func unpinArtist(_ key: String, server: String) async {
         var manifest = manifest(server)
         let before = wantedPaths(server)
@@ -150,8 +158,6 @@ public actor OfflineStore {
         }
         setTrackPins(trackPins(server: server).filter { $0.grandparentRatingKey != key }, server: server)
         save(manifest, server: server)
-        try? FileManager.default.removeItem(at: artistsDirectory(server).appending(path: "\(key).json"))
-        artistAlbums[self.albumKey(server, key)] = []
         await cache.unpin(Array(before.subtracting(wantedPaths(server))))
     }
 
@@ -258,8 +264,6 @@ public actor OfflineStore {
                     pinnedAt: artist.pinnedAt.addingTimeInterval(Double(offset) / 1000), album: other
                 )
             }
-            try? FileManager.default.removeItem(at: artistsDirectory(server).appending(path: "\(key).json"))
-            artistAlbums[albumKey(server, key)] = []
         }
     }
 
@@ -274,19 +278,19 @@ public actor OfflineStore {
         }
     }
 
-    /// Replaces the section's favorites group with `tracks`: new keys
-    /// enqueue, dropped keys unpin unless another pin still references the
-    /// file. Does nothing unless that section's favorites pin is on.
+    /// Replaces the section's favorites with `tracks`, the one saved list
+    /// whether or not the pin is on, and with the pin on reconciles the
+    /// files: new keys enqueue, dropped keys unpin unless another pin still
+    /// references the file.
     public func setFavorites(
         _ tracks: [PlexTrack],
         server: String,
         section: String,
         sources: @Sendable (PlexTrack) -> TrackSource?
     ) async {
-        guard manifest(server).favoriteSections.contains(section) else { return }
         let before = wantedPaths(server)
-        favorites["\(server)/\(section)"] = tracks
-        try? write(tracks, to: sectionDirectory(server, section).appending(path: "favorites.json"))
+        save(tracks, for: .favorites, server: server, section: section)
+        guard manifest(server).favoriteSections.contains(section) else { return }
         await cache.unpin(Array(before.subtracting(wantedPaths(server))))
         await cache.pin(tracks.compactMap(sources))
     }
@@ -347,17 +351,14 @@ public actor OfflineStore {
     /// is saved too: a playlist pruned to nothing should read as empty,
     /// not as it last was.
     public func saveItems(_ items: [PlaylistItem], inPlaylist ratingKey: String, server: String) {
-        guard savedItems(server, ratingKey) != items else { return }
-        playlistItems[albumKey(server, "playlist:\(ratingKey)")] = items
-        try? write(items, to: playlistsDirectory(server).appending(path: "\(ratingKey).json"))
+        guard load([PlaylistItem].self, for: .playlistItems(ratingKey), server: server) != items else { return }
+        save(items, for: .playlistItems(ratingKey), server: server)
     }
 
     /// The saved items of any playlist browsed or pinned; nil when the
     /// playlist was never opened.
     public func items(inPlaylist ratingKey: String, server: String) -> [PlaylistItem]? {
-        let items = savedItems(server, ratingKey)
-        if !items.isEmpty { return items }
-        return hasSavedItems(server, ratingKey) ? [] : nil
+        load([PlaylistItem].self, for: .playlistItems(ratingKey), server: server)
     }
 
     public func playlistPinned(_ ratingKey: String, server: String) -> Bool {
@@ -513,6 +514,19 @@ public actor OfflineStore {
         return files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
     }
 
+    /// Holds the pin queue while a screen waits on the server; see
+    /// `TrackCache.setPinsDeferred`.
+    public func setPinsDeferred(_ deferred: Bool) async {
+        await cache.setPinsDeferred(deferred)
+    }
+
+    /// A file for the part in either root, the cache's rule: the pinned
+    /// root at any quality, the cache root at `quality` or better, nil
+    /// quality anything. Synchronous, for the library's availability.
+    public nonisolated func localURL(server: String, part: PlexPart, quality: StreamQuality?) -> URL? {
+        cache.localURL(server: server, part: part, quality: quality)
+    }
+
     // MARK: - Offline reads
 
     /// Remembers an album's tracks as browsed online, so offline the page
@@ -520,8 +534,7 @@ public actor OfflineStore {
     /// cached from a play.
     public func saveTracks(_ tracks: [PlexTrack], inAlbum ratingKey: String, server: String) {
         guard !tracks.isEmpty, savedTracks(server, ratingKey) != tracks else { return }
-        albumTracks[albumKey(server, ratingKey)] = tracks
-        try? write(tracks, to: albumsDirectory(server).appending(path: "\(ratingKey).json"))
+        save(tracks, for: .albumTracks(ratingKey), server: server)
     }
 
     /// The saved track list for any album browsed or pinned, or failing
@@ -557,13 +570,9 @@ public actor OfflineStore {
         track.part.map { cache.localURL(server: server, part: $0) != nil } ?? false
     }
 
-    /// The section's favorites group, whether or not the pin is on.
+    /// The section's favorites as last saved, whether or not the pin is on.
     public func favoriteTracks(server: String, section: String) -> [PlexTrack] {
-        let key = "\(server)/\(section)"
-        if let loaded = favorites[key] { return loaded }
-        let loaded: [PlexTrack] = read(sectionDirectory(server, section).appending(path: "favorites.json")) ?? []
-        favorites[key] = loaded
-        return loaded
+        load([PlexTrack].self, for: .favorites, server: server, section: section) ?? []
     }
 
     /// Every pinned favorites group on the server, by section key.
@@ -607,26 +616,92 @@ public actor OfflineStore {
         return result
     }
 
-    // MARK: - Snapshot
+    // MARK: - Saved requests
 
-    public func save(_ snapshot: LibrarySnapshot) throws {
-        try write(snapshot, to: sectionDirectory(snapshot.server, snapshot.section.key).appending(path: "library.json"))
+    /// Saves one request's response under its key, in memory and on disk.
+    /// `section` is the library's for a section-scoped key and ignored
+    /// otherwise. The file's date is the request's age.
+    public func save<Value: Encodable & Sendable>(_ value: Value, for key: LibraryKey, server: String, section: String = "") {
+        try? store(value, for: key, server: server, section: section)
     }
 
-    /// The saved snapshot for the section, or any section of the server
-    /// when none is named.
-    public func snapshot(server: String, section: String?) -> LibrarySnapshot? {
-        if let section {
-            return read(sectionDirectory(server, section).appending(path: "library.json"))
-        }
+    /// The saved response for a key, or nil when it was never saved. A
+    /// miss is remembered, so the pin code's many reads of a list that
+    /// isn't there cost nothing after the first.
+    public func load<Value: Decodable & Sendable>(
+        _ type: Value.Type = Value.self, for key: LibraryKey, server: String, section: String = ""
+    ) -> Value? {
+        let id = storeKey(key, server, section)
+        if let known = lists[id] { return known as? Value }
+        if key.isSectionScoped { migrateIfNeeded(server, section) }
+        let loaded: Value? = read(url(for: key, server: server, section: section))
+        // Boxed as the optional: assigning a bare nil would remove the key.
+        lists[id] = loaded as any Sendable
+        return loaded
+    }
+
+    /// When the key was last saved, from its file; nil when never.
+    public func savedAt(_ key: LibraryKey, server: String, section: String = "") -> Date? {
+        if key.isSectionScoped { migrateIfNeeded(server, section) }
+        let path = url(for: key, server: server, section: section).path
+        return (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+    }
+
+    /// Forgets a saved response, so the next read misses.
+    public func remove(_ key: LibraryKey, server: String, section: String = "") {
+        lists[storeKey(key, server, section)] = Optional<Data>.none as any Sendable
+        try? FileManager.default.removeItem(at: url(for: key, server: server, section: section))
+    }
+
+    /// What opening the server's library with no network needs.
+    public func saveServer(_ record: ServerRecord, server: String) throws {
+        try write(record, to: serverDirectory(server).appending(path: "server.json"))
+    }
+
+    /// Nil until a connect has written it, or a legacy `library.json`
+    /// has been split: an install from before the per-request files
+    /// has only those, so without this the first launch after updating
+    /// would wait on the server where it used to open from disk.
+    public func server(_ server: String) -> ServerRecord? {
+        if let record: ServerRecord = read(serverDirectory(server).appending(path: "server.json")) { return record }
         let manager = FileManager.default
-        guard let children = try? manager.contentsOfDirectory(at: serverDirectory(server), includingPropertiesForKeys: nil) else {
+        guard let children = try? manager.contentsOfDirectory(at: serverDirectory(server), includingPropertiesForKeys: [.isDirectoryKey]) else {
             return nil
         }
-        for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            if let snapshot: LibrarySnapshot = read(child.appending(path: "library.json")) { return snapshot }
+        for child in children
+        where manager.fileExists(atPath: child.appending(path: "library.json").path) {
+            migrateIfNeeded(server, child.lastPathComponent)
         }
-        return nil
+        return read(serverDirectory(server).appending(path: "server.json"))
+    }
+
+    private func store<Value: Encodable & Sendable>(_ value: Value, for key: LibraryKey, server: String, section: String) throws {
+        precondition(!key.isSectionScoped || !section.isEmpty, "a section-scoped key needs its section")
+        lists[storeKey(key, server, section)] = Optional(value) as any Sendable
+        try write(value, to: url(for: key, server: server, section: section))
+    }
+
+    /// Splits a `library.json` written before the per-request files into
+    /// them, once per section per run: the lists under the section, the
+    /// server record beside it. A favorites file already there is left
+    /// alone, since it is the list the pinned files were reconciled
+    /// against; the snapshot's copy was taken from the same fetch or an
+    /// older one. `LibrarySnapshot` survives only for this read.
+    private func migrateIfNeeded(_ server: String, _ section: String) {
+        guard !section.isEmpty, migrated.insert("\(server)/\(section)").inserted else { return }
+        let legacy = sectionDirectory(server, section).appending(path: "library.json")
+        guard let snapshot: LibrarySnapshot = read(legacy) else { return }
+        try? store(snapshot.albums, for: .albums, server: server, section: section)
+        try? store(snapshot.artists, for: .artists, server: server, section: section)
+        try? store(snapshot.history, for: .history, server: server, section: section)
+        try? store(snapshot.playlists, for: .playlists, server: server, section: section)
+        if !FileManager.default.fileExists(atPath: url(for: .favorites, server: server, section: section).path) {
+            try? store(snapshot.favorites, for: .favorites, server: server, section: section)
+        }
+        if self.server(server) == nil {
+            try? saveServer(.init(name: snapshot.serverName, sections: snapshot.sections, baseURL: snapshot.baseURL), server: server)
+        }
+        try? FileManager.default.removeItem(at: legacy)
     }
 
     // MARK: - Art
@@ -665,11 +740,9 @@ public actor OfflineStore {
     /// Forgets every pin and snapshot and empties the pinned root.
     public func clear() async {
         manifests = [:]
-        albumTracks = [:]
-        artistAlbums = [:]
         trackPins = [:]
-        favorites = [:]
-        playlistItems = [:]
+        lists = [:]
+        migrated = []
         await cache.clearPinned()
         let manager = FileManager.default
         guard let children = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
@@ -687,22 +760,12 @@ public actor OfflineStore {
         Set(pinnedTracks(server: server).compactMap { $0.part?.cachePath(server: server) })
     }
 
-    private func albumKey(_ server: String, _ ratingKey: String) -> String { "\(server)/\(ratingKey)" }
-
     private func savedTracks(_ server: String, _ ratingKey: String) -> [PlexTrack] {
-        let key = albumKey(server, ratingKey)
-        if let loaded = albumTracks[key] { return loaded }
-        let loaded: [PlexTrack] = read(albumsDirectory(server).appending(path: "\(ratingKey).json")) ?? []
-        albumTracks[key] = loaded
-        return loaded
+        load([PlexTrack].self, for: .albumTracks(ratingKey), server: server) ?? []
     }
 
     private func savedArtistAlbums(_ server: String, _ ratingKey: String) -> [PlexAlbum] {
-        let key = albumKey(server, ratingKey)
-        if let loaded = artistAlbums[key] { return loaded }
-        let loaded: [PlexAlbum] = read(artistsDirectory(server).appending(path: "\(ratingKey).json")) ?? []
-        artistAlbums[key] = loaded
-        return loaded
+        load([PlexAlbum].self, for: .artistAlbums(ratingKey), server: server) ?? []
     }
 
     /// Every album with a saved track list.
@@ -712,17 +775,7 @@ public actor OfflineStore {
     }
 
     private func savedItems(_ server: String, _ ratingKey: String) -> [PlaylistItem] {
-        let key = albumKey(server, "playlist:\(ratingKey)")
-        if let loaded = playlistItems[key] { return loaded }
-        let loaded: [PlaylistItem] = read(playlistsDirectory(server).appending(path: "\(ratingKey).json")) ?? []
-        playlistItems[key] = loaded
-        return loaded
-    }
-
-    /// Whether a list was ever saved, so an empty playlist tells apart
-    /// from one never opened.
-    private func hasSavedItems(_ server: String, _ ratingKey: String) -> Bool {
-        FileManager.default.fileExists(atPath: playlistsDirectory(server).appending(path: "\(ratingKey).json").path)
+        load([PlaylistItem].self, for: .playlistItems(ratingKey), server: server) ?? []
     }
 
     /// Every playlist with a saved item list.
@@ -769,6 +822,32 @@ public actor OfflineStore {
     private func save(_ manifest: Manifest, server: String) {
         manifests[server] = manifest
         try? write(manifest, to: serverDirectory(server).appending(path: "manifest.json"))
+    }
+
+    /// A saved request in memory: the server, the section for a
+    /// section-scoped key (empty otherwise), the key.
+    private struct StoreKey: Hashable {
+        let server: String
+        let section: String
+        let key: LibraryKey
+    }
+
+    private func storeKey(_ key: LibraryKey, _ server: String, _ section: String) -> StoreKey {
+        StoreKey(server: server, section: key.isSectionScoped ? section : "", key: key)
+    }
+
+    private nonisolated func url(for key: LibraryKey, server: String, section: String) -> URL {
+        switch key {
+        case .albums: sectionDirectory(server, section).appending(path: "albums.json")
+        case .artists: sectionDirectory(server, section).appending(path: "artists.json")
+        case .favorites: sectionDirectory(server, section).appending(path: "favorites.json")
+        case .history: sectionDirectory(server, section).appending(path: "history.json")
+        case .playlists: sectionDirectory(server, section).appending(path: "playlists.json")
+        case .albumTracks(let ratingKey): albumsDirectory(server).appending(path: "\(ratingKey).json")
+        case .artistAlbums(let ratingKey): artistsDirectory(server).appending(path: "\(ratingKey).json")
+        case .artistTracks(let ratingKey): artistsDirectory(server).appending(path: "\(ratingKey)-tracks.json")
+        case .playlistItems(let ratingKey): playlistsDirectory(server).appending(path: "\(ratingKey).json")
+        }
     }
 
     private nonisolated func serverDirectory(_ server: String) -> URL {

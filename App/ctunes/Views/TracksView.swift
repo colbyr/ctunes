@@ -22,7 +22,10 @@ struct TracksView: View {
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
+    /// Whether the debug hooks have run, so a revision re-run doesn't
+    /// start playback again.
+    @State private var hooked = false
     private var hidden: VetoSet { model.roster.hidden }
     private var scope: VetoScope { VetoScope(album: album) }
 
@@ -135,7 +138,7 @@ struct TracksView: View {
             withAnimation(.snappy) { actionsVisible = !scrolledPast }
         }
         .overlay {
-            if !loaded { ProgressView() }
+            if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle(album.title)
         // Same edge as the browse root; see MusicView for why not `.hard`.
@@ -173,12 +176,16 @@ struct TracksView: View {
                 }
             }
         }
-        // Keyed on the generation so going offline, or coming back, reloads
-        // from whichever library is current.
-        .task(id: model.libraryGeneration) {
+        // Keyed on the revision: a list landing from the server, or a
+        // library switch, reads again from the saved copies.
+        .task(id: model.libraryRevision) {
             await load()
             guard let library = model.library else { return }
-            if Self.autoPlay, !tracks.isEmpty {
+            // The hooks below drive the simulator once; the task runs
+            // again on every revision.
+            guard !tracks.isEmpty, !hooked else { return }
+            hooked = true
+            if Self.autoPlay {
                 let start = Self.autoPlayLast ? tracks.count - 1 : 0
                 player.play(tracks, startingAt: start, library: library)
                 if Self.autoPlayNearEnd, let seconds = tracks[start].durationSeconds {
@@ -211,25 +218,13 @@ struct TracksView: View {
 
     private func load() async {
         guard let library = model.library else { return }
-        // The saved list first, so a page opened on a link too weak to
-        // answer reads at once; the fetch replaces it when it lands, and
-        // a failure leaves it standing (`notes/offline-degraded.md`).
-        if tracks.isEmpty {
-            let saved = await model.downloads.tracks(inAlbum: album)
-            if !saved.isEmpty {
-                tracks = saved
-                loaded = true
-            }
-        }
-        do {
-            tracks = try await library.tracks(inAlbum: album.ratingKey)
-        } catch {
-            await model.connectionLost(error)
-            return
+        // The library answers from its saved copy and asks the server
+        // behind it; a miss it can't fetch leaves the page as it is.
+        if let fetched = try? await library.tracks(inAlbum: album.ratingKey) {
+            tracks = fetched
         }
         loaded = true
-        await model.rememberTracks(tracks, inAlbum: album)
-        if let pin = Self.autoPin, !library.isOffline, !tracks.isEmpty, !model.downloads.isPinned(album) {
+        if let pin = Self.autoPin, library.isConnected, !tracks.isEmpty, !model.downloads.isPinned(album) {
             switch pin {
             case "artist":
                 if let key = album.parentRatingKey {
@@ -332,7 +327,7 @@ struct TracksView: View {
         let favorite = model.isFavorite(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
-        let playable = !offline || model.downloads.isAvailable(track)
+        let playable = model.downloads.canPlay(track)
         // A track a listening rider vetoed on its own: still a row, dimmed
         // and named, since the album was opened on purpose. A veto on the
         // whole album or artist is the header's to explain.
@@ -408,7 +403,7 @@ struct TracksView: View {
     /// itself plays even when a listener hides all of it, since the page
     /// was opened on purpose.
     private var playableTracks: [PlexTrack] {
-        tracks.filter { !hidden.hides($0, within: .album) && (!offline || model.downloads.isAvailable($0)) }
+        tracks.filter { !hidden.hides($0, within: .album) && model.downloads.canPlay($0) }
     }
 
     private func play() {

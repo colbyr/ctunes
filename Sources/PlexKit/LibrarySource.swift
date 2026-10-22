@@ -1,12 +1,18 @@
 import Foundation
 
-/// What the browse screens and the player need from a library, satisfied by
-/// `PlexLibrary` against a server and by `OfflineLibrary` over a snapshot.
-/// Views hold `any LibrarySource`, so entering and leaving offline swaps the
-/// value behind one property instead of branching at every fetch.
+/// What the browse screens and the player need from a library. The app
+/// holds a `CachedLibrary`, which answers from its saved copies and the
+/// server behind them; `PlexLibrary` is the server alone and conforms for
+/// the live tests. Views hold `any LibrarySource`.
 public protocol LibrarySource: Sendable {
     var serverIdentifier: String { get }
-    var isOffline: Bool { get }
+    /// Whether a server is attached: writes work, a miss can be fetched,
+    /// and a stream URL exists. Saved copies and files on disk serve
+    /// either way.
+    var isConnected: Bool { get }
+    /// The attached server's address, nil with none: the player compares
+    /// it with the address an item loaded from.
+    var serverURL: URL? { get }
     func musicSections() async throws -> [PlexSection]
     func artists(inSection section: String) async throws -> [PlexArtist]
     func albums(inSection section: String) async throws -> [PlexAlbum]
@@ -47,6 +53,20 @@ public protocol LibrarySource: Sendable {
     /// or when the part isn't cacheable.
     func trackSource(for track: PlexTrack, quality: StreamQuality) -> TrackSource?
     func artworkURL(_ thumb: String?, size: Int) -> URL?
+    /// The one answer to whether and how a track plays right now, for the
+    /// player, the rows, the car and Siri alike. Synchronous, like
+    /// `streamURL`.
+    func availability(of track: PlexTrack, quality: StreamQuality) -> Availability
+}
+
+/// How a track can play right now. A file on disk comes first: one as
+/// good as the quality asked for, a pinned one as it is, and with no
+/// server anything on disk. Then the server's stream. Then nothing: no
+/// part, or no file and no server.
+public enum Availability: Equatable, Sendable {
+    case local(URL)
+    case stream
+    case none
 }
 
 extension LibrarySource {
@@ -60,6 +80,12 @@ extension LibrarySource {
         trackSource(for: track, quality: .original)
     }
 
+    /// Whether the track plays at all: a file on disk, or a server to
+    /// stream from. The quality is beside the point for a yes or no.
+    public func canPlay(_ track: PlexTrack) -> Bool {
+        availability(of: track, quality: .original) != .none
+    }
+
     /// List-cell size, the default every grid uses. A tile is ~110pt on a
     /// 3x phone, so 200px was upscaled and read blurry; 400 covers that
     /// and a 150pt tile on a 2x iPad.
@@ -69,5 +95,11 @@ extension LibrarySource {
 }
 
 extension PlexLibrary: LibrarySource {
-    public nonisolated var isOffline: Bool { false }
+    public nonisolated var isConnected: Bool { true }
+    public nonisolated var serverURL: URL? { baseURL }
+
+    /// The server alone knows no files.
+    public nonisolated func availability(of track: PlexTrack, quality: StreamQuality) -> Availability {
+        track.part == nil ? .none : .stream
+    }
 }

@@ -68,12 +68,19 @@ final class Downloads {
     private let store: OfflineStore
     private let cache: TrackCache
     private(set) var server: String?
+    /// The library open, whose one availability answer the rows read.
+    @ObservationIgnored private var library: (any LibrarySource)?
     /// The library open, whose favorites group the inventory carries.
     /// Set by the model whenever the library changes.
     var section: String? {
         didSet { if section != oldValue { refresh() } }
     }
-    private var offline = false
+    /// Whether the server answers: with none, nothing is being fetched,
+    /// so a pin still coming down reads as waiting, and the grid needs
+    /// to know which albums have a file to play.
+    var connected = false {
+        didSet { if connected != oldValue { refresh() } }
+    }
     @ObservationIgnored private var events: Task<Void, Never>?
     @ObservationIgnored private var refreshing = false
     @ObservationIgnored private var refreshAgain = false
@@ -125,10 +132,11 @@ final class Downloads {
         return { library.trackSource(for: $0, quality: quality) }
     }
 
-    /// The server whose pins to show; nil clears everything.
-    func attach(server: String?, offline: Bool) {
+    /// The server whose pins to show, and the library open on it; nil
+    /// clears everything.
+    func attach(server: String?, library: (any LibrarySource)?) {
         self.server = server
-        self.offline = offline
+        self.library = library
         if server == nil { albums = [] }
         refresh()
     }
@@ -153,7 +161,7 @@ final class Downloads {
     /// fetched, so a pin still coming down reads as waiting rather than in
     /// flight; every state read goes through here.
     private func settled(_ state: DownloadState) -> DownloadState {
-        offline || !downloadsAllowed ? state.waiting : state
+        !connected || !downloadsAllowed ? state.waiting : state
     }
 
     func state(_ album: PlexAlbum) -> DownloadState {
@@ -219,7 +227,7 @@ final class Downloads {
     /// the cache is waiting out its backoff, or the server is away.
     func isWaiting(_ track: PlexTrack) -> Bool {
         guard let server, inventory.isDownloading(track, server: server) else { return false }
-        return offline || !downloadsAllowed || inventory.isFailed(track, server: server)
+        return !connected || !downloadsAllowed || inventory.isFailed(track, server: server)
     }
 
     /// The row glyph's state for one track, so a track reads like an album.
@@ -247,11 +255,13 @@ final class Downloads {
         return inventory.usage(of: tracks, server: server)
     }
 
-    /// Whether the file is on disk in either root, so it can play offline.
-    func isAvailable(_ track: PlexTrack) -> Bool {
+    /// Whether the track plays right now: a file on disk, or a server to
+    /// stream from. The library's one answer, read through here so a row
+    /// re-renders when a file lands or the connection changes.
+    func canPlay(_ track: PlexTrack) -> Bool {
         _ = generation
-        guard let server, let part = track.part else { return false }
-        return cache.localURL(server: server, part: part) != nil
+        _ = connected
+        return library?.canPlay(track) ?? false
     }
 
     /// The saved track list for an album, for the manager's pages.
@@ -266,7 +276,7 @@ final class Downloads {
     /// every track. Sources come from the library so the token stays in a
     /// header.
     func pin(_ album: PlexAlbum, tracks: [PlexTrack], section: String, library: any LibrarySource) {
-        guard !library.isOffline else { return }
+        guard library.isConnected else { return }
         Task {
             await store.pinAlbum(album, tracks: tracks, server: library.serverIdentifier, section: section,
                                  art: Self.art(library), sources: sources(library))
@@ -286,7 +296,7 @@ final class Downloads {
     /// artist's whole list, filed under each.
     func pinArtist(key: String, title: String, thumb: String?, albums: [PlexAlbum], tracks: [PlexTrack],
                    section: String, library: any LibrarySource) {
-        guard !library.isOffline else { return }
+        guard library.isConnected else { return }
         Task {
             await store.pinArtist(key: key, title: title, thumb: thumb, albums: albums, tracks: tracks,
                                   server: library.serverIdentifier, section: section,
@@ -304,7 +314,7 @@ final class Downloads {
     }
 
     func pin(_ tracks: [PlexTrack], library: any LibrarySource) {
-        guard !library.isOffline else { return }
+        guard library.isConnected else { return }
         Task {
             await store.pinTracks(tracks, server: library.serverIdentifier, art: Self.art(library),
                                   sources: sources(library))
@@ -373,7 +383,7 @@ final class Downloads {
             return
         }
         refreshing = true
-        let offline = offline, section = section
+        let offline = !connected, section = section
         Task {
             defer {
                 refreshing = false

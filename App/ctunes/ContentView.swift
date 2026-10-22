@@ -22,9 +22,10 @@ struct ContentView: View {
                 }
             case .connectFailed:
                 ConnectFailedView(model: model)
-            // One label for both: two would be two view identities, and the
-            // stack would reset on every transition in or out of offline.
-            case .signedIn, .offline, .reconnecting:
+            // Whether the server answers is the model's `connection`, not a
+            // state, so the stack never resets on a transition in or out
+            // of offline.
+            case .signedIn:
                 LibraryView(model: model, catalog: runtime.catalog, links: runtime.links)
             }
         }

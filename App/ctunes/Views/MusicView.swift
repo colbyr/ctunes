@@ -39,7 +39,18 @@ struct MusicView: View {
     @AppStorage("browseSubject") private var subject: BrowseSubject = .albums
     @AppStorage("browseLayout") private var layout: BrowseLayout = .grid
 
-    private var offline: Bool { model.state == .offline }
+    /// Nothing answers: tiles with no file dim. A search still out is
+    /// not offline; the banner says so once it has run a while.
+    private var offline: Bool { model.connection == .unreachable }
+    private var connected: Bool { model.isConnected }
+    /// The first row when the server is away, slow to be found, or slow
+    /// to answer a page; nothing when it answers.
+    private var bannerMode: OfflineBanner.Mode? {
+        if offline { return .offline }
+        if model.searchingSlow { return .searching }
+        if connected, model.slowConnection { return .slow }
+        return nil
+    }
     private var hidden: VetoSet { model.roster.hidden }
     /// Filtered before the pure grouping and search, so those stay pure.
     /// Anything with a file to play, so an album still downloading shows.
@@ -267,8 +278,8 @@ struct MusicView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if offline {
-                    OfflineBanner(reconnecting: model.reconnecting) {
+                if let mode = bannerMode {
+                    OfflineBanner(mode: mode) {
                         Task { await model.reconnect(force: true) }
                     }
                     .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
@@ -330,7 +341,7 @@ struct MusicView: View {
                     } description: {
                         Text("Make one from any track, album or artist's menu.")
                     } actions: {
-                        if !offline {
+                        if connected {
                             Button("New Playlist") { navigator.composing = [] }
                                 .buttonStyle(.bordered)
                                 .buttonBorderShape(.capsule)
@@ -353,16 +364,14 @@ struct MusicView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
-            if !loaded {
-                ProgressView()
-            }
+            if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle("Tunes")
         .toolbar { SearchBarItem() }
         .toolbar {
             // A playlist with nothing in it yet, named here; online only,
             // like every playlist write.
-            if subject == .playlists, !offline {
+            if subject == .playlists, connected {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("New Playlist", systemImage: "plus") { navigator.composing = [] }
                 }
@@ -371,9 +380,9 @@ struct MusicView: View {
                 Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }
         }
-        // Keyed on the generation so going offline, or coming back, reloads
-        // from whichever library is current.
-        .task(id: model.libraryGeneration) {
+        // Keyed on the revision: a list landing from the server, or a
+        // library switch, reads again from the saved copies.
+        .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
             if ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS_SHEET"] != nil {
@@ -394,12 +403,12 @@ struct MusicView: View {
         // A playlist shortcut added in Settings needs its tracks counted
         // too; keyed on the playlists the shortcuts name, not the list
         // itself, so restyling one doesn't refetch.
-        .task(id: PlaylistShortcutsKey(keys: playlistShortcutKeys, generation: model.libraryGeneration)) {
+        .task(id: PlaylistShortcutsKey(keys: playlistShortcutKeys, generation: model.libraryRevision)) {
             await loadPlaylistTracks()
         }
         // The widgets draw these cards: written as they settle, a beat
         // after the last change so a page of counts landing is one write.
-        .task(id: WidgetFeedKey(cards: visibleShortcuts.map { ($0, subtitle(for: $0)) }, generation: model.libraryGeneration)) {
+        .task(id: WidgetFeedKey(cards: visibleShortcuts.map { ($0, subtitle(for: $0)) }, generation: model.libraryRevision)) {
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled, let library = model.library else { return }
             await WidgetFeedWriter.publish(visibleShortcuts.map { (mix: $0, subtitle: subtitle(for: $0)) }, library: library)
@@ -425,10 +434,11 @@ struct MusicView: View {
     /// "32 tracks for you & Laura"; just the count with no listeners set up,
     /// just the listeners until the count arrives, nothing with neither.
     /// The fetch: on appear, on a library swap, and on pull to refresh.
+    /// The library answers each list from its saved copy and asks the
+    /// server behind it, so this is cheap to run again on every revision;
+    /// a miss it can't fetch leaves the catalog as it was.
     private func load() async {
         guard let library = model.library else { return }
-        var history: [PlayHistoryEntry]?
-        var hearted: [PlexTrack]?
         do {
             async let favoriteTracks = library.favoriteTracks(inSection: section.key)
             // Optional: the grid falls back to play counts without it.
@@ -439,22 +449,12 @@ struct MusicView: View {
             async let playlistList: () = model.loadPlaylists()
             catalog.albums = try await library.albums(inSection: section.key)
             catalog.loaded = true
-            history = try? await plays
-            catalog.rotation = Rotation(history: history ?? [], albums: albums)
+            catalog.rotation = Rotation(history: (try? await plays) ?? [], albums: albums)
             catalog.artists = (try? await artistList) ?? []
-            // A failure keeps the last count: on a weak link the albums
-            // land and this doesn't, and nil here once read as no
-            // favorites and was written to the snapshot as such.
-            hearted = try? await favoriteTracks
-            if let hearted { catalog.favorites = hearted }
+            if let hearted = try? await favoriteTracks { catalog.favorites = hearted }
             await playlistList
         } catch {
-            await model.connectionLost(error)
             catalog.loaded = true
-            return
-        }
-        if !library.isOffline {
-            await model.snapshot(albums: albums, favorites: hearted, history: history)
         }
     }
 
@@ -574,7 +574,7 @@ struct MusicView: View {
     /// never enter the queue.
     private func allowed(_ tracks: [PlexTrack]) -> [PlexTrack] {
         tracks.filter {
-            !hidden.hides($0) && (!offline || model.downloads.isAvailable($0))
+            !hidden.hides($0) && model.downloads.canPlay($0)
         }
     }
 
@@ -613,25 +613,52 @@ struct MusicView: View {
     }
 }
 
-/// First row of the browse root while the server is away. Same chrome as
-/// the shuffle card, so it reads as part of the page rather than an alert.
-private struct OfflineBanner: View {
-    let reconnecting: Bool
+/// First row of the browse root while the server is away, still being
+/// looked for, or slow to answer. Same chrome as the shuffle card, so it
+/// reads as part of the page rather than an alert.
+struct OfflineBanner: View {
+    enum Mode {
+        /// Discovery is still out: a spinner and no button, since one is
+        /// already running.
+        case searching
+        /// Connected, but a page has waited on the server past a few
+        /// seconds; what shows is the saved library.
+        case slow
+        /// Nothing answered: downloads play, and the button looks again.
+        case offline
+    }
+
+    let mode: Mode
     let retry: () -> Void
+
+    private var title: String {
+        switch mode {
+        case .searching: "Looking for your server"
+        case .slow: "Slow connection"
+        case .offline: "Offline"
+        }
+    }
+
+    private var detail: String {
+        switch mode {
+        case .searching, .slow: "Showing your saved library"
+        case .offline: "Playing downloaded music"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: "network.slash")
+            Image(systemName: mode == .offline ? "network.slash" : "network")
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
                 .background(.fill.tertiary, in: .circle)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Offline").font(.headline)
-                Text("Playing downloaded music").font(.subheadline).foregroundStyle(.secondary)
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
-            if reconnecting {
+            if mode != .offline {
                 ProgressView()
             } else {
                 Button("Try again", action: retry)

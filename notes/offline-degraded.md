@@ -105,6 +105,8 @@ wiring picked between them on one boolean.
 
 ## If it is still a problem
 
+It was: the sketch below is built, as `notes/unified-library.md` (Oct 2026).
+
 The real fix is to make every read local-first: a `CachedLibrary` in PlexKit
 implementing `LibrarySource` over `OfflineStore` plus an optional
 `PlexLibrary`, where each read returns what is saved and starts a coalesced

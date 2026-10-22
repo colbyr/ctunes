@@ -72,7 +72,7 @@ struct PlaylistView: View {
     @State private var scrollPosition = ScrollPosition()
     @State private var editMode: EditMode = .inactive
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     private var hidden: VetoSet { model.roster.hidden }
     private var current: PlexPlaylist { model.playlists.first { $0.id == playlist.id } ?? playlist }
     /// Regular and online: the rows reorder and remove.
@@ -99,7 +99,7 @@ struct PlaylistView: View {
     }
     /// Offline, only rows with a file are worth queueing.
     private var playableRows: [Row] {
-        offline ? rows.filter { model.downloads.isAvailable($0.track) } : rows
+        rows.filter { model.downloads.canPlay($0.track) }
     }
     private var playable: [PlexTrack] { playableRows.map(\.track) }
     private var hiddenCount: HiddenCount { .over(tracks, hidden: hidden) }
@@ -116,7 +116,7 @@ struct PlaylistView: View {
     var body: some View {
         list
             .artworkBackground(model.library?.artworkURL(current.composite, size: 900))
-            .overlay { if !loaded { ProgressView() } }
+            .overlay { if !loaded { LoadingPlaceholder(model: model) } }
             .navigationTitle(current.title)
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -125,7 +125,7 @@ struct PlaylistView: View {
             // Keyed on both generations: going offline, or coming back,
             // reloads from whichever library is current, and an add from
             // another screen's menu lands here too.
-            .task(id: Reload(library: model.libraryGeneration, playlists: model.playlistGeneration)) {
+            .task(id: Reload(library: model.libraryRevision, playlists: model.playlistGeneration)) {
                 await load()
                 await developmentHooks()
             }
@@ -294,21 +294,18 @@ struct PlaylistView: View {
             .deleteDisabled(true)
     }
 
-    /// The fetch: on appear, on either generation, and on pull to
-    /// refresh. Online, the items are remembered for offline.
+    /// The read: on appear, on either generation, and on pull to refresh.
+    /// The library answers from its saved copy and asks the server behind
+    /// it; a miss it can't fetch leaves the list as it is.
     private func load() async {
         guard let library = model.library else { return }
-        do {
-            async let all = library.albums(inSection: model.selectedSection?.key ?? "")
-            items = try await library.items(inPlaylist: playlist.ratingKey)
-            albums = (try? await all) ?? []
-        } catch {
-            await model.connectionLost(error)
-            return
+        async let all = library.albums(inSection: model.selectedSection?.key ?? "")
+        if let fetched = try? await library.items(inPlaylist: playlist.ratingKey) {
+            items = fetched
         }
+        albums = (try? await all) ?? []
         loaded = true
         if items.isEmpty { editMode = .inactive }
-        await model.rememberItems(items, inPlaylist: current)
         for thumb in Set(items.compactMap(\.track.thumb)) {
             ImageLoader.shared.prewarm(library.artworkURL(thumb))
         }
@@ -329,7 +326,7 @@ struct PlaylistView: View {
         let track = row.track
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
-        let playable = !offline || model.downloads.isAvailable(track)
+        let playable = model.downloads.canPlay(track)
         let placement = TrackPlacement.playlistItem(row.item, in: current, siblings: siblings)
         // The ··· sits beside the tappable part rather than inside it, so
         // its tap is never also a tap on the row.

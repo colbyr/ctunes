@@ -637,7 +637,7 @@ struct HeartButton: View {
         }
         .buttonStyle(.plain)
         // Hearts are read-only offline.
-        .disabled(track == nil || model.library?.isOffline == true)
+        .disabled(track == nil || model.library?.isConnected == false)
         .accessibilityLabel(favorite ? "Unfavorite" : "Favorite")
     }
 }

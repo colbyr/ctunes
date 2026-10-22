@@ -21,7 +21,7 @@ struct SettingsSheet: View {
         case storage
     }
 
-    private var offline: Bool { model.state == .offline }
+    private var offline: Bool { !model.isConnected }
 
     var body: some View {
         NavigationStack(path: $path) {

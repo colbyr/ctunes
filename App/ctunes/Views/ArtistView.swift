@@ -54,7 +54,7 @@ struct ArtistView: View {
     @AppStorage("artistView") private var view: AlbumView = .artist
     @AppStorage("artistLayout") private var layout: BrowseLayout = .grid
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     private var hidden: VetoSet { model.roster.hidden }
     private var scope: VetoScope { VetoScope(artistKey: route.ratingKey, title: route.title) }
     private var artworkURL: URL? {
@@ -123,9 +123,7 @@ struct ArtistView: View {
         }
         .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
-            if !loaded {
-                ProgressView()
-            }
+            if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle(route.title)
         .navigationSubtitle(loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : "")
@@ -149,9 +147,9 @@ struct ArtistView: View {
                 }
             }
         }
-        // Keyed on the generation so going offline, or coming back, reloads
-        // from whichever library is current.
-        .task(id: model.libraryGeneration) {
+        // Keyed on the revision: a list landing from the server, or a
+        // library switch, reads again from the saved copies.
+        .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
             if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
@@ -216,11 +214,8 @@ struct ArtistView: View {
         guard let library = model.library else { return }
         async let artists = library.artists(inSection: section.key)
         async let sectionAlbums = library.albums(inSection: section.key)
-        do {
-            albums = try await library.albums(forArtist: route.ratingKey, inSection: section.key)
-        } catch {
-            await model.connectionLost(error)
-            return
+        if let fetched = try? await library.albums(forArtist: route.ratingKey, inSection: section.key) {
+            albums = fetched
         }
         loaded = true
         portrait = (try? await artists)?.first { $0.ratingKey == route.ratingKey }?.thumb
@@ -273,7 +268,7 @@ struct ArtistView: View {
             let fetched = (try? await library.tracks(forArtist: route.ratingKey, inSection: section.key)) ?? []
             // The artist plays even when hidden whole; their vetoed
             // albums and tracks are skipped.
-            let playable = fetched.filter { !hidden.hides($0, within: .artist) && (!offline || model.downloads.isAvailable($0)) }
+            let playable = fetched.filter { !hidden.hides($0, within: .artist) && model.downloads.canPlay($0) }
             guard !playable.isEmpty else {
                 nothingToPlay = true
                 return

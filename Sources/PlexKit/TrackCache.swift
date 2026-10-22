@@ -64,6 +64,12 @@ public actor TrackCache {
     var queueRetryAfter: TimeInterval = 60 * 60
     /// The gate: whether the pump may run at all.
     private var downloadsAllowed = true
+    /// Whether pin fetches wait their turn: the library sets it while a
+    /// screen is waiting on a list the server hasn't answered, so an
+    /// album download doesn't share a thin pipe with the one request the
+    /// user is watching. The window is never held; the next track
+    /// matters more than either.
+    private var pinsDeferred = false
     /// Whether a fetch may use cellular data. The gate above is what stops
     /// the pump; this rides on each request as the backstop, so a path that
     /// turns cellular under a fetch fails it rather than finishing it.
@@ -251,11 +257,19 @@ public actor TrackCache {
         }
     }
 
-    /// Window first, then pins.
+    /// Window first, then pins, unless they are deferred.
     private func nextToFetch() -> TrackSource? {
         if !pending.isEmpty { return pending.removeFirst() }
-        if !pinQueue.isEmpty { return pinQueue.removeFirst() }
+        if !pinQueue.isEmpty, !pinsDeferred { return pinQueue.removeFirst() }
         return nil
+    }
+
+    /// Holds the pin queue (a fetch in flight finishes) until lifted,
+    /// when the pump picks it up again.
+    public func setPinsDeferred(_ deferred: Bool) {
+        guard deferred != pinsDeferred else { return }
+        pinsDeferred = deferred
+        if !deferred { startPump() }
     }
 
     /// Whether the pump may run. The app closes the gate on cellular when

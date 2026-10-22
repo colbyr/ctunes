@@ -48,7 +48,7 @@ struct LibraryActions {
     let nowPlaying: NowPlayingPresentation
     let navigator: LibraryNavigator
 
-    var offline: Bool { model.library?.isOffline ?? false }
+    var offline: Bool { model.library.map { !$0.isConnected } ?? false }
 
     /// What can enter the queue from a collection: offline, only a track
     /// with a file; and never a track the active listeners hide inside
@@ -59,7 +59,7 @@ struct LibraryActions {
         let hidden = model.roster.hidden
         return tracks.filter {
             ($0.id == chosen?.id || !hidden.hides($0, within: container))
-                && (!offline || model.downloads.isAvailable($0))
+                && model.downloads.canPlay($0)
         }
     }
 
@@ -125,14 +125,14 @@ struct LibraryActions {
     }
 
     func download(_ album: PlexAlbum, known: [PlexTrack]?) async {
-        guard let library = model.library, !library.isOffline else { return }
+        guard let library = model.library, library.isConnected else { return }
         let tracks = await model.tracks(of: album, known: known)
         guard !tracks.isEmpty else { return }
         model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
     }
 
     func download(_ track: PlexTrack) {
-        guard let library = model.library, !library.isOffline else { return }
+        guard let library = model.library, library.isConnected else { return }
         model.downloads.pin([track], library: library)
     }
 
@@ -265,7 +265,7 @@ struct AlbumMenu: View {
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     /// Offline, an album with no file has nothing to queue.
     private var playable: Bool { !offline || model.downloads.hasDownloads(album) }
 
@@ -339,7 +339,7 @@ struct PlaylistMenu: View {
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     /// Offline, a playlist with no file has nothing to queue.
     private var playable: Bool { !offline || model.downloads.hasDownloads(playlist) }
 
@@ -414,7 +414,7 @@ struct AddToPlaylistMenu: View {
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
 
     var body: some View {
         if !offline {
@@ -467,8 +467,8 @@ struct TrackMenu: View {
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
 
-    private var offline: Bool { model.library?.isOffline ?? false }
-    private var playable: Bool { !offline || model.downloads.isAvailable(track) }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
+    private var playable: Bool { model.downloads.canPlay(track) }
 
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
