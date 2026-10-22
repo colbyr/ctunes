@@ -155,8 +155,19 @@ session's 60s, so a dead address fails fast, fails a whole transfer at
 60s so a list that trickles over a weak link gives up and the saved copy
 stands, and `PlexClient.data` retries a `GET` once on `-1005`, the first
 request after a network change on a keep-alive the server dropped.
-Discovery and the connection flips log under category `Connection`, the
-library's fetches and failures under `Library`. Hearts and every write
+**Whether and how a track plays is one answer**,
+`LibrarySource.availability(of:quality:)`: a file on disk as good as the
+quality asked (a pinned one as it is, anything on disk with no server),
+else the server's stream, else nothing; `canPlay` is the yes or no. The
+player's item choice, `nextEntryIsOnDisk`, `Downloads.canPlay` and through
+it every row, filter, CarPlay list and Siri path read it; never write
+`!offline || isAvailable` again. **A miss a screen is waiting on owns the
+pipe**: while one is out the library holds stale hits' revalidations and
+the cache holds the pin queue (never the window prefetch), and a miss
+past 3s is `model.slowConnection`, the "Slow connection" line under the
+spinners (`LoadingPlaceholder`) and the banner's third mode. Discovery
+and the connection flips log under category `Connection`, the library's
+fetches and failures under `Library`. Hearts and every write
 are refused with no connection. Reachability is decided by the server
 answering, never by `NWPathMonitor`. **A link that is weak rather than
 dead counts as connected** (`notes/offline-degraded.md`): the probe is

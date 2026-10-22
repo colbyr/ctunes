@@ -167,9 +167,7 @@ struct FavoritesView: View {
         .contentMargins(.bottom, 84, for: .scrollContent)
         .animation(.snappy, value: rows.map(\.id))
         .overlay {
-            if !loaded {
-                ProgressView()
-            }
+            if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle("Favorites")
         .navigationSubtitle(subtitle)

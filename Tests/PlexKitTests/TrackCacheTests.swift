@@ -412,4 +412,21 @@ struct TrackCacheTests {
         #expect(cache.localURL(for: high) != nil)
         #expect(await cache.usage() == 1024, "one copy per part in the root")
     }
+
+    @Test("deferred pins wait while the window is still served, and resume when lifted")
+    func deferredPins() async throws {
+        let (cache, _, counter) = try CacheTestSupport.makeCache()
+        await cache.setPinsDeferred(true)
+        await cache.pin([CacheTestSupport.source(id: 1)])
+        try await cache.drain()
+        #expect(counter.count == 0)
+        await cache.retain(window: [CacheTestSupport.source(id: 2)])
+        try await cache.drain()
+        #expect(counter.count == 1, "the window is never held")
+        await cache.setPinsDeferred(false)
+        try await cache.drain()
+        #expect(counter.count == 2)
+        #expect(cache.isPinned(server: "M", part: CacheTestSupport.part(id: 1)))
+    }
+
 }

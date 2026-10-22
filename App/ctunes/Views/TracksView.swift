@@ -135,7 +135,7 @@ struct TracksView: View {
             withAnimation(.snappy) { actionsVisible = !scrolledPast }
         }
         .overlay {
-            if !loaded { ProgressView() }
+            if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle(album.title)
         // Same edge as the browse root; see MusicView for why not `.hard`.

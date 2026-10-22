@@ -444,17 +444,10 @@ Steps 1–3 are two to three days; 4 and 5 a day.
 
 ## Follow-ups
 
-- **`availability(of:)`**: one answer for the player, the rows,
-  `nextEntryIsOnDisk`, CarPlay's and Siri's playable filters. Today they
-  agree by care.
-- **Thin-pipe policy**: while a foreground miss is outstanding, defer
-  background revalidation and pause the pin pump; a miss past a few seconds
-  shows "slow connection" while the fetch continues (finding 4 of the
-  degraded note).
-- A "slow connection, showing saved library" line in the banner: the library
-  sees every failure, so it can say so.
 - Queued hearts, replayed on attach.
 - A longer floor on cellular, if the revalidation shows up in data use.
+- The slow line on the search page and the mix builder, which load
+  without a `loaded` placeholder today.
 
 ## As built (Oct 2026)
 
@@ -506,4 +499,41 @@ the five lists; the forced-offline launch opened from disk, pushed a
 saved album, and the timer reconnected at 10s. The pf network-block run
 and the visual checks are for a hand pass (the Duo's displays screenshot
 black from the terminal).
+
+## Phase 3: one availability answer (built Oct 2026)
+
+`LibrarySource.availability(of:quality:)` returns `.local(URL)`, `.stream`
+or `.none`: a file on disk as good as the quality asked (a pinned one as
+it is, and with no server anything on disk), else the server's stream,
+else nothing (no part, or no file and no server). `canPlay(_:)` is the
+yes or no, with the quality beside the point. `CachedLibrary` answers it
+through `OfflineStore.localURL`, a synchronous passthrough to the cache's
+two-root lookup; `PlexLibrary` knows no files and answers `.stream`.
+`AudioPlayer.loadCurrentItem` switches on it (the old `wanted` quality
+rule moved inside), `nextEntryIsOnDisk` asks for `.local`, and
+`Downloads.canPlay` reads it under the inventory generation so a row
+re-renders when a file lands or the connection changes. The seventeen
+copies of `!offline || isAvailable` across the rows, filters, CarPlay
+and Siri are that one call.
+
+## Phase 4: the thin pipe (built Oct 2026)
+
+A read with nothing saved is a **miss a screen is waiting on**, and the
+library counts them (`misses`). While any is out: a stale hit's
+revalidation is held (`deferred`) and started when the last miss lands,
+and the cache's pin queue waits (`TrackCache.setPinsDeferred`, through
+the store), so the one request the user is watching has the pipe. The
+window prefetch is never held; the next track matters more than either.
+A miss out past `slowAfter` (3s) yields true on `CachedLibrary.slow`,
+false when every miss has landed; the model mirrors it as
+`slowConnection`, `LoadingPlaceholder` writes "Slow connection" under
+the spinner on the five screens that wait on a first read, and the root's
+banner gains a `.slow` mode ("Slow connection · Showing your saved
+library", a spinner, no button) beside `.searching` and `.offline`.
+
+Not done here: pull to refresh and a write's refresh are foreground and
+never held; a miss still waits the client's 10s request timeout before
+it fails. The test for the held revalidation never awaits the library
+while the mock's gate is held, since the mock answers on URLSession's one
+loader thread and a held gate starves every other test's request.
 

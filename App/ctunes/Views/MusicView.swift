@@ -43,6 +43,14 @@ struct MusicView: View {
     /// not offline; the banner says so once it has run a while.
     private var offline: Bool { model.connection == .unreachable }
     private var connected: Bool { model.isConnected }
+    /// The first row when the server is away, slow to be found, or slow
+    /// to answer a page; nothing when it answers.
+    private var bannerMode: OfflineBanner.Mode? {
+        if offline { return .offline }
+        if model.searchingSlow { return .searching }
+        if connected, model.slowConnection { return .slow }
+        return nil
+    }
     private var hidden: VetoSet { model.roster.hidden }
     /// Filtered before the pure grouping and search, so those stay pure.
     /// Anything with a file to play, so an album still downloading shows.
@@ -270,8 +278,8 @@ struct MusicView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if offline || model.searchingSlow {
-                    OfflineBanner(searching: !offline) {
+                if let mode = bannerMode {
+                    OfflineBanner(mode: mode) {
                         Task { await model.reconnect(force: true) }
                     }
                     .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
@@ -356,9 +364,7 @@ struct MusicView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
-            if !loaded {
-                ProgressView()
-            }
+            if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle("Tunes")
         .toolbar { SearchBarItem() }
@@ -607,28 +613,52 @@ struct MusicView: View {
     }
 }
 
-/// First row of the browse root while the server is away. Same chrome as
-/// the shuffle card, so it reads as part of the page rather than an alert.
-private struct OfflineBanner: View {
-    /// Discovery is still out: a spinner and no button, since one is
-    /// already running.
-    let searching: Bool
+/// First row of the browse root while the server is away, still being
+/// looked for, or slow to answer. Same chrome as the shuffle card, so it
+/// reads as part of the page rather than an alert.
+struct OfflineBanner: View {
+    enum Mode {
+        /// Discovery is still out: a spinner and no button, since one is
+        /// already running.
+        case searching
+        /// Connected, but a page has waited on the server past a few
+        /// seconds; what shows is the saved library.
+        case slow
+        /// Nothing answered: downloads play, and the button looks again.
+        case offline
+    }
+
+    let mode: Mode
     let retry: () -> Void
+
+    private var title: String {
+        switch mode {
+        case .searching: "Looking for your server"
+        case .slow: "Slow connection"
+        case .offline: "Offline"
+        }
+    }
+
+    private var detail: String {
+        switch mode {
+        case .searching, .slow: "Showing your saved library"
+        case .offline: "Playing downloaded music"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: "network.slash")
+            Image(systemName: mode == .offline ? "network.slash" : "network")
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
                 .background(.fill.tertiary, in: .circle)
             VStack(alignment: .leading, spacing: 2) {
-                Text(searching ? "Looking for your server" : "Offline").font(.headline)
-                Text(searching ? "Showing your saved library" : "Playing downloaded music")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
-            if searching {
+            if mode != .offline {
                 ProgressView()
             } else {
                 Button("Try again", action: retry)

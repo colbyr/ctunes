@@ -123,9 +123,7 @@ struct ArtistView: View {
         }
         .contentMargins(.bottom, 84, for: .scrollContent)
         .overlay {
-            if !loaded {
-                ProgressView()
-            }
+            if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle(route.title)
         .navigationSubtitle(loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : "")

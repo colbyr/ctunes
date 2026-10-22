@@ -37,6 +37,11 @@ final class AppModel {
     /// library's floor keeping the server out of it) when its lists change.
     private(set) var libraryRevision = 0
     private var libraryFollower: Task<Void, Never>?
+    private var slowFollower: Task<Void, Never>?
+    /// A page has waited on the server past a few seconds for a list
+    /// nothing saved could answer: the library's word, for a line under
+    /// the spinner and on the root.
+    private(set) var slowConnection = false
     private(set) var serverName: String?
 
     /// Whether the server answers, and the finding of it again. The
@@ -426,6 +431,9 @@ final class AppModel {
     private func closeLibrary() {
         libraryFollower?.cancel()
         libraryFollower = nil
+        slowFollower?.cancel()
+        slowFollower = nil
+        slowConnection = false
         cached = nil
         library = nil
         Task { await monitor.watch(nil) }
@@ -442,6 +450,13 @@ final class AppModel {
                 guard let self, self.cached === library else { return }
                 self.libraryRevision += 1
                 await self.libraryDidSave(key)
+            }
+        }
+        slowFollower?.cancel()
+        slowFollower = Task { [weak self] in
+            for await slow in library.slow {
+                guard let self, self.cached === library else { return }
+                self.slowConnection = slow
             }
         }
     }

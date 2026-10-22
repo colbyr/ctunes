@@ -116,7 +116,7 @@ struct PlaylistView: View {
     var body: some View {
         list
             .artworkBackground(model.library?.artworkURL(current.composite, size: 900))
-            .overlay { if !loaded { ProgressView() } }
+            .overlay { if !loaded { LoadingPlaceholder(model: model) } }
             .navigationTitle(current.title)
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)

@@ -368,6 +368,32 @@ struct CachedLibraryTests {
         #expect(library.canPlay(pinned))
     }
 
+    @Test("a miss a screen waits on holds background revalidation, and reads as slow after a while")
+    func missHoldsTheLine() async throws {
+        let (library, server, store) = try await make()
+        await library.setFloors(revalidate: 0, retry: 0, slow: 0.05)
+        _ = try await library.albums(inSection: "1")
+        #expect(server.count("/albums") == 1)
+
+        // The mock answers on URLSession's one loader thread, so nothing
+        // below waits on the library while the gate is held: a held
+        // revalidation is decided synchronously, and shows as no request.
+        let gate = server.hold()
+        let missing = Task { try await library.artists(inSection: "1") }
+        while server.count("type=8") == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(try await library.albums(inSection: "1").count == 4, "the saved copy")
+        #expect(server.count("/albums") == 1, "the revalidation is held behind the miss")
+        var slow = library.slow.makeAsyncIterator()
+        #expect(await slow.next() == true)
+
+        gate.signal()
+        #expect(try await missing.value.count > 0)
+        #expect(await slow.next() == false)
+        await library.settle()
+        #expect(server.count("/albums") == 2, "the held revalidation ran once the miss landed")
+        #expect(await store.load([PlexArtist].self, for: .artists, server: "M", section: "1") != nil)
+    }
+
     @Test("artwork is the saved file, then the connection's URL, then the record's address")
     func artwork() async throws {
         let (library, server, _) = try await make()

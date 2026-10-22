@@ -514,6 +514,12 @@ public actor OfflineStore {
         return files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
     }
 
+    /// Holds the pin queue while a screen waits on the server; see
+    /// `TrackCache.setPinsDeferred`.
+    public func setPinsDeferred(_ deferred: Bool) async {
+        await cache.setPinsDeferred(deferred)
+    }
+
     /// A file for the part in either root, the cache's rule: the pinned
     /// root at any quality, the cache root at `quality` or better, nil
     /// quality anything. Synchronous, for the library's availability.

@@ -37,8 +37,18 @@ public actor CachedLibrary: LibrarySource {
     /// How long after a failed revalidation the key is left alone, so a
     /// screen re-rendering on a weak link doesn't ask again every pass.
     var retryAfter: TimeInterval = 15
+    /// How long a screen waits on a miss before the link reads as slow.
+    var slowAfter: TimeInterval = 3
 
     private var inFlight: [LibraryKey: Task<any Sendable, Error>] = [:]
+    /// Keys a screen is waiting on with nothing saved, by how many wait.
+    /// While any is out, background revalidations are held and the pin
+    /// queue waits, so the one request the user is watching has the pipe.
+    private var misses: [LibraryKey: Int] = [:]
+    /// Revalidations held while a miss was out, started when it lands.
+    private var deferred: Set<LibraryKey> = []
+    private var slowTimer: Task<Void, Never>?
+    private var isSlow = false
     /// When a revalidation last failed, per key, for `retryAfter`.
     private var failedAt: [LibraryKey: Date] = [:]
     /// Every key read this session, what `attach` brings up to date.
@@ -49,6 +59,11 @@ public actor CachedLibrary: LibrarySource {
 
     public nonisolated let changes: AsyncStream<LibraryKey>
     private nonisolated let changeContinuation: AsyncStream<LibraryKey>.Continuation
+    /// True while a screen has waited on the server past `slowAfter`,
+    /// false again when every miss has landed; for a "slow connection"
+    /// line where the screens spin.
+    public nonisolated let slow: AsyncStream<Bool>
+    private nonisolated let slowContinuation: AsyncStream<Bool>.Continuation
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ctunes", category: "Library")
 
     public init(id: LibraryID, store: OfflineStore, token: String?, record: ServerRecord?) {
@@ -57,6 +72,7 @@ public actor CachedLibrary: LibrarySource {
         self.token = token
         recordBox = Mutex(record)
         (changes, changeContinuation) = AsyncStream.makeStream(of: LibraryKey.self, bufferingPolicy: .unbounded)
+        (slow, slowContinuation) = AsyncStream.makeStream(of: Bool.self, bufferingPolicy: .unbounded)
     }
 
     // MARK: - Connection
@@ -77,7 +93,7 @@ public actor CachedLibrary: LibrarySource {
         if let record { recordBox.withLock { $0 = record } }
         logger.notice("attached \(connection.baseURL.host() ?? "?", privacy: .public)")
         failedAt = [:]
-        for key in loadedKeys where await isStale(key) { revalidate(key) }
+        for key in loadedKeys where await isStale(key) { revalidateBehind(key) }
     }
 
     /// What `server.json` now says, after a connect refreshed it.
@@ -302,14 +318,59 @@ public actor CachedLibrary: LibrarySource {
     private func read<Value: Codable & Sendable>(_ key: LibraryKey, saved: Value?) async throws -> Value {
         loadedKeys.insert(key)
         if let saved {
-            if connection != nil, await isStale(key) { revalidate(key) }
+            if connection != nil, await isStale(key) { revalidateBehind(key) }
             return saved
         }
         guard connection != nil else { throw PlexError.offline }
+        missBegan(key)
+        defer { missEnded(key) }
         guard let value = try await revalidate(key).value as? Value else {
             throw PlexError.decoding(underlying: "saved \(key) is not \(Value.self)", body: nil)
         }
         return value
+    }
+
+    /// A revalidation nobody is waiting on: held while a screen waits on
+    /// a miss, so the thin pipe carries that request alone.
+    private func revalidateBehind(_ key: LibraryKey) {
+        if misses.isEmpty {
+            revalidate(key)
+        } else {
+            deferred.insert(key)
+        }
+    }
+
+    private func missBegan(_ key: LibraryKey) {
+        let first = misses.isEmpty
+        misses[key, default: 0] += 1
+        guard first else { return }
+        Task { await store.setPinsDeferred(true) }
+        slowTimer = Task { [slowAfter] in
+            try? await Task.sleep(for: .seconds(slowAfter))
+            guard !Task.isCancelled, !misses.isEmpty else { return }
+            isSlow = true
+            slowContinuation.yield(true)
+        }
+    }
+
+    private func missEnded(_ key: LibraryKey) {
+        guard let waiting = misses[key] else { return }
+        if waiting > 1 {
+            misses[key] = waiting - 1
+            return
+        }
+        misses[key] = nil
+        guard misses.isEmpty else { return }
+        slowTimer?.cancel()
+        slowTimer = nil
+        if isSlow {
+            isSlow = false
+            slowContinuation.yield(false)
+        }
+        Task { await store.setPinsDeferred(false) }
+        let held = deferred
+        deferred = []
+        for key in held { revalidate(key) }
     }
 
     /// One fetch per key at a time; a second asker joins it.
@@ -384,9 +445,10 @@ public actor CachedLibrary: LibrarySource {
         return false
     }
 
-    func setFloors(revalidate: TimeInterval, retry: TimeInterval) {
+    func setFloors(revalidate: TimeInterval, retry: TimeInterval, slow: TimeInterval? = nil) {
         revalidateAfter = revalidate
         retryAfter = retry
+        if let slow { slowAfter = slow }
     }
 
     /// Waits for every fetch in flight, for tests.
