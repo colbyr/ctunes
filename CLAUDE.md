@@ -60,76 +60,108 @@ phone locked and no window at all. `ContentView` reads it; so does
 live in a SwiftUI view's `.task` or `.onChange`.**
 
 `AppModel` (`@MainActor @Observable`) owns the state machine:
-`loading → signedOut → linking → connecting → signedIn`, plus `connectFailed`
-and `offline`. On launch it restores a keychain token, discovers a server, and
-opens a `PlexLibrary`. **What a person keeps is filed under the Plex
-account** (`AppModel.account`, the `uuid` from plex.tv's `/api/v2/user`,
-looked up at sign-in and kept in the keychain beside the token so it
-answers offline): the listeners, the shortcuts, the mix builder's
-picks, recent searches and the section choice, the library-scoped ones
-through `AppModel.storageKey(_:)`. Device settings, downloads, the play
-cache and artwork tints are not. When discovery fails and a `LibrarySnapshot` exists for
-the last server, it opens an `OfflineLibrary` over it instead and enters
-`.offline`, a peer of `.signedIn` rendered by the same `LibraryView` under one
-`case` label so the stack and the queue survive the switch. Views read
-`model.library`, typed `any LibrarySource`, and fetch in
-`.task(id: model.libraryGeneration)`, which re-runs when the library is
-swapped. A fetch that throws a `URLError` while signed in reports to
-`model.connectionLost`, which **runs discovery again first** and swaps a
-fresh `PlexLibrary` in place when the same server answers on another
-connection, since a phone that walked from Wi-Fi to cellular still holds
-the LAN address and the remote one is fine (the same address answering
-bumps the generation without a swap); only when nothing answers does
-it flip to the snapshot. The probe is coalesced across the screens that
-failed together and not repeated within 15s, so **a failure on an
-address already left behind never probes**: the model answers a
-`URLError` whose `failingURL` host isn't the current address with a
-bump alone, and the player reloads an item whose `itemBaseURL` the
-library has moved off on its own. **Discovery rides out the
-handoff** (`AppModel.discover`): Wi-Fi drops seconds before cellular is
-up and `waitsForConnectivity` is off, so a transport failure is retried
-for up to 25s (20s behind the snapshot at launch, 10s on the connecting
-screen, once for a tap or the timer) before the snapshot wins; plex.tv
-answering and no connection answering is the server itself away and
-gets one more try. `selectServer` gives better-ranked probes a 1s grace
-once a lower one answers, not the 5s timeout, since every local address
-is dead away from home. **Offline retries on its own** (`scheduleOfflineRetry`,
-10s doubling to 60s) while the process lives, i.e. while audio plays or
-the app is up. `AudioPlayer` asks the same `connectionLost` when a stream
-fails every retry and when one **stalls**: any streamed item sat in
-`waiting` for 4s with no growth in `loadedTimeRanges` (the reload is a
-fresh transcode session too, so the same-address transcode rebuild is
-only the fallback inside the probe's throttle); recovered, it reloads
-at `currentTime` from the new address, and offline it advances when the
-next entry is on disk and otherwise **pauses in place and plays again
-from there when `adopt` brings a server back** (`resumeOnReconnect`),
-instead of running the queue out over entries with no file and no
-stream. `loadCurrentItem` does the same when nothing from the cursor
-on has a file and the library is offline (`waitForServer`): the cursor
-goes back to the entry asked for, the player empties, and `adopt` or a
-press of play loads it, so an album tapped while launch is still
-`reconnecting` waits for the server rather than skipping every track. `adopt` of an online library also drops the cache's failure
-backoff, and `TrackCache.retain` cancels an in-flight fetch whose
-address the window has moved away from. `PlexClient.apiSession` times a
-request out at 10s, not the shared session's 60s, so a dead address
-fails fast, and `PlexClient.data` retries a `GET` once on `-1005`, the
-first request after a network change on a keep-alive the server
-dropped. The banner's "Try again" and scene activation
+`loading → signedOut → linking → connecting → signedIn`, plus
+`connectFailed`. On launch it restores a keychain token and, when a
+`server.json` and a section choice are saved, **opens the library from
+disk at once** (`openSavedLibrary`, state `signedIn`) while discovery runs
+behind it; a first launch waits on the connecting screen. **What a person
+keeps is filed under the Plex account** (`AppModel.account`, the `uuid`
+from plex.tv's `/api/v2/user`, looked up at sign-in and kept in the
+keychain beside the token so it answers offline): the listeners, the
+shortcuts, the mix builder's picks, recent searches and the section
+choice, the library-scoped ones through `AppModel.storageKey(_:)`. Device
+settings, downloads, the play cache and artwork tints are not.
+
+**There is one library object per server and section** (`CachedLibrary`
+in PlexKit, `notes/unified-library.md`), held as `model.library` typed
+`any LibrarySource` and replaced only when the account, server or section
+changes (`libraryGeneration`). It reads from the offline store's saved
+copy of every request (`LibraryKey`: the section's albums, artists,
+favorites, history and playlists; an album's tracks, an artist's albums
+and tracks, a playlist's items; one file each, dated by its mtime) and
+asks the attached server behind it when the copy is older than 60s
+(`revalidateAfter`), or waits on the server for a miss; a miss with no
+connection throws `PlexError.offline`. A failed revalidation changes
+nothing on screen, is reported to the model once, and leaves the key
+alone for 15s. Every saved copy that lands bumps `model.libraryRevision`,
+which the screens key their `.task(id:)` on, so a re-run inside the floor
+is disk only. **Screens never seed from disk, never catch a transport
+error and never call `connectionLost`**: a thrown read keeps what the
+screen has. Writes (hearts, playlist edits) go to the connection or throw
+`.offline` and refresh the keys they touched; `favoriteOverrides` on the
+model still layers a toggled heart over the track values the screens
+hold, and the pinned favorites and playlists are reconciled against the
+saved lists as they change (`libraryDidSave`). `tracks(inSection:)` is
+never saved (megabytes for one page); search asks the server when
+connected and matches the pinned tracks otherwise. Attaching a connection
+revalidates only the loaded keys that are stale: on a cold start the root
+reads from disk before discovery finishes, and asking for every loaded
+key made every launch refetch the lot.
+
+**Whether the server answers is `model.connection`, not a state**
+(`ConnectionMonitor`): `connected(server)`, `searching` or `unreachable`.
+The monitor runs discovery, attaches a `PlexLibrary` connection to the
+library or detaches it, and probes again when the library or the player
+reports a transport failure (`connectionLost` → `failed`). **Discovery
+rides out the handoff** (`discover(patience:)`): Wi-Fi drops seconds
+before cellular is up and `waitsForConnectivity` is off, so a transport
+failure is retried for up to 25s on a probe after a failure, 20s behind
+the saved library at launch, 10s on the connecting screen, none for a tap
+or the timer; plex.tv answering and no connection answering is the server
+itself away and gets one more try. `selectServer` gives better-ranked
+probes a 1s grace once a lower one answers, since every local address is
+dead away from home. A phone that walked from Wi-Fi to cellular still
+holds the LAN address, so the probe comes first and the connection is
+swapped in place when the same server answers elsewhere (the same address
+answering re-asks what is on screen); only when nothing answers is the
+connection detached. The probe is coalesced across the screens that
+failed together and not repeated within 15s, and **a failure on an
+address already left never probes**: a `URLError` whose `failingURL` host
+isn't the current address is answered with a retry alone, the library
+tries a fetch that failed on a replaced connection once on the new one,
+and the player reloads an item whose `itemBaseURL` the library has moved
+off on its own. **Unreachable, the monitor looks again on its own**
+(10s doubling to 60s) while the process lives, i.e. while audio plays or
+the app is up; the timer clears its handle before it runs the attempt,
+since a connect that lands cancels the timer. Scene activation
 (`UIScene.didActivateNotification` in `AppRuntime`, so the car's scene
-counts) call `reconnect()`; activation while signed in on a local
-address pings it with a 3s timeout first (`checkConnection`) so the
-screens don't each sit on the 10s timeout. Discovery, reconnection and
-the offline flips log under category `Connection`. Hearts are read-only
-offline. Reachability is decided by the server answering, never by
-`NWPathMonitor`. **A link that is weak rather than dead counts as online**
-(`notes/offline-degraded.md`): the probe is tiny and answers, and every
-fetch then goes to the server. So the album page and Favorites seed their
-list from what is saved before asking (`Downloads.tracks(inAlbum:)`,
-`AppModel.savedFavorites`), a failed refetch leaves the list standing,
-the shortcut's favorites fall back to the saved list, `AppModel.snapshot`
-takes a failed favorites or history fetch as nil and keeps the last
-snapshot's (an empty list once emptied the favorites offline and
-un-pinned their files), and `apiSession` fails a transfer at 60s.
+counts) calls `sceneActivated`: unreachable it tries again, throttled to
+30s unless tapped; connected on a local address it pings with a 3s
+timeout first so the screens don't each sit on the 10s timeout. `.searching`
+shows no banner for its first 4s (`searchingSlow`), then a spinner line
+over the saved library; `.unreachable` shows the banner with Try again
+and dims tiles with no file. The stack and the queue survive every change
+by construction. `AudioPlayer.adopt` runs on every change of
+`model.connection` as well as of the library: with a connection it drops
+the cache's failure backoff and resumes a queue parked by
+`resumeOnReconnect`, without one it only empties the prefetch window.
+`AudioPlayer` asks the same `connectionLost` when a stream fails every
+retry and when one **stalls**: any streamed item sat in `waiting` for 4s
+with no growth in `loadedTimeRanges` (the reload is a fresh transcode
+session too, so the same-address transcode rebuild is only the fallback
+inside the probe's throttle); recovered, it reloads at `currentTime` from
+the new address, and with no connection it advances when the next entry
+is on disk and otherwise **pauses in place and plays again from there
+when `adopt` brings a server back** (`resumeOnReconnect`), instead of
+running the queue out over entries with no file and no stream.
+`loadCurrentItem` does the same when nothing from the cursor on has a
+file and there is no connection (`waitForServer`): the cursor goes back
+to the entry asked for, the player empties, and `adopt` or a press of
+play loads it, so an album tapped while launch is still searching waits
+for the server rather than skipping every track. `TrackCache.retain`
+cancels an in-flight fetch whose address the window has moved away from.
+`PlexClient.apiSession` times a request out at 10s, not the shared
+session's 60s, so a dead address fails fast, fails a whole transfer at
+60s so a list that trickles over a weak link gives up and the saved copy
+stands, and `PlexClient.data` retries a `GET` once on `-1005`, the first
+request after a network change on a keep-alive the server dropped.
+Discovery and the connection flips log under category `Connection`, the
+library's fetches and failures under `Library`. Hearts and every write
+are refused with no connection. Reachability is decided by the server
+answering, never by `NWPathMonitor`. **A link that is weak rather than
+dead counts as connected** (`notes/offline-degraded.md`): the probe is
+tiny and answers. That is why every read is local-first: the saved copy
+shows at once whatever the link, and only a miss waits on the server.
 
 **CarPlay** (`App/ctunes/CarPlay/`, `notes/carplay.md`) is a second
 scene: `CarPlaySceneDelegate` is named in `App/Info.plist` under the
@@ -515,14 +547,21 @@ listener's page lists every veto in one list, artists first, a caption
 telling the kinds apart; artists are added there from the library, albums
 and tracks only from their menus and pages.
 
-`OfflineStore` (PlexKit actor, `notes/offline.md`, `notes/downloads.md`)
-owns the pins (artists, albums, tracks, and the favorites toggle per
-library: `favoriteSections` in the manifest, the group at
-`<server>/<section>/favorites.json`), the
-track list of every album browsed, the library snapshot and the covers and
-portraits under `Application Support/ctunes/Offline/<server>/`. It hands
-`TrackSource`s to the cache and reads the file system for status; per-track
-download state is never persisted. **The three pin kinds form a tree and
+`OfflineStore` (PlexKit actor, `notes/offline.md`, `notes/downloads.md`,
+`notes/unified-library.md`) owns the saved copy of every library request
+(`save(_:for:)`/`load(for:)`/`savedAt` by `LibraryKey`: the section's five
+lists under `<server>/<section>/`, the per-album, per-artist and
+per-playlist lists under `<server>/albums|artists|playlists/`, each one
+file written only from its own successful response and dated by its
+mtime), the `server.json` record a launch with no network opens from, the
+pins (artists, albums, tracks, and the favorites toggle per library:
+`favoriteSections` in the manifest; the favorites file is the one
+favorites list whether or not the pin is on, reconciled against the files
+when it is), and the covers and portraits, all under
+`Application Support/ctunes/Offline/<server>/`. A `library.json` from
+before the per-request files is split into them on first read. It hands
+`TrackSource`s to the cache and reads the file system for status;
+per-track download state is never persisted. **The three pin kinds form a tree and
 stay disjoint**: pinning an artist absorbs their album and track pins, and
 removing an album or track under a wider pin narrows that pin to what is
 left (an artist becomes album pins on the other albums, an album becomes
@@ -708,11 +747,11 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the page of the first listener with a veto, else the first listener's |
 | `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page; `shortcuts` on the Shortcuts page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
-| `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the last snapshot as if the server were unreachable; "Try again" connects for real |
+| `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the saved library with the connection unreachable; "Try again" and the retry timer connect for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
 | `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
-| `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music"; `mix:<title or id>` plays a shortcut through `PlayMixIntent`, the widgets' tap. Combine with `CTUNES_DEV_OFFLINE=1` for the snapshot path, or leave the token off for the signed-out error |
+| `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music"; `mix:<title or id>` plays a shortcut through `PlayMixIntent`, the widgets' tap. Combine with `CTUNES_DEV_OFFLINE=1` for the saved-library path, or leave the token off for the signed-out error |
 | `CTUNES_DEV_WIDGET_FEED` | `1` logs the widget feed each time the browse root writes it, under category `Widget` |
 | `CTUNES_DEV_URL` | a `ctunes://` URL, opened a few seconds after launch the way a widget's link would; `simctl openurl` from the terminal stops at the "Open in…?" prompt |
 

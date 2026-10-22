@@ -455,3 +455,55 @@ Steps 1–3 are two to three days; 4 and 5 a day.
   sees every failure, so it can say so.
 - Queued hearts, replayed on attach.
 - A longer floor on cellular, if the revalidation shows up in data use.
+
+## As built (Oct 2026)
+
+Phases 1 and 2 landed on `colbyr/unified-library` in five commits (the
+store split, the library unwired, the wiring, the attach fix, the monitor
+and collapse). Where the build departs from the plan above:
+
+- **`LibraryKey` and `ServerRecord`** live in `Sources/PlexKit/LibraryKey.swift`;
+  the artist's tracks are `artists/<rk>-tracks.json` beside
+  `artists/<rk>.json`. `Package.swift` moved to macOS 15 for `Mutex`.
+- **`OfflineStore.server(_:)` finds a legacy `library.json` itself** when
+  no `server.json` exists, so an install from before the split still
+  opens from disk on its first launch after updating, before any section
+  key is known.
+- **Attach revalidates only the stale loaded keys** (§2 said every loaded
+  key): on a cold start the root reads from disk before discovery
+  finishes, and forcing every loaded key made every launch refetch the
+  five lists. The failure memo is cleared on attach instead.
+- **A failed revalidation is reported first, then retried** once on
+  whatever connection is current after the report, so a miss that died on
+  the address the phone just left lands from the one the probe found.
+- **`favoriteOverrides` stays on the model**: `LibrarySource.setFavorite`
+  takes a rating key, so the library can't add a track to the saved list
+  optimistically; it refreshes the favorites after the write instead, and
+  the pinned group follows through `libraryDidSave`.
+- **`LibrarySource` gained `serverURL`** (the attached server's address,
+  nil with none) so the player compares an item's address without casting
+  to `PlexLibrary`.
+- **The monitor declares `connected` only after the section list lands**,
+  and the model opens the library before that, so the connection attaches
+  once; a server that answers the probe and nothing else is a failed
+  connect, not a connect that goes unreachable a second later.
+- **The offline retry timer clears its handle before it runs the
+  attempt.** A connect that lands cancels the timer, and cancelling the
+  task the attempt was running in failed the sections request with
+  `-999` on every retry. The old `AppModel` had the same cancel after its
+  critical path, where it only cut the pin syncs short.
+- **`.searching` earns the banner after 4s** (`searchingSlow`), not at
+  once: a LAN answers within a second or two and the banner only flashed.
+- **`sceneActivated`** on the model is the one activation entry: the
+  monitor tries again or pings, then the downloads resume when connected.
+- `CTUNES_DEV_OFFLINE` keeps its meaning; the timer's retry is forced and
+  connects for real, as a tap does.
+
+Verified on the iPhone Duo simulator against the Mac Mini: a legacy
+snapshot split into the per-list files and `server.json` on first launch;
+a relaunch 15s later made no request; a launch 3 minutes later refetched
+the five lists; the forced-offline launch opened from disk, pushed a
+saved album, and the timer reconnected at 10s. The pf network-block run
+and the visual checks are for a hand pass (the Duo's displays screenshot
+black from the terminal).
+
