@@ -83,7 +83,7 @@ struct FavoritesView: View {
 
     /// Offline, only tracks with a file are worth queueing.
     private var playable: [PlexTrack] {
-        offline ? rows.filter { model.downloads.isAvailable($0) } : rows
+        rows.filter(model.downloads.canPlay)
     }
 
     private var hiddenCount: HiddenCount { .over(hearted, hidden: hidden) }
@@ -249,7 +249,7 @@ struct FavoritesView: View {
     private func row(_ track: PlexTrack, at index: Int) -> some View {
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
-        let playable = !offline || model.downloads.isAvailable(track)
+        let playable = model.downloads.canPlay(track)
         // The ··· sits beside the tappable part rather than inside it, so
         // its tap is never also a tap on the row.
         return HStack(spacing: 4) {

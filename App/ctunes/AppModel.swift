@@ -416,7 +416,7 @@ final class AppModel {
         await monitor.watch(opened)
         libraryGeneration += 1
         libraryRevision += 1
-        downloads.attach(server: id.server)
+        downloads.attach(server: id.server, library: opened)
         playlists = await offline.load([PlexPlaylist].self, for: .playlists, server: id.server, section: id.section) ?? []
         if let albums = await offline.load([PlexAlbum].self, for: .albums, server: id.server, section: id.section) {
             downloads.setAlbums(albums)
@@ -1020,7 +1020,7 @@ final class AppModel {
             state = .signedOut
             await offline.clear()
             account = nil
-            downloads.attach(server: nil)
+            downloads.attach(server: nil, library: nil)
         } catch {
             errorMessage = error.localizedDescription
         }

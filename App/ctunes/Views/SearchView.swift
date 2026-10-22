@@ -244,7 +244,7 @@ struct SearchView: View {
                 title: track.title,
                 subtitle: Self.subtitle("Song", track.trackArtist ?? track.grandparentTitle),
                 download: model.downloads.state(track),
-                dimmed: offline && !model.downloads.isAvailable(track)
+                dimmed: !model.downloads.canPlay(track)
             ) {
                 recents.add(hit)
                 play(track)
@@ -265,7 +265,7 @@ struct SearchView: View {
     /// can't be fetched. Offline, only songs with a file play.
     private func play(_ track: PlexTrack) {
         guard let library = model.library else { return }
-        guard !offline || model.downloads.isAvailable(track) else { return }
+        guard model.downloads.canPlay(track) else { return }
         Task {
             var siblings = [track]
             if let key = track.parentRatingKey,
@@ -275,7 +275,7 @@ struct SearchView: View {
             let hidden = model.roster.hidden
             let playable = siblings.filter {
                 $0.id == track.id
-                    || (!hidden.hides($0, within: .album) && (!offline || model.downloads.isAvailable($0)))
+                    || (!hidden.hides($0, within: .album) && model.downloads.canPlay($0))
             }
             let start = playable.firstIndex { $0.id == track.id } ?? 0
             player.play(playable, startingAt: start, library: library)

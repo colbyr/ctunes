@@ -59,7 +59,7 @@ struct LibraryActions {
         let hidden = model.roster.hidden
         return tracks.filter {
             ($0.id == chosen?.id || !hidden.hides($0, within: container))
-                && (!offline || model.downloads.isAvailable($0))
+                && model.downloads.canPlay($0)
         }
     }
 
@@ -468,7 +468,7 @@ struct TrackMenu: View {
     @Environment(LibraryNavigator.self) private var navigator
 
     private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
-    private var playable: Bool { !offline || model.downloads.isAvailable(track) }
+    private var playable: Bool { model.downloads.canPlay(track) }
 
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)

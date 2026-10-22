@@ -568,7 +568,7 @@ struct MusicView: View {
     /// never enter the queue.
     private func allowed(_ tracks: [PlexTrack]) -> [PlexTrack] {
         tracks.filter {
-            !hidden.hides($0) && (!offline || model.downloads.isAvailable($0))
+            !hidden.hides($0) && model.downloads.canPlay($0)
         }
     }
 

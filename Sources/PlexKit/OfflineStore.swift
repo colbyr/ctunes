@@ -514,6 +514,13 @@ public actor OfflineStore {
         return files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
     }
 
+    /// A file for the part in either root, the cache's rule: the pinned
+    /// root at any quality, the cache root at `quality` or better, nil
+    /// quality anything. Synchronous, for the library's availability.
+    public nonisolated func localURL(server: String, part: PlexPart, quality: StreamQuality?) -> URL? {
+        cache.localURL(server: server, part: part, quality: quality)
+    }
+
     // MARK: - Offline reads
 
     /// Remembers an album's tracks as browsed online, so offline the page

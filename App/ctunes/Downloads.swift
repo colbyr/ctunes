@@ -68,6 +68,8 @@ final class Downloads {
     private let store: OfflineStore
     private let cache: TrackCache
     private(set) var server: String?
+    /// The library open, whose one availability answer the rows read.
+    @ObservationIgnored private var library: (any LibrarySource)?
     /// The library open, whose favorites group the inventory carries.
     /// Set by the model whenever the library changes.
     var section: String? {
@@ -130,9 +132,11 @@ final class Downloads {
         return { library.trackSource(for: $0, quality: quality) }
     }
 
-    /// The server whose pins to show; nil clears everything.
-    func attach(server: String?) {
+    /// The server whose pins to show, and the library open on it; nil
+    /// clears everything.
+    func attach(server: String?, library: (any LibrarySource)?) {
         self.server = server
+        self.library = library
         if server == nil { albums = [] }
         refresh()
     }
@@ -251,11 +255,13 @@ final class Downloads {
         return inventory.usage(of: tracks, server: server)
     }
 
-    /// Whether the file is on disk in either root, so it can play offline.
-    func isAvailable(_ track: PlexTrack) -> Bool {
+    /// Whether the track plays right now: a file on disk, or a server to
+    /// stream from. The library's one answer, read through here so a row
+    /// re-renders when a file lands or the connection changes.
+    func canPlay(_ track: PlexTrack) -> Bool {
         _ = generation
-        guard let server, let part = track.part else { return false }
-        return cache.localURL(server: server, part: part) != nil
+        _ = connected
+        return library?.canPlay(track) ?? false
     }
 
     /// The saved track list for an album, for the manager's pages.

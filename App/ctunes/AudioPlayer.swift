@@ -519,18 +519,21 @@ final class AudioPlayer {
         // in a burst and end.
         let server = library.serverIdentifier
         let asked = queue.currentIndex
-        // With a server a cached copy has to be as good as the streaming
-        // quality asks; a pinned one plays as it is; with none anything
-        // on disk does.
-        let wanted: StreamQuality? = library.isConnected ? streamQuality : nil
         var playable: (track: PlexTrack, part: PlexPart, local: URL?, url: URL)?
         while let track = currentTrack {
+            // The library's one answer: a file on disk as good as the
+            // streaming quality asks (a pinned one as it is, and anything
+            // on disk with no server), else the stream, else nothing.
             if let part = track.part {
-                let local = cache.localURL(server: server, part: part, quality: wanted)
-                if let url = local ?? remoteURL(for: track) {
-                    playable = (track, part, local, url)
+                switch library.availability(of: track, quality: streamQuality) {
+                case .local(let url):
+                    playable = (track, part, url, url)
+                case .stream:
+                    if let url = remoteURL(for: track) { playable = (track, part, nil, url) }
+                case .none:
                     break
                 }
+                if playable != nil { break }
             }
             log.error("nothing to play for the current entry, skipping")
             guard queue.advance(wrapping: false) else {
@@ -729,8 +732,9 @@ final class AudioPlayer {
     }
 
     private var nextEntryIsOnDisk: Bool {
-        guard let library, let next = queue.upcoming.first?.item, let part = next.part else { return false }
-        return cache.localURL(server: library.serverIdentifier, part: part) != nil
+        guard let library, let next = queue.upcoming.first?.item else { return false }
+        if case .local = library.availability(of: next, quality: streamQuality) { return true }
+        return false
     }
 
     /// An entry with no file and no server to stream it from: the player

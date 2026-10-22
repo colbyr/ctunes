@@ -242,6 +242,18 @@ public actor CachedLibrary: LibrarySource {
 
     // MARK: - URLs
 
+    /// With a server a cached copy has to be as good as the quality asked
+    /// (a pinned one plays as it is, since a pin is an ask to play from
+    /// disk); with none anything on disk does, and there is no stream.
+    public nonisolated func availability(of track: PlexTrack, quality: StreamQuality) -> Availability {
+        guard let part = track.part else { return .none }
+        let connected = isConnected
+        if let url = store.localURL(server: id.server, part: part, quality: connected ? quality : nil) {
+            return .local(url)
+        }
+        return connected ? .stream : .none
+    }
+
     public nonisolated func streamURL(for track: PlexTrack, quality: StreamQuality, sessionIdentifier: String) -> URL? {
         connection?.streamURL(for: track, quality: quality, sessionIdentifier: sessionIdentifier)
     }

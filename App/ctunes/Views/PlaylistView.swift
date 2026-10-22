@@ -99,7 +99,7 @@ struct PlaylistView: View {
     }
     /// Offline, only rows with a file are worth queueing.
     private var playableRows: [Row] {
-        offline ? rows.filter { model.downloads.isAvailable($0.track) } : rows
+        rows.filter { model.downloads.canPlay($0.track) }
     }
     private var playable: [PlexTrack] { playableRows.map(\.track) }
     private var hiddenCount: HiddenCount { .over(tracks, hidden: hidden) }
@@ -326,7 +326,7 @@ struct PlaylistView: View {
         let track = row.track
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
-        let playable = !offline || model.downloads.isAvailable(track)
+        let playable = model.downloads.canPlay(track)
         let placement = TrackPlacement.playlistItem(row.item, in: current, siblings: siblings)
         // The ··· sits beside the tappable part rather than inside it, so
         // its tap is never also a tap on the row.

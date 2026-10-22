@@ -330,6 +330,44 @@ struct CachedLibraryTests {
         #expect(try await library.track(ratingKey: "4") == favorite)
     }
 
+    @Test("availability: a file as good as asked, a pinned or any file with no server, else the stream, else nothing")
+    func availability() async throws {
+        let (cache, root, _) = try Support.makeCache()
+        let store = OfflineStore(directory: root.appending(path: "Offline"), cache: cache,
+                                 session: MockURLProtocol.session { _ in .init(body: Data(count: 64)) })
+        let server = Server(try Self.fixtureRoutes())
+        let library = CachedLibrary(id: Self.id, store: store, token: "TOKEN", record: nil)
+        await library.attach(connection(server))
+        let original = Support.track(id: 1, album: "9", artist: "A")
+        let lesser = Support.track(id: 2, album: "9", artist: "A")
+        let pinned = Support.track(id: 3, album: "9", artist: "A")
+        let absent = Support.track(id: 4, album: "9", artist: "A")
+        try await cache.download(Support.source(id: 1))
+        let copy = try #require(Support.transcoded(id: 2, quality: .kbps128).filePath)
+        let copyURL = cache.directory.appending(path: copy)
+        try FileManager.default.createDirectory(at: copyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(count: 10).write(to: copyURL)
+        await cache.pin([Support.transcoded(id: 3, quality: .kbps128)])
+        let pinnedURL = cache.pinnedDirectory.appending(path: try #require(Support.transcoded(id: 3, quality: .kbps128).filePath))
+        try FileManager.default.createDirectory(at: pinnedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(count: 10).write(to: pinnedURL)
+
+        #expect(library.availability(of: original, quality: .kbps192) == .local(try #require(cache.localURL(server: "M", part: original.part!))))
+        #expect(library.availability(of: lesser, quality: .original) == .stream, "a 128k copy is not the original")
+        #expect(library.availability(of: lesser, quality: .kbps128) == .local(copyURL))
+        #expect(library.availability(of: pinned, quality: .original) == .local(pinnedURL), "a pin plays as it is")
+        #expect(library.availability(of: absent, quality: .original) == .stream)
+        #expect(library.canPlay(absent))
+        let noPart = try JSONDecoder().decode(PlexTrack.self, from: Data(#"{"ratingKey":"5","title":"x"}"#.utf8))
+        #expect(library.availability(of: noPart, quality: .original) == .none)
+
+        await library.detach()
+        #expect(library.availability(of: lesser, quality: .original) == .local(copyURL), "anything on disk with no server")
+        #expect(library.availability(of: absent, quality: .original) == .none)
+        #expect(!library.canPlay(absent))
+        #expect(library.canPlay(pinned))
+    }
+
     @Test("artwork is the saved file, then the connection's URL, then the record's address")
     func artwork() async throws {
         let (library, server, _) = try await make()

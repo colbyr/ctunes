@@ -501,9 +501,10 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
 
     private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
 
-    /// Offline, only a track with a file can enter the queue.
+    /// Only a track that plays right now enters the queue: with no
+    /// server, the ones with a file.
     private func playable(_ tracks: [PlexTrack]) -> [PlexTrack] {
-        offline ? tracks.filter { model.downloads.isAvailable($0) } : tracks
+        tracks.filter(model.downloads.canPlay)
     }
 
     /// The whole list from the top, or from one of its tracks, then Now

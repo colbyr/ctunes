@@ -320,7 +320,7 @@ struct TracksView: View {
         let favorite = model.isFavorite(track)
         // Offline, a row with no file has nothing to play; a file left in
         // the cache root from an earlier play counts.
-        let playable = !offline || model.downloads.isAvailable(track)
+        let playable = model.downloads.canPlay(track)
         // A track a listening rider vetoed on its own: still a row, dimmed
         // and named, since the album was opened on purpose. A veto on the
         // whole album or artist is the header's to explain.
@@ -396,7 +396,7 @@ struct TracksView: View {
     /// itself plays even when a listener hides all of it, since the page
     /// was opened on purpose.
     private var playableTracks: [PlexTrack] {
-        tracks.filter { !hidden.hides($0, within: .album) && (!offline || model.downloads.isAvailable($0)) }
+        tracks.filter { !hidden.hides($0, within: .album) && model.downloads.canPlay($0) }
     }
 
     private func play() {

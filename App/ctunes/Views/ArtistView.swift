@@ -270,7 +270,7 @@ struct ArtistView: View {
             let fetched = (try? await library.tracks(forArtist: route.ratingKey, inSection: section.key)) ?? []
             // The artist plays even when hidden whole; their vetoed
             // albums and tracks are skipped.
-            let playable = fetched.filter { !hidden.hides($0, within: .artist) && (!offline || model.downloads.isAvailable($0)) }
+            let playable = fetched.filter { !hidden.hides($0, within: .artist) && model.downloads.canPlay($0) }
             guard !playable.isEmpty else {
                 nothingToPlay = true
                 return

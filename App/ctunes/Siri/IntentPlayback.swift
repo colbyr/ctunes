@@ -321,7 +321,7 @@ struct IntentPlayback {
     private func playable(_ tracks: [PlexTrack], within container: VetoKind?) -> [PlexTrack] {
         let hidden = model.roster.hidden
         return tracks.filter {
-            !hidden.hides($0, within: container) && (!offline || model.downloads.isAvailable($0))
+            !hidden.hides($0, within: container) && model.downloads.canPlay($0)
         }
     }
 
