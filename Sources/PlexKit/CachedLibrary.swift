@@ -63,7 +63,7 @@ public actor CachedLibrary: LibrarySource {
 
     public nonisolated var connection: PlexLibrary? { connectionBox.withLock { $0 } }
     public nonisolated var isConnected: Bool { connection != nil }
-    public nonisolated var isOffline: Bool { !isConnected }
+    public nonisolated var serverURL: URL? { connection?.baseURL }
     public nonisolated var serverIdentifier: String { id.server }
     public nonisolated var record: ServerRecord? { recordBox.withLock { $0 } }
 
@@ -314,9 +314,12 @@ public actor CachedLibrary: LibrarySource {
 
     /// The fetch on the connection of the moment. A swap while it runs
     /// leaves the result good, since it is the same server. A transport
-    /// failure after a swap (the phone left Wi-Fi under the request and
-    /// the monitor has already moved) is tried once more on the new
-    /// connection; one on the connection still current is reported.
+    /// failure on the connection still current is reported, and the
+    /// report may itself move the connection (the monitor probes and
+    /// finds the server elsewhere); either way a failure that leaves a
+    /// different connection current is tried once more on it, so a miss
+    /// that died on the address the phone just left lands from the one
+    /// that answers.
     private func start<Value: Codable & Sendable>(
         _ key: LibraryKey, _ fetch: @escaping @Sendable (PlexLibrary) async throws -> Value
     ) -> Task<any Sendable, Error> {
@@ -336,15 +339,15 @@ public actor CachedLibrary: LibrarySource {
                     return value
                 } catch {
                     guard Self.isConnectionError(error) else { throw error }
-                    if let current = self.connection, current !== connection, attempts < 2 {
-                        logger.notice("fetch failed on an address already left, retrying on the current one")
-                        connection = current
-                        continue
-                    }
-                    failedAt[key] = Date()
                     if self.connection === connection {
+                        failedAt[key] = Date()
                         logger.error("fetch failed \(String(describing: key), privacy: .public): \(String(describing: error), privacy: .public)")
                         await failureHandler?(error, connection)
+                    }
+                    if let current = self.connection, current !== connection, attempts < 2 {
+                        logger.notice("retrying \(String(describing: key), privacy: .public) on the connection that answered")
+                        connection = current
+                        continue
                     }
                     throw error
                 }

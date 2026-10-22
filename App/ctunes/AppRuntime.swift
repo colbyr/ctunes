@@ -106,21 +106,26 @@ final class AppRuntime {
         }
     }
 
-    /// A queue that started offline reports timelines once the server is
-    /// back, and one that started online keeps playing pinned files. And
-    /// sign-out lives in the model, which doesn't know the player: stop
-    /// playback and drop the cached audio when it happens.
+    /// The player adopts the library when it is replaced and again when
+    /// its connection attaches, moves or detaches: a queue that started
+    /// with no server reports timelines once one answers, and one that
+    /// started online keeps playing pinned files. And sign-out lives in
+    /// the model, which doesn't know the player: stop playback and drop
+    /// the cached audio when it happens.
     private func followModel() {
         let model = model, player = player, catalog = catalog
         Task { @MainActor in
             var generation = model.libraryGeneration
+            var connection = model.connectionGeneration
             var state = model.state
             var section = model.selectedSection?.key
             for await current in Observations({
-                (state: model.state, generation: model.libraryGeneration, section: model.selectedSection?.key)
+                (state: model.state, generation: model.libraryRevision,
+                 connection: model.connectionGeneration, section: model.selectedSection?.key)
             }) {
-                if current.generation != generation {
+                if current.generation != generation || current.connection != connection {
                     generation = current.generation
+                    connection = current.connection
                     player.adopt(model.library)
                 }
                 // A library switch starts the catalog over with the root.

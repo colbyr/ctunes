@@ -371,9 +371,9 @@ struct MusicView: View {
                 Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }
         }
-        // Keyed on the generation so going offline, or coming back, reloads
-        // from whichever library is current.
-        .task(id: model.libraryGeneration) {
+        // Keyed on the revision: a list landing from the server, or a
+        // library switch, reads again from the saved copies.
+        .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
             if ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS_SHEET"] != nil {
@@ -394,12 +394,12 @@ struct MusicView: View {
         // A playlist shortcut added in Settings needs its tracks counted
         // too; keyed on the playlists the shortcuts name, not the list
         // itself, so restyling one doesn't refetch.
-        .task(id: PlaylistShortcutsKey(keys: playlistShortcutKeys, generation: model.libraryGeneration)) {
+        .task(id: PlaylistShortcutsKey(keys: playlistShortcutKeys, generation: model.libraryRevision)) {
             await loadPlaylistTracks()
         }
         // The widgets draw these cards: written as they settle, a beat
         // after the last change so a page of counts landing is one write.
-        .task(id: WidgetFeedKey(cards: visibleShortcuts.map { ($0, subtitle(for: $0)) }, generation: model.libraryGeneration)) {
+        .task(id: WidgetFeedKey(cards: visibleShortcuts.map { ($0, subtitle(for: $0)) }, generation: model.libraryRevision)) {
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled, let library = model.library else { return }
             await WidgetFeedWriter.publish(visibleShortcuts.map { (mix: $0, subtitle: subtitle(for: $0)) }, library: library)
@@ -425,10 +425,11 @@ struct MusicView: View {
     /// "32 tracks for you & Laura"; just the count with no listeners set up,
     /// just the listeners until the count arrives, nothing with neither.
     /// The fetch: on appear, on a library swap, and on pull to refresh.
+    /// The library answers each list from its saved copy and asks the
+    /// server behind it, so this is cheap to run again on every revision;
+    /// a miss it can't fetch leaves the catalog as it was.
     private func load() async {
         guard let library = model.library else { return }
-        var history: [PlayHistoryEntry]?
-        var hearted: [PlexTrack]?
         do {
             async let favoriteTracks = library.favoriteTracks(inSection: section.key)
             // Optional: the grid falls back to play counts without it.
@@ -439,22 +440,12 @@ struct MusicView: View {
             async let playlistList: () = model.loadPlaylists()
             catalog.albums = try await library.albums(inSection: section.key)
             catalog.loaded = true
-            history = try? await plays
-            catalog.rotation = Rotation(history: history ?? [], albums: albums)
+            catalog.rotation = Rotation(history: (try? await plays) ?? [], albums: albums)
             catalog.artists = (try? await artistList) ?? []
-            // A failure keeps the last count: on a weak link the albums
-            // land and this doesn't, and nil here once read as no
-            // favorites and was written to the snapshot as such.
-            hearted = try? await favoriteTracks
-            if let hearted { catalog.favorites = hearted }
+            if let hearted = try? await favoriteTracks { catalog.favorites = hearted }
             await playlistList
         } catch {
-            await model.connectionLost(error)
             catalog.loaded = true
-            return
-        }
-        if !library.isOffline {
-            await model.snapshot(albums: albums, favorites: hearted, history: history)
         }
     }
 

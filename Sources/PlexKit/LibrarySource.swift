@@ -1,12 +1,18 @@
 import Foundation
 
-/// What the browse screens and the player need from a library, satisfied by
-/// `PlexLibrary` against a server and by `OfflineLibrary` over a snapshot.
-/// Views hold `any LibrarySource`, so entering and leaving offline swaps the
-/// value behind one property instead of branching at every fetch.
+/// What the browse screens and the player need from a library. The app
+/// holds a `CachedLibrary`, which answers from its saved copies and the
+/// server behind them; `PlexLibrary` is the server alone and conforms for
+/// the live tests. Views hold `any LibrarySource`.
 public protocol LibrarySource: Sendable {
     var serverIdentifier: String { get }
-    var isOffline: Bool { get }
+    /// Whether a server is attached: writes work, a miss can be fetched,
+    /// and a stream URL exists. Saved copies and files on disk serve
+    /// either way.
+    var isConnected: Bool { get }
+    /// The attached server's address, nil with none: the player compares
+    /// it with the address an item loaded from.
+    var serverURL: URL? { get }
     func musicSections() async throws -> [PlexSection]
     func artists(inSection section: String) async throws -> [PlexArtist]
     func albums(inSection section: String) async throws -> [PlexAlbum]
@@ -69,5 +75,6 @@ extension LibrarySource {
 }
 
 extension PlexLibrary: LibrarySource {
-    public nonisolated var isOffline: Bool { false }
+    public nonisolated var isConnected: Bool { true }
+    public nonisolated var serverURL: URL? { baseURL }
 }

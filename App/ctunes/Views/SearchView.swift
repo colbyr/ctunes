@@ -63,7 +63,7 @@ struct SearchView: View {
     @State private var recents = RecentSearches()
 
     private var needle: String { LibrarySearch.needle(query) }
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     private var hidden: VetoSet { model.roster.hidden }
     private var hits: [SearchHit] {
         LibrarySearch.hits(
@@ -147,7 +147,7 @@ struct SearchView: View {
         // key; the artists and albums above answer at once regardless.
         // Keyed on the generation too, so a search opened on the snapshot
         // while the server was still being found asks again once it is.
-        .task(id: TrackFetch(needle: needle, generation: model.libraryGeneration)) {
+        .task(id: TrackFetch(needle: needle, generation: model.libraryRevision)) {
             guard !needle.isEmpty else {
                 tracks = []
                 trackQuery = ""
@@ -162,7 +162,6 @@ struct SearchView: View {
                 trackQuery = needle
             } catch {
                 guard !Task.isCancelled else { return }
-                await model.connectionLost(error)
                 tracks = []
                 trackQuery = needle
             }
@@ -272,9 +271,6 @@ struct SearchView: View {
             if let key = track.parentRatingKey,
                let fetched = try? await library.tracks(inAlbum: key), !fetched.isEmpty {
                 siblings = fetched
-                if let album = track.album {
-                    await model.rememberTracks(fetched, inAlbum: album)
-                }
             }
             let hidden = model.roster.hidden
             let playable = siblings.filter {

@@ -98,7 +98,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
             let changes = Observations {
                 (
                     state: model.state,
-                    generation: model.libraryGeneration,
+                    generation: model.libraryRevision,
                     section: model.selectedSection?.key,
                     hidden: model.roster.hidden,
                     playlists: model.playlists
@@ -187,10 +187,10 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
 
     // MARK: - Library
 
-    /// The same fetches the browse root and Favorites make, the playlist
+    /// The same reads the browse root and Favorites make, the playlist
     /// list through the model since a car can launch the app with no
-    /// window to load it. A failure runs the usual rediscovery; the
-    /// lists keep whatever they had.
+    /// window to load it. A miss the library can't fetch leaves the
+    /// lists with whatever they had.
     private func reload(generation: Int) {
         loading?.cancel()
         guard let library = model.library, let section = model.selectedSection else { return }
@@ -213,10 +213,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
                 self.rotation = Rotation(history: history, albums: albums)
                 self.loadedGeneration = generation
                 self.render()
-            } catch {
-                guard let self, !Task.isCancelled else { return }
-                await self.model.connectionLost(error)
-            }
+            } catch {}
         }
     }
 
@@ -307,13 +304,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
     /// the artist page's two hero cards.
     private func showArtist(ratingKey: String, title: String) async {
         guard let library = model.library, let section = model.selectedSection else { return }
-        let albums: [PlexAlbum]
-        do {
-            albums = try await library.albums(forArtist: ratingKey, inSection: section.key)
-        } catch {
-            await model.connectionLost(error)
-            return
-        }
+        guard let albums = try? await library.albums(forArtist: ratingKey, inSection: section.key) else { return }
         // The car has no dimmed tile, so a vetoed album is left out of the
         // artist's list rather than shown; the tracks are filtered too.
         let hidden = model.roster.hidden
@@ -508,7 +499,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
 
     // MARK: - Playback
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
 
     /// Offline, only a track with a file can enter the queue.
     private func playable(_ tracks: [PlexTrack]) -> [PlexTrack] {
@@ -546,48 +537,31 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         interface.presentTemplate(alert, animated: true, completion: nil)
     }
 
-    /// Every track of an album, remembered for offline like a browsed
-    /// page, minus the tracks the active listeners veto on their own.
+    /// Every track of an album, minus the tracks the active listeners
+    /// veto on their own.
     private func tracks(of album: PlexAlbum) async -> [PlexTrack] {
-        guard let library = model.library else { return [] }
-        do {
-            let tracks = try await library.tracks(inAlbum: album.ratingKey)
-            await model.rememberTracks(tracks, inAlbum: album)
-            let hidden = model.roster.hidden
-            return tracks.filter { !hidden.hides($0, within: .album) }
-        } catch {
-            await model.connectionLost(error)
-            return []
-        }
+        guard let library = model.library,
+              let tracks = try? await library.tracks(inAlbum: album.ratingKey) else { return [] }
+        let hidden = model.roster.hidden
+        return tracks.filter { !hidden.hides($0, within: .album) }
     }
 
-    /// Every track of a playlist, remembered for offline like a browsed
-    /// page, minus whatever the active listeners veto by any means: the
-    /// playlist is a mixed bag, so every veto applies.
+    /// Every track of a playlist, minus whatever the active listeners
+    /// veto by any means: the playlist is a mixed bag, so every veto
+    /// applies.
     private func tracks(of playlist: PlexPlaylist) async -> [PlexTrack] {
-        guard let library = model.library else { return [] }
-        do {
-            let items = try await library.items(inPlaylist: playlist.ratingKey)
-            await model.rememberItems(items, inPlaylist: playlist)
-            let hidden = model.roster.hidden
-            return items.map(\.track).filter { !hidden.hides($0) }
-        } catch {
-            await model.connectionLost(error)
-            return []
-        }
+        guard let library = model.library,
+              let items = try? await library.items(inPlaylist: playlist.ratingKey) else { return [] }
+        let hidden = model.roster.hidden
+        return items.map(\.track).filter { !hidden.hides($0) }
     }
 
     /// Every track of an artist, minus their vetoed albums and tracks.
     private func tracks(ofArtist key: String) async -> [PlexTrack] {
-        guard let library = model.library, let section = model.selectedSection else { return [] }
-        do {
-            let tracks = try await library.tracks(forArtist: key, inSection: section.key)
-            let hidden = model.roster.hidden
-            return tracks.filter { !hidden.hides($0, within: .artist) }
-        } catch {
-            await model.connectionLost(error)
-            return []
-        }
+        guard let library = model.library, let section = model.selectedSection,
+              let tracks = try? await library.tracks(forArtist: key, inSection: section.key) else { return [] }
+        let hidden = model.roster.hidden
+        return tracks.filter { !hidden.hides($0, within: .artist) }
     }
 
     // MARK: - Now Playing

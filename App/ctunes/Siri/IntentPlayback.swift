@@ -72,7 +72,7 @@ struct IntentPlayback {
     }
 
     private var library: any LibrarySource { model.library ?? initialLibrary }
-    private var offline: Bool { library.isOffline }
+    private var offline: Bool { !library.isConnected }
     /// What the entity ids carry, so an id from another server never
     /// resolves (`SiriID`).
     var server: String { library.serverIdentifier }
@@ -120,7 +120,6 @@ struct IntentPlayback {
     /// Returns the count.
     func play(playlist: PlexPlaylist, shuffled: Bool) async throws -> Int {
         let items = try await fetch { try await library.items(inPlaylist: playlist.ratingKey) }
-        await model.rememberItems(items, inPlaylist: playlist)
         let tracks = playable(items.map(\.track), within: nil)
         try play(shuffled ? tracks.spreadShuffled() : tracks)
         return tracks.count
@@ -232,9 +231,6 @@ struct IntentPlayback {
             name = artist.name
         case .album(let album):
             let all = try await fetch { try await library.tracks(inAlbum: album.ratingKey) }
-            if let known = catalog.albums.first(where: { $0.ratingKey == album.ratingKey }) {
-                await model.rememberTracks(all, inAlbum: known)
-            }
             tracks = playable(all, within: .album)
             name = album.artistName.isEmpty ? album.title : "\(album.title) by \(album.artistName)"
         case .song(let song):
@@ -242,7 +238,6 @@ struct IntentPlayback {
             var siblings = [track]
             if let key = song.albumRatingKey, let fetched = try? await library.tracks(inAlbum: key), !fetched.isEmpty {
                 siblings = fetched
-                if let album = track.album { await model.rememberTracks(fetched, inAlbum: album) }
             }
             let rest = playable(siblings.filter { $0.id != track.id }, within: .album)
             tracks = siblings.filter { sibling in sibling.id == track.id || rest.contains { $0.id == sibling.id } }
@@ -260,7 +255,6 @@ struct IntentPlayback {
         case .playlist(let playlist):
             let found = try await self.playlist(ratingKey: playlist.ratingKey)
             let items = try await fetch { try await library.items(inPlaylist: found.ratingKey) }
-            await model.rememberItems(items, inPlaylist: found)
             tracks = playable(items.map(\.track), within: nil)
             name = found.title
         }
@@ -307,25 +301,19 @@ struct IntentPlayback {
 
     // MARK: - Helpers
 
-    /// One request, and on a connection error the same rediscovery a
-    /// screen runs, retried once when the server answers elsewhere.
+    /// One read of the library, which answers from its saved copy and
+    /// handles a failed fetch itself; a miss it can't fetch is what Siri
+    /// is told.
     private func fetch<T: Sendable>(_ request: () async throws -> T) async throws -> T {
         do {
             return try await request()
         } catch {
-            guard await model.connectionLost(error) else { throw IntentFailure.fetchFailed }
-            do {
-                return try await request()
-            } catch {
-                throw IntentFailure.fetchFailed
-            }
+            throw IntentFailure.fetchFailed
         }
     }
 
     private func tracks(of album: PlexAlbum) async throws -> [PlexTrack] {
-        let tracks = try await fetch { try await library.tracks(inAlbum: album.ratingKey) }
-        await model.rememberTracks(tracks, inAlbum: album)
-        return tracks
+        try await fetch { try await library.tracks(inAlbum: album.ratingKey) }
     }
 
     /// What can enter the queue: never a track the active listeners hide

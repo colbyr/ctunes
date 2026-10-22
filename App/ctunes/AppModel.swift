@@ -30,11 +30,25 @@ final class AppModel {
     private(set) var state: State = .loading
     var errorMessage: String?
 
-    /// Set once a server has been reached, or a snapshot opened; the browse
-    /// views read it.
+    /// The one library for the server and section, open from disk as soon
+    /// as both are known and kept across every connection change; the
+    /// browse views read it. Replaced only when the account, server or
+    /// section changes.
     private(set) var library: (any LibrarySource)?
-    /// Bumped whenever `library` is replaced, so screens re-run their `.task`.
+    private var cached: CachedLibrary?
+    /// The server connection discovery found, attached to the library;
+    /// nil while nothing answers.
+    private var connection: PlexLibrary?
+    /// Bumped whenever `library` is replaced.
     private(set) var libraryGeneration = 0
+    /// Bumped as every saved copy lands and with the generation: what the
+    /// screens key their tasks on, so a page reads again (from disk, the
+    /// library's floor keeping the server out of it) when its lists change.
+    private(set) var libraryRevision = 0
+    /// Bumped when the connection attaches, moves or detaches, so the
+    /// player adopts the library again.
+    private(set) var connectionGeneration = 0
+    private var libraryFollower: Task<Void, Never>?
     /// True while an offline "Try again" is in flight.
     private(set) var reconnecting = false
     private(set) var serverName: String?
@@ -279,11 +293,9 @@ final class AppModel {
             await reconnect(force: true)
             return
         }
-        if let snapshot = await lastSnapshot() {
-            enterOffline(snapshot, state: .reconnecting)
-        } else {
-            state = .connecting
-        }
+        // The last library opens from disk at once while discovery runs
+        // behind it; a first launch has nothing to show and waits.
+        state = await openSavedLibrary() ? .reconnecting : .connecting
         await attemptConnect(tapped: false)
     }
 
@@ -303,9 +315,9 @@ final class AppModel {
         guard let client, let token else { return }
         do {
             if Self.forceOffline, !tapped { throw PlexError.noServerReachable }
-            // Behind the snapshot there is time to ride out a network that
-            // is still coming up; on the connecting screen less so, and a
-            // tap or the offline timer wants one answer now.
+            // Behind the saved library there is time to ride out a network
+            // that is still coming up; on the connecting screen less so,
+            // and a tap or the offline timer wants one answer now.
             let patience: Duration = switch state {
             case .reconnecting: .seconds(20)
             case .connecting: .seconds(10)
@@ -316,19 +328,20 @@ final class AppModel {
             if account == nil, let auth {
                 account = try? await auth.lookUpAccount(token: token)
             }
-            let library = PlexLibrary(client: client, server: server, token: token)
-            let sections = try await library.musicSections()
-
-            self.library = library
-            serverName = server.name
-            self.sections = sections
-            let saved = UserDefaults.standard.string(forKey: sectionKey(server: server.machineIdentifier))
-            selectedSection = sections.first { $0.key == saved } ?? sections.first.flatMap {
-                sections.count == 1 ? $0 : nil
-            }
+            let connection = PlexLibrary(client: client, server: server, token: token)
+            let sections = try await connection.musicSections()
+            let record = ServerRecord(name: server.name, sections: sections, baseURL: server.baseURL)
+            try? await offline.saveServer(record, server: server.machineIdentifier)
             UserDefaults.standard.set(server.machineIdentifier, forKey: Self.serverDefaultsKey)
             rememberServerToken(server)
-            libraryGeneration += 1
+            serverName = server.name
+            self.sections = sections
+            self.connection = connection
+            let saved = UserDefaults.standard.string(forKey: sectionKey(server: server.machineIdentifier))
+            let section = sections.first { $0.key == saved } ?? sections.first.flatMap {
+                sections.count == 1 ? $0 : nil
+            }
+            await openLibrary(server: server.machineIdentifier, section: section, record: record)
             errorMessage = nil
             state = .signedIn
             cancelOfflineRetry()
@@ -343,26 +356,23 @@ final class AppModel {
             defer { if state == .offline { scheduleOfflineRetry() } }
             // Already offline: stay there; the banner shows the error.
             guard state != .offline else { return }
-            // Browsing the snapshot already: only the banner changes.
+            // Browsing the saved library already: only the banner changes.
             if state == .reconnecting {
                 state = .offline
                 return
             }
-            if let snapshot = await lastSnapshot() {
-                enterOffline(snapshot)
-            } else {
-                state = .connectFailed
-            }
+            state = await openSavedLibrary() ? .offline : .connectFailed
         }
     }
 
     /// Discovery that rides out the handoff between networks. Wi-Fi drops
     /// a few seconds before cellular is up, and with `waitsForConnectivity`
     /// off every request in that gap fails at once, so one probe conceded
-    /// to the snapshot before the phone had a network to try. A transport
-    /// failure is retried until `patience` runs out; plex.tv answering and
-    /// no connection answering is the server itself away, and gets one
-    /// more try in case the cellular path had just come up under it.
+    /// to the saved library before the phone had a network to try. A
+    /// transport failure is retried until `patience` runs out; plex.tv
+    /// answering and no connection answering is the server itself away,
+    /// and gets one more try in case the cellular path had just come up
+    /// under it.
     private func discover(client: PlexClient, token: String, patience: Duration) async throws -> PlexServer {
         let deadline = ContinuousClock.now + patience
         var unreachable = 0
@@ -414,28 +424,118 @@ final class AppModel {
         offlineRetryDelay = Self.offlineRetryFloor
     }
 
-    private func lastSnapshot() async -> LibrarySnapshot? {
-        guard let server = UserDefaults.standard.string(forKey: Self.serverDefaultsKey) else { return nil }
-        let section = UserDefaults.standard.string(forKey: sectionKey(server: server))
-        return await offline.snapshot(server: server, section: section)
+    // MARK: - The library
+
+    /// Opens the last library from what was saved, with no network: the
+    /// server record and the section chosen, or the only one. False when
+    /// nothing was saved, which is a first launch.
+    private func openSavedLibrary() async -> Bool {
+        if cached != nil { return true }
+        guard let server = UserDefaults.standard.string(forKey: Self.serverDefaultsKey),
+              let record = await offline.server(server)
+        else { return false }
+        let saved = UserDefaults.standard.string(forKey: sectionKey(server: server))
+        guard let section = record.sections.first(where: { $0.key == saved })
+            ?? (record.sections.count == 1 ? record.sections.first : nil)
+        else { return false }
+        serverName = record.name
+        sections = record.sections
+        await openLibrary(server: server, section: section, record: record)
+        downloads.attach(server: server, offline: true)
+        return true
     }
 
-    private func enterOffline(_ snapshot: LibrarySnapshot, state: State = .offline) {
-        library = OfflineLibrary(snapshot: snapshot, store: offline, token: serverToken ?? token)
-        serverName = snapshot.serverName
-        sections = snapshot.sections
-        selectedSection = snapshot.section
-        playlists = snapshot.playlists
+    /// The library for the section: the one open when it is the same (a
+    /// reconnect attaches the connection to it), a new object when the
+    /// server or section changed. No section closes it, and the picker
+    /// shows until one is chosen.
+    private func openLibrary(server: String, section: PlexSection?, record: ServerRecord?) async {
+        guard let section else {
+            closeLibrary()
+            selectedSection = nil
+            return
+        }
+        let id = LibraryID(server: server, section: section.key)
+        if let cached, cached.id == id {
+            selectedSection = section
+            if let connection { await cached.attach(connection, record: record) }
+            connectionGeneration += 1
+            return
+        }
+        closeLibrary()
+        let opened = CachedLibrary(id: id, store: offline, token: serverToken ?? token, record: record)
+        await opened.onConnectionFailure { [weak self] error, _ in
+            await self?.connectionLost(error)
+        }
+        cached = opened
+        library = opened
+        selectedSection = section
+        follow(opened)
+        if let connection { await opened.attach(connection, record: record) }
         libraryGeneration += 1
-        self.state = state
-        downloads.attach(server: snapshot.server, offline: true)
-        downloads.setAlbums(snapshot.albums)
+        libraryRevision += 1
+        connectionGeneration += 1
+        playlists = await offline.load([PlexPlaylist].self, for: .playlists, server: id.server, section: id.section) ?? []
+        if let albums = await offline.load([PlexAlbum].self, for: .albums, server: id.server, section: id.section) {
+            downloads.setAlbums(albums)
+        }
+    }
+
+    private func closeLibrary() {
+        libraryFollower?.cancel()
+        libraryFollower = nil
+        cached = nil
+        library = nil
+    }
+
+    /// Mirrors the library's changes: the revision the screens key on,
+    /// and the lists the app keeps beside the library (the playlists for
+    /// the menus, the albums for the download badges, the favorites and
+    /// the pinned playlists reconciled against their files).
+    private func follow(_ library: CachedLibrary) {
+        libraryFollower?.cancel()
+        libraryFollower = Task { [weak self] in
+            for await key in library.changes {
+                guard let self, self.cached === library else { return }
+                self.libraryRevision += 1
+                await self.libraryDidSave(key)
+            }
+        }
+    }
+
+    private func libraryDidSave(_ key: LibraryKey) async {
+        guard let cached, let section = selectedSection else { return }
+        let server = cached.id.server
+        switch key {
+        case .albums:
+            if let albums = await offline.load([PlexAlbum].self, for: .albums, server: server, section: section.key) {
+                downloads.setAlbums(albums)
+            }
+        case .playlists:
+            await loadPlaylists()
+        case .favorites:
+            await syncFavoritesPin()
+        case .playlistItems(let ratingKey):
+            guard await offline.playlistPinned(ratingKey, server: server),
+                  let items = await offline.items(inPlaylist: ratingKey, server: server)
+            else { return }
+            await offline.setPlaylistItems(items, inPlaylist: ratingKey, server: server, sources: downloads.sources(cached))
+            downloads.refresh()
+        case .artists, .history, .albumTracks, .artistAlbums, .artistTracks:
+            break
+        }
+    }
+
+    /// The server the library is on, or the connection's before a section
+    /// is chosen.
+    private var currentServer: String? {
+        cached?.id.server ?? connection?.serverIdentifier
     }
 
     /// Whether launch has settled: a library is open for good, or the app
     /// knows it can't have one. `reconnecting` is unsettled on purpose: an
     /// intent that fires with the phone locked should get the server, not
-    /// the snapshot, when the server is a second away.
+    /// the saved copy, when the server is a second away.
     var isSettled: Bool {
         switch state {
         case .loading, .connecting, .reconnecting: false
@@ -446,8 +546,8 @@ final class AppModel {
     /// Waits for launch to settle, so an intent that fired with no window
     /// and `bootstrap` still running has a library to play from. Returns
     /// the state it settled in, or the current one after `timeout`: a
-    /// launch still `reconnecting` then plays from the snapshot, which is
-    /// what the browse root would show.
+    /// launch still `reconnecting` then plays from what is saved, which
+    /// is what the browse root would show.
     func ready(timeout: Duration = .seconds(12)) async -> State {
         // Polled rather than observed: an `Observations` stream raced
         // against a sleep in a task group hits a Swift 6 isolation-checker
@@ -459,38 +559,41 @@ final class AppModel {
         return state
     }
 
-    /// Called by a browse screen, or the player, when a fetch fails while
-    /// signed in. The address that failed is not necessarily the server:
-    /// a phone that walked from Wi-Fi to cellular still holds the LAN
-    /// address discovery picked, and the remote one answers fine. So the
-    /// connections are probed again first and the library swapped onto
-    /// whichever answers, in place, under the same stack and queue. Only
-    /// when nothing answers does the snapshot take over; with no snapshot
-    /// nothing changes, as before. Returns true when signed in again on a
-    /// fresh library, so the caller can retry what failed.
+    // MARK: - Connection
+
+    /// Called by the library when a fetch fails on the transport, and by
+    /// the player when a stream does. The address that failed is not
+    /// necessarily the server: a phone that walked from Wi-Fi to cellular
+    /// still holds the LAN address discovery picked, and the remote one
+    /// answers fine. So the connections are probed again first and the
+    /// library's connection swapped onto whichever answers, in place,
+    /// under the same stack and queue. Only when nothing answers is the
+    /// connection detached: the saved copies and the files on disk keep
+    /// serving. Returns true when a server answered, so the caller can
+    /// retry what failed.
     @discardableResult
     func connectionLost(_ error: Error) async -> Bool {
         guard state == .signedIn, Self.isConnectionError(error) else { return false }
         log.error("connection lost: \(String(describing: error), privacy: .public)")
-        // A fetch that started on the library before a swap fails on the
-        // old address after it: the move already happened, so the bump
-        // alone has the caller fetch again. Asking again inside the
+        // A fetch that started before a swap fails on the old address
+        // after it: the move already happened. Asking again inside the
         // probe's throttle read as nothing answering, and went offline
         // off a working address.
-        if let failing = (error as? URLError)?.failingURL, let current = library as? PlexLibrary,
+        if let failing = (error as? URLError)?.failingURL, let current = connection,
            failing.host() != current.baseURL.host() {
             log.notice("failure on an address already left, retrying on the current one")
-            libraryGeneration += 1
             return true
         }
         if await rediscover() { return true }
-        // Another caller may have flipped to the snapshot while this one
-        // waited on the probe.
-        guard state == .signedIn else { return false }
-        guard let snapshot = await lastSnapshot() else { return false }
+        // Another caller may have detached while this one waited on the probe.
+        guard state == .signedIn, let cached else { return false }
         errorMessage = error.localizedDescription
-        log.error("nothing answered, opening the snapshot")
-        enterOffline(snapshot)
+        log.error("nothing answered, browsing from disk")
+        connection = nil
+        await cached.detach()
+        connectionGeneration += 1
+        state = .offline
+        downloads.attach(server: cached.id.server, offline: true)
         scheduleOfflineRetry()
         return false
     }
@@ -504,41 +607,42 @@ final class AppModel {
     func checkConnection() async {
         guard state == .signedIn, rediscovery == nil,
               Date().timeIntervalSince(lastRediscovery) > Self.rediscoverInterval,
-              let library = library as? PlexLibrary, library.isLocalConnection
+              let connection, connection.isLocalConnection
         else { return }
-        guard await !library.ping() else { return }
-        guard state == .signedIn, (self.library as? PlexLibrary)?.baseURL == library.baseURL else { return }
+        guard await !connection.ping() else { return }
+        guard state == .signedIn, self.connection === connection else { return }
         log.notice("local address stopped answering while in the background")
         await connectionLost(URLError(.cannotConnectToHost))
     }
 
     /// Runs discovery again and, when the same server answers somewhere,
-    /// opens a fresh library on that address. Coalesced: the screens that
-    /// were mid-fetch all fail together and share one probe. Not repeated
-    /// within a few seconds of the last one: a library that keeps failing
-    /// on an address that just answered is a server problem, not a route
-    /// change, and belongs to the snapshot.
+    /// attaches a fresh connection on that address. Coalesced: the
+    /// screens that were mid-fetch all fail together and share one probe.
+    /// Not repeated within a few seconds of the last one: a connection
+    /// that keeps failing on an address that just answered is a server
+    /// problem, not a route change, and the saved copies take over.
     private func rediscover() async -> Bool {
         if let rediscovery { return await rediscovery.value }
         guard Date().timeIntervalSince(lastRediscovery) > Self.rediscoverInterval,
-              let client, let token, let current = library as? PlexLibrary
+              let client, let token, let current = connection
         else { return false }
         let task = Task { () -> Bool in
             guard let server = try? await discover(client: client, token: token, patience: .seconds(25)),
                   state == .signedIn, server.machineIdentifier == current.serverIdentifier
             else { return false }
             // The same address answering means the failure was a moment,
-            // not a move: the library stands and the generation bump alone
-            // has the screens fetch again.
+            // not a move: the connection stands and the library asks
+            // again for what is on screen.
             if server.baseURL != current.baseURL {
                 log.notice("server moved to \(server.baseURL.host() ?? "?", privacy: .public) local=\(server.isLocal)")
-                library = PlexLibrary(client: client, server: server, token: token)
+                connection = PlexLibrary(client: client, server: server, token: token)
                 serverName = server.name
                 rememberServerToken(server)
             } else {
-                log.notice("same address answered, retrying")
+                log.notice("same address answered, asking again")
             }
-            libraryGeneration += 1
+            if let cached, let connection { await cached.attach(connection) }
+            connectionGeneration += 1
             errorMessage = nil
             return true
         }
@@ -556,9 +660,9 @@ final class AppModel {
         return false
     }
 
-    /// Debug-only: skip discovery and open the last snapshot as if the
-    /// server were unreachable, until "Try again" is tapped, which connects
-    /// for real.
+    /// Debug-only: skip discovery and open the saved library as if the
+    /// server were unreachable, until "Try again" is tapped, which
+    /// connects for real.
     private static var forceOffline: Bool {
         #if DEBUG
         ProcessInfo.processInfo.environment["CTUNES_DEV_OFFLINE"] == "1"
@@ -567,90 +671,23 @@ final class AppModel {
         #endif
     }
 
-    // MARK: - Snapshot
-
-    /// Saves what the browse root just loaded, plus the artists and the
-    /// playlists as last listed, so the next launch can browse without
-    /// the server. Keyed by section, so switching libraries snapshots
-    /// each on first browse. Also brings the favorites pin up to date
-    /// with the set as the server has it. A favorites or history fetch
-    /// that failed is nil and keeps the last snapshot's list: on a weak
-    /// link the albums land and the favorites don't, and writing an
-    /// empty list here once emptied the favorites offline and moved every
-    /// pinned favorite into the evictable cache (`notes/offline-degraded.md`).
-    func snapshot(albums: [PlexAlbum], favorites: [PlexTrack]?, history: [PlayHistoryEntry]?) async {
-        guard let library, !library.isOffline, let section = selectedSection else { return }
-        guard let artists = try? await library.artists(inSection: section.key) else { return }
-        let previous = favorites == nil || history == nil
-            ? await offline.snapshot(server: library.serverIdentifier, section: section.key)
-            : nil
-        let snapshot = LibrarySnapshot(
-            server: library.serverIdentifier,
-            serverName: serverName ?? "",
-            sections: sections,
-            section: section,
-            albums: albums,
-            artists: artists,
-            favorites: favorites ?? previous?.favorites ?? [],
-            history: history ?? previous?.history ?? [],
-            playlists: playlists,
-            baseURL: (library as? PlexLibrary)?.baseURL
-        )
-        try? await offline.save(snapshot)
-        downloads.setAlbums(albums)
-        if let favorites {
-            await offline.setFavorites(favorites, server: library.serverIdentifier, section: section.key,
-                                       sources: downloads.sources(library))
-        }
-        downloads.refresh()
-    }
-
-    /// The favorites as last saved, for a screen on a link too weak to
-    /// ask: the pinned group when the pin is on and has been filled, else
-    /// the snapshot's list.
-    func savedFavorites() async -> [PlexTrack] {
-        guard let library, let section = selectedSection?.key else { return [] }
-        let server = library.serverIdentifier
-        if await offline.favoritesPinned(server: server, section: section) {
-            let group = await offline.favoriteTracks(server: server, section: section)
-            if !group.isEmpty { return group }
-        }
-        return await offline.snapshot(server: server, section: section)?.favorites ?? []
-    }
-
-    /// Remembers an album's tracks as browsed, so offline the page can list
-    /// them and play whichever are on disk from an earlier play.
-    func rememberTracks(_ tracks: [PlexTrack], inAlbum album: PlexAlbum) async {
-        guard let library, !library.isOffline else { return }
-        await offline.saveTracks(tracks, inAlbum: album.ratingKey, server: library.serverIdentifier)
-    }
-
     // MARK: - Playlists
 
-    /// Fetches the section's playlists. A failure keeps the old list: the
-    /// screen that asked runs the usual rediscovery on its own fetch.
+    /// The section's playlists from the library: its saved copy, the
+    /// server behind it. A miss it can't fetch keeps the old list.
     func loadPlaylists() async {
-        guard let library, !library.isOffline, let section = selectedSection else { return }
+        guard let library, let section = selectedSection else { return }
         guard let fetched = try? await library.playlists(inSection: section.key) else { return }
         if fetched != playlists { playlists = fetched }
     }
 
-    /// Remembers a playlist's items as browsed, so offline the page can
-    /// list them and play whichever are on disk; a pinned playlist also
-    /// reconciles its files with the list.
-    func rememberItems(_ items: [PlaylistItem], inPlaylist playlist: PlexPlaylist) async {
-        guard let library, !library.isOffline else { return }
-        await offline.setPlaylistItems(items, inPlaylist: playlist.ratingKey, server: library.serverIdentifier,
-                                       sources: downloads.sources(library))
-        downloads.refresh()
-    }
-
-    /// The writes: each calls the server, then refetches the list and bumps
-    /// the generation so every page agrees. A connection failure runs the
-    /// usual rediscovery; any failure returns false so the caller reverts
-    /// what it applied optimistically. All refused offline, like hearts.
+    /// The writes: each calls the server through the library, which asks
+    /// for the list again, and bumps the generation so every page agrees.
+    /// A connection failure runs the usual rediscovery; any failure
+    /// returns false so the caller reverts what it applied optimistically.
+    /// All refused with no server, like hearts.
     func createPlaylist(title: String, tracks: [PlexTrack]) async -> PlexPlaylist? {
-        guard let library, !library.isOffline else { return nil }
+        guard let library, library.isConnected else { return nil }
         do {
             let created = try await library.createPlaylist(title: title, trackKeys: tracks.map(\.ratingKey))
             await playlistsChanged()
@@ -664,7 +701,7 @@ final class AppModel {
     /// Appends the tracks and returns how many were new to the playlist,
     /// or nil on failure. The server drops what is already there.
     func add(_ tracks: [PlexTrack], to playlist: PlexPlaylist) async -> Int? {
-        guard let library, !library.isOffline else { return nil }
+        guard let library, library.isConnected else { return nil }
         do {
             let added = try await library.add(trackKeys: tracks.map(\.ratingKey), toPlaylist: playlist.ratingKey)
             await playlistsChanged()
@@ -676,7 +713,7 @@ final class AppModel {
     }
 
     func remove(_ item: PlaylistItem, from playlist: PlexPlaylist) async -> Bool {
-        guard let library, !library.isOffline, let id = item.playlistItemID else { return false }
+        guard let library, library.isConnected, let id = item.playlistItemID else { return false }
         do {
             try await library.remove(item: id, fromPlaylist: playlist.ratingKey)
             await playlistsChanged()
@@ -689,7 +726,7 @@ final class AppModel {
 
     /// Puts the item after `after`, or at the top with none.
     func move(_ item: PlaylistItem, after: PlaylistItem?, in playlist: PlexPlaylist) async -> Bool {
-        guard let library, !library.isOffline, let id = item.playlistItemID else { return false }
+        guard let library, library.isConnected, let id = item.playlistItemID else { return false }
         do {
             try await library.move(item: id, after: after?.playlistItemID, inPlaylist: playlist.ratingKey)
             await playlistsChanged()
@@ -701,7 +738,7 @@ final class AppModel {
     }
 
     func rename(_ playlist: PlexPlaylist, to title: String) async -> Bool {
-        guard let library, !library.isOffline else { return false }
+        guard let library, library.isConnected else { return false }
         do {
             try await library.renamePlaylist(playlist.ratingKey, title: title)
             await playlistsChanged()
@@ -714,7 +751,7 @@ final class AppModel {
 
     /// The one irreversible action in the app: the caller confirms first.
     func delete(_ playlist: PlexPlaylist) async -> Bool {
-        guard let library, !library.isOffline else { return false }
+        guard let library, library.isConnected else { return false }
         do {
             try await library.deletePlaylist(playlist.ratingKey)
             if await offline.playlistPinned(playlist.ratingKey, server: library.serverIdentifier) {
@@ -743,7 +780,7 @@ final class AppModel {
     /// pinned as a group beside the favorites, never as part of the
     /// artist/album/track tree, so removing it narrows nothing else.
     func setPlaylistPinned(_ playlist: PlexPlaylist, _ enabled: Bool) async {
-        guard let library, !library.isOffline else { return }
+        guard let library, library.isConnected else { return }
         let server = library.serverIdentifier
         if enabled {
             guard let items = try? await library.items(inPlaylist: playlist.ratingKey) else { return }
@@ -759,7 +796,7 @@ final class AppModel {
     /// which catches edits made from other clients; one gone from the
     /// server is unpinned.
     private func syncPlaylistPins() async {
-        guard let library, !library.isOffline else { return }
+        guard let library, library.isConnected else { return }
         let server = library.serverIdentifier
         let pinned = await offline.inventory(server: server).playlists
         guard !pinned.isEmpty else { return }
@@ -781,18 +818,18 @@ final class AppModel {
     /// Re-enqueues every pinned track not yet on disk. Called on connect
     /// and on foreground, since nothing survives the app being suspended.
     func resumeDownloads() async {
-        guard let library, !library.isOffline else { return }
+        guard let library, library.isConnected else { return }
         await offline.resume(server: library.serverIdentifier, sources: downloads.sources(library))
         downloads.refresh()
     }
 
     /// Pins every album of the artist: their album list and every track of
     /// theirs in one fetch each, so the store can file the tracks under
-    /// the albums. A fetch failure runs the usual rediscovery and pins
-    /// nothing. Returns whether the pin was made.
+    /// the albums. A fetch failure pins nothing. Returns whether the pin
+    /// was made.
     @discardableResult
     func downloadArtist(key: String, title: String) async -> Bool {
-        guard let library, !library.isOffline, let section = selectedSection else { return false }
+        guard let library, library.isConnected, let section = selectedSection else { return false }
         do {
             async let albums = library.albums(forArtist: key, inSection: section.key)
             async let tracks = library.tracks(forArtist: key, inSection: section.key)
@@ -805,7 +842,6 @@ final class AppModel {
                                 section: section.key, library: library)
             return true
         } catch {
-            await connectionLost(error)
             return false
         }
     }
@@ -815,7 +851,7 @@ final class AppModel {
     /// Turns the favorites pin on or off. On enable, the current favorites
     /// are fetched and pinned; on disable their files go back to the cache.
     func setFavoritesPinned(_ enabled: Bool) async {
-        guard let library, !library.isOffline, let section = selectedSection else { return }
+        guard let library, library.isConnected, let section = selectedSection else { return }
         let server = library.serverIdentifier
         await offline.setFavoritesPinned(enabled, server: server, section: section.key)
         if enabled, let favorites = try? await library.favoriteTracks(inSection: section.key) {
@@ -824,10 +860,11 @@ final class AppModel {
         downloads.refresh()
     }
 
-    /// Reconciles the favorites group with the server after a connect,
-    /// which also catches hearts set from other clients.
+    /// Reconciles the favorites group with the list as the library has it:
+    /// after a connect, and whenever the saved list changes, which is how
+    /// a heart set here or from another client reaches the files.
     private func syncFavoritesPin() async {
-        guard let library, !library.isOffline, let section = selectedSection,
+        guard let library, library.isConnected, let section = selectedSection,
               await offline.favoritesPinned(server: library.serverIdentifier, section: section.key),
               let favorites = try? await library.favoriteTracks(inSection: section.key)
         else { return }
@@ -837,16 +874,18 @@ final class AppModel {
     }
 
     func selectSection(_ section: PlexSection) {
-        selectedSection = section
-        guard let server = library?.serverIdentifier else { return }
+        guard let server = currentServer else { return }
         UserDefaults.standard.set(section.key, forKey: sectionKey(server: server))
+        selectedSection = section
+        Task { await openLibrary(server: server, section: section, record: await offline.server(server)) }
     }
 
     /// Returns to the picker so a different library can be chosen.
     func clearSectionChoice() {
-        selectedSection = nil
-        guard let server = library?.serverIdentifier else { return }
+        guard let server = currentServer else { return }
         UserDefaults.standard.removeObject(forKey: sectionKey(server: server))
+        closeLibrary()
+        selectedSection = nil
     }
 
     /// Files what is kept per library under the one now open: the
@@ -1101,10 +1140,11 @@ final class AppModel {
     }
 
     /// Flips the heart optimistically and reverts if the server refuses.
-    /// Hearts are read-only offline: a queued toggle would need an outbox,
-    /// and the favorites pin reconciles from the server on reconnect anyway.
+    /// Hearts are read-only with no server: a queued toggle would need an
+    /// outbox. The library asks for the favorites again after the write,
+    /// and the pinned group follows the saved list through `libraryDidSave`.
     func toggleFavorite(_ track: PlexTrack) async {
-        guard let library, !library.isOffline else { return }
+        guard let library, library.isConnected else { return }
         let previous = favoriteOverrides[track.ratingKey]
         let favorite = !isFavorite(track)
         favoriteOverrides[track.ratingKey] = favorite
@@ -1113,16 +1153,7 @@ final class AppModel {
         } catch {
             favoriteOverrides[track.ratingKey] = previous
             errorMessage = error.localizedDescription
-            return
         }
-        // Keep the pinned favorites group in step without a full refetch.
-        let server = library.serverIdentifier
-        guard let section = selectedSection?.key,
-              await offline.favoritesPinned(server: server, section: section) else { return }
-        var group = await offline.favoriteTracks(server: server, section: section).filter { $0.ratingKey != track.ratingKey }
-        if favorite { group.append(track) }
-        await offline.setFavorites(group, server: server, section: section, sources: downloads.sources(library))
-        downloads.refresh()
     }
 
     /// Works offline too: only the keychain is involved. Everything pinned
@@ -1133,7 +1164,8 @@ final class AppModel {
             try await auth.signOut(server: UserDefaults.standard.string(forKey: Self.serverDefaultsKey))
             token = nil
             serverToken = nil
-            library = nil
+            connection = nil
+            closeLibrary()
             serverName = nil
             sections = []
             selectedSection = nil

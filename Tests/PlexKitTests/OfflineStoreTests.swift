@@ -54,25 +54,6 @@ struct OfflineStoreTests {
         #expect(decoded == original)
     }
 
-    @Test("a snapshot built from the fixtures survives save and load, as one file per list")
-    func snapshotRoundTrip() async throws {
-        let (store, _, _) = try makeStore()
-        let snapshot = try Self.fixtureSnapshot()
-        try await store.save(snapshot)
-        let loaded = try #require(await store.snapshot(server: Self.server, section: "1"))
-        #expect(loaded.dated(snapshot.savedAt) == snapshot)
-        #expect(abs(loaded.savedAt.timeIntervalSinceNow) < 5, "dated by the album list's file")
-        #expect(await store.snapshot(server: Self.server, section: nil)?.dated(snapshot.savedAt) == snapshot)
-        #expect(await store.snapshot(server: Self.server, section: "2") == nil)
-        #expect(await store.snapshot(server: "N", section: nil) == nil)
-        let section = store.directory.appending(path: "\(Self.server)/1")
-        for name in ["albums", "artists", "favorites", "history", "playlists"] {
-            #expect(FileManager.default.fileExists(atPath: section.appending(path: "\(name).json").path), "\(name)")
-        }
-        #expect(!FileManager.default.fileExists(atPath: section.appending(path: "library.json").path))
-        #expect(await store.server(Self.server) == .init(name: "Test", sections: snapshot.sections, baseURL: Support.base))
-    }
-
     @Test("a saved request loads back under its key with its age, and a miss is nil")
     func savedRequests() async throws {
         let (store, _, _) = try makeStore()
@@ -115,18 +96,19 @@ struct OfflineStoreTests {
         let pinned = Array(snapshot.favorites.suffix(1))
         try encoder.encode(pinned).write(to: section.appending(path: "favorites.json"))
 
-        let loaded = try #require(await store.snapshot(server: Self.server, section: nil))
-        #expect(loaded.albums == snapshot.albums)
-        #expect(loaded.artists == snapshot.artists)
-        #expect(loaded.sections == snapshot.sections)
-        #expect(loaded.section == snapshot.section)
-        #expect(loaded.serverName == "Test")
-        #expect(loaded.baseURL == Support.base)
-        #expect(loaded.favorites == pinned, "the pin group's list wins")
-        #expect(await store.favoriteTracks(server: Self.server, section: "1") == pinned)
+        // The record is found through the legacy file: a launch with no
+        // network on an install from before the split still opens.
+        let record = try #require(await store.server(Self.server))
+        #expect(record.name == "Test")
+        #expect(record.sections == snapshot.sections)
+        #expect(record.baseURL == Support.base)
+        #expect(await store.load([PlexAlbum].self, for: .albums, server: Self.server, section: "1") == snapshot.albums)
+        #expect(await store.load([PlexArtist].self, for: .artists, server: Self.server, section: "1") == snapshot.artists)
+        #expect(await store.favoriteTracks(server: Self.server, section: "1") == pinned, "the pin group's list wins")
         #expect(!FileManager.default.fileExists(atPath: section.appending(path: "library.json").path))
         #expect(FileManager.default.fileExists(atPath: section.appending(path: "albums.json").path))
-        #expect(await store.server(Self.server)?.sections == snapshot.sections)
+        let age = try #require(await store.savedAt(.albums, server: Self.server, section: "1"))
+        #expect(abs(age.timeIntervalSinceNow) < 5, "dated now, so the first read asks the server")
     }
 
     @Test("a browsed artist's album list is saved without making the artist a pin")
@@ -141,7 +123,10 @@ struct OfflineStoreTests {
     @Test("nothing on disk carries a token")
     func nothingSecretOnDisk() async throws {
         let (store, _, _) = try makeStore()
-        try await store.save(try Self.fixtureSnapshot())
+        let snapshot = try Self.fixtureSnapshot()
+        try await store.saveServer(.init(name: "Test", sections: snapshot.sections, baseURL: Support.base), server: Self.server)
+        await store.save(snapshot.albums, for: .albums, server: Self.server, section: "1")
+        await store.save(snapshot.favorites, for: .favorites, server: Self.server, section: "1")
         await pin(store, album("1029"), tracks([1, 2], album: "1029"))
         let files = (FileManager.default.subpaths(atPath: store.directory.path) ?? [])
             .filter { $0.hasSuffix(".json") }
@@ -278,16 +263,6 @@ struct OfflineStoreTests {
         let inventory = await store.inventory(server: Self.server)
         #expect(inventory.state(of: album("9")) == .none, "browsed, not pinned: the file is in the cache root")
         #expect(inventory.statuses["9"] == .init(artistKey: "A", known: 2), "but the list counts toward the artist")
-    }
-
-    @Test("offline artwork falls back to the server URL the image cache saw")
-    func artworkFallback() async throws {
-        let (store, _, _) = try makeStore()
-        let snapshot = try Self.fixtureSnapshot()
-        let library = OfflineLibrary(snapshot: snapshot, store: store, token: "tok")
-        let url = try #require(library.artworkURL("/library/metadata/9/thumb/1", size: 200))
-        #expect(url.absoluteString.hasPrefix(Support.base.absoluteString + "/photo/:/transcode"))
-        #expect(OfflineLibrary(snapshot: snapshot, store: store).artworkURL("/x", size: 200) == nil, "no token, no URL")
     }
 
     @Test("replacing the favorites group pins the new and unpins the dropped")
@@ -450,35 +425,6 @@ struct OfflineStoreTests {
 
     // MARK: - Offline library
 
-    @Test("the offline library serves pinned albums and favorites by artist")
-    func offlineLibrary() async throws {
-        let (store, cache, _) = try makeStore()
-        let first = tracks([1, 2], album: "9", artist: "A")
-        let second = tracks([3], album: "8", artist: "B")
-        let favorite = Support.track(id: 4, album: "7", artist: "A")
-        await pin(store, album("9", artist: "A"), first)
-        await pin(store, album("8", artist: "B"), second)
-        await store.setFavoritesPinned(true, server: Self.server, section: "1")
-        await store.setFavorites([favorite, first[0]], server: Self.server, section: "1", sources: sources)
-        try await cache.drain()
-
-        let snapshot = try Self.fixtureSnapshot()
-        let library = OfflineLibrary(snapshot: snapshot, store: store)
-
-        #expect(library.isOffline)
-        #expect(library.serverIdentifier == Self.server)
-        #expect(try await library.tracks(inAlbum: "9") == first)
-        #expect(try await library.tracks(inAlbum: "nope") == [])
-        #expect(try await library.tracks(forArtist: "A", inSection: "1") == first + [favorite])
-        #expect(try await library.tracks(forArtist: "B", inSection: "1") == second)
-        #expect(try await library.albums(inSection: "1") == snapshot.albums)
-        #expect(try await library.albums(forArtist: "2899", inSection: "1").count == 3)
-        #expect(try await library.favoriteTracks(inSection: "1") == snapshot.favorites)
-        #expect(library.streamURL(for: first[0]) == nil)
-        #expect(library.trackSource(for: first[0]) == nil)
-        await #expect(throws: PlexError.self) { try await library.setFavorite("1", true) }
-    }
-
     @Test("album art is saved at pin time and served as a file URL")
     func art() async throws {
         let (store, cache, _) = try makeStore()
@@ -495,10 +441,12 @@ struct OfflineStoreTests {
         #expect(await store.usage() == 1024 + 64)
     }
 
-    @Test("clear empties the manifest, the snapshot and the pinned root")
+    @Test("clear empties the manifest, the saved lists and the pinned root")
     func clear() async throws {
         let (store, cache, _) = try makeStore()
-        try await store.save(try Self.fixtureSnapshot())
+        let snapshot = try Self.fixtureSnapshot()
+        try await store.saveServer(.init(name: "Test", sections: snapshot.sections, baseURL: nil), server: Self.server)
+        await store.save(snapshot.albums, for: .albums, server: Self.server, section: "1")
         await pin(store, album("9"), tracks([1], album: "9"))
         try await cache.drain()
         #expect(await cache.pinnedUsage() == 1024)
@@ -507,7 +455,8 @@ struct OfflineStoreTests {
 
         #expect(await cache.pinnedUsage() == 0)
         #expect(await store.pinnedAlbumKeys(server: Self.server).isEmpty)
-        #expect(await store.snapshot(server: Self.server, section: nil) == nil)
+        #expect(await store.server(Self.server) == nil)
+        #expect(await store.load([PlexAlbum].self, for: .albums, server: Self.server, section: "1") == nil)
         let leftover = (try? FileManager.default.contentsOfDirectory(atPath: store.directory.path)) ?? []
         #expect(leftover.isEmpty, "\(leftover)")
     }
@@ -699,7 +648,6 @@ struct OfflineStoreTests {
         // Pruned to nothing reads as empty, not as it last was.
         await store.saveItems([], inPlaylist: "p", server: Self.server)
         #expect(await store.items(inPlaylist: "p", server: Self.server) == [])
-        #expect(try await OfflineLibrary(snapshot: Self.fixtureSnapshot(), store: store).items(inPlaylist: "p") == [])
     }
 
     @Test("pinning a playlist downloads it in order, shares files with an album pin, and unpinning narrows nothing else")
@@ -768,7 +716,7 @@ struct OfflineStoreTests {
         #expect(await store.pinnedTracks(server: Self.server) == [b, c])
     }
 
-    @Test("a manifest from before playlist pins still reads, and playlists survive a snapshot")
+    @Test("a manifest from before playlist pins still reads, and a legacy snapshot from before playlists splits with none")
     func playlistManifestMigration() async throws {
         let (store, cache, _) = try makeStore()
         let old = """
@@ -781,21 +729,18 @@ struct OfflineStoreTests {
         #expect(inventory.playlists.isEmpty)
         #expect(inventory.favoritesPinned)
 
-        let base = try Self.fixtureSnapshot()
-        let playlists = try JSONDecoder().decode(MediaContainerResponse<PlexPlaylist>.self, from: Fixture.data("playlists")).items
-        let snapshot = LibrarySnapshot(
-            server: base.server, serverName: base.serverName, sections: base.sections, section: base.section,
-            albums: base.albums, artists: base.artists, favorites: base.favorites, playlists: playlists,
-            savedAt: base.savedAt, baseURL: base.baseURL
-        )
-        try await fresh.save(snapshot)
-        let loaded = try #require(await fresh.snapshot(server: Self.server, section: "1"))
-        #expect(loaded.playlists == playlists)
-        #expect(try await OfflineLibrary(snapshot: loaded, store: fresh).playlists(inSection: "1") == playlists)
         // A snapshot from before playlists still loads, with none.
+        let base = try Self.fixtureSnapshot()
         #expect(base.playlists.isEmpty)
         let data = try JSONEncoder().encode(base)
         #expect(try JSONDecoder().decode(LibrarySnapshot.self, from: data).playlists.isEmpty)
+        let section = store.directory.appending(path: "M/1")
+        try FileManager.default.createDirectory(at: section, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(base).write(to: section.appending(path: "library.json"))
+        let later = OfflineStore(directory: store.directory, cache: cache)
+        #expect(await later.load([PlexPlaylist].self, for: .playlists, server: Self.server, section: "1") == [])
     }
 
     @Test("the inventory tells a download in flight from one that stalled, per track")
@@ -849,14 +794,3 @@ struct OfflineStoreTests {
     }
 }
 
-private extension LibrarySnapshot {
-    /// The same snapshot dated `date`: the store dates a loaded one by its
-    /// album list's file, not the value it was saved with.
-    func dated(_ date: Date) -> LibrarySnapshot {
-        LibrarySnapshot(
-            server: server, serverName: serverName, sections: sections, section: section,
-            albums: albums, artists: artists, favorites: favorites, history: history,
-            playlists: playlists, savedAt: date, baseURL: baseURL
-        )
-    }
-}

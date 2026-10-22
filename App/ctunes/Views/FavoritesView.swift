@@ -69,7 +69,7 @@ struct FavoritesView: View {
     @State private var scrollPosition = ScrollPosition()
     @AppStorage("favoritesSort") private var sort: FavoritesSort = .recent
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     private var hidden: VetoSet { model.roster.hidden }
 
     /// Still hearted as far as this session knows: an unheart from a row
@@ -213,7 +213,7 @@ struct FavoritesView: View {
         }
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
-        .task(id: model.libraryGeneration) {
+        .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
             if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
@@ -225,26 +225,16 @@ struct FavoritesView: View {
         .refreshable { await load() }
     }
 
-    /// The fetch: on appear, on a library swap, and on pull to refresh.
+    /// The read: on appear, on every revision, and on pull to refresh.
+    /// The library answers from its saved copy and asks the server
+    /// behind it; a miss it can't fetch leaves the list as it is.
     private func load() async {
         guard let library = model.library else { return }
-        // The saved list first, as on the album page: a link too weak to
-        // answer reads at once, and a failure leaves the list standing.
-        if tracks.isEmpty {
-            let saved = await model.savedFavorites()
-            if !saved.isEmpty {
-                tracks = saved
-                loaded = true
-            }
+        async let all = library.albums(inSection: section.key)
+        if let fetched = try? await library.favoriteTracks(inSection: section.key) {
+            tracks = fetched
         }
-        do {
-            async let all = library.albums(inSection: section.key)
-            tracks = try await library.favoriteTracks(inSection: section.key)
-            albums = (try? await all) ?? []
-        } catch {
-            await model.connectionLost(error)
-            return
-        }
+        albums = (try? await all) ?? []
         loaded = true
         for thumb in Set(tracks.compactMap(\.thumb)) {
             ImageLoader.shared.prewarm(library.artworkURL(thumb))

@@ -2,72 +2,39 @@ import PlexKit
 
 /// The fetches behind a menu item, a shortcut card and a widget's tap:
 /// the tracks of an album, an artist, a playlist or a mix's picks, from
-/// the page that has them or one request. On the model rather than
-/// `LibraryActions` because `IntentPlayback` needs them too, with no
-/// presentation objects to hand. A fetch failure runs the usual
-/// rediscovery and yields nothing.
+/// the page that has them or one read of the library. On the model
+/// rather than `LibraryActions` because `IntentPlayback` needs them too,
+/// with no presentation objects to hand. The library answers from its
+/// saved copy and asks the server behind it; a miss it can't fetch is
+/// nothing, and the failure is already reported.
 extension AppModel {
-    /// Every track of an album, from the page that has them or one fetch.
+    /// Every track of an album, from the page that has them or one read.
     func tracks(of album: PlexAlbum, known: [PlexTrack]?) async -> [PlexTrack] {
         if let known { return known }
         guard let library else { return [] }
-        do {
-            let tracks = try await library.tracks(inAlbum: album.ratingKey)
-            await rememberTracks(tracks, inAlbum: album)
-            return tracks
-        } catch {
-            await connectionLost(error)
-            return []
-        }
+        return (try? await library.tracks(inAlbum: album.ratingKey)) ?? []
     }
 
     func tracks(ofArtist key: String) async -> [PlexTrack] {
         guard let library, let section = selectedSection else { return [] }
-        do {
-            return try await library.tracks(forArtist: key, inSection: section.key)
-        } catch {
-            await connectionLost(error)
-            return []
-        }
+        return (try? await library.tracks(forArtist: key, inSection: section.key)) ?? []
     }
 
-    /// Every item of a playlist, from the page that has them or one
-    /// fetch, remembered for offline like a browsed album.
+    /// Every item of a playlist, from the page that has them or one read.
     func items(of playlist: PlexPlaylist, known: [PlaylistItem]?) async -> [PlaylistItem] {
         if let known { return known }
         guard let library else { return [] }
-        do {
-            let items = try await library.items(inPlaylist: playlist.ratingKey)
-            await rememberItems(items, inPlaylist: playlist)
-            return items
-        } catch {
-            await connectionLost(error)
-            return []
-        }
+        return (try? await library.items(inPlaylist: playlist.ratingKey)) ?? []
     }
 
-    /// Every track of one pick, as the server lists it; the favorites are
-    /// asked again once the library has moved, since the address may have
-    /// gone stale between Wi-Fi and cellular.
+    /// Every track of one pick, as the server lists it.
     func tracks(of pick: MixPick) async -> [PlexTrack] {
         guard let library, let section = selectedSection else { return [] }
         switch pick {
         case .favorites:
             // Newest hearts first, the Favorites page's own default, so
             // Play starts where the list does.
-            do {
-                return FavoritesSort.recent.sorted(try await library.favoriteTracks(inSection: section.key))
-            } catch {
-                // The server moved: ask the address that answered. Nothing
-                // answering, or a link too weak to carry the list: what was
-                // saved last, so the card plays what is on disk rather than
-                // reporting no favorites (`notes/offline-degraded.md`).
-                if await connectionLost(error), let current = self.library,
-                   let fresh = try? await current.favoriteTracks(inSection: section.key) {
-                    return FavoritesSort.recent.sorted(fresh)
-                }
-                return FavoritesSort.recent.sorted(await savedFavorites())
-            }
+            return FavoritesSort.recent.sorted((try? await library.favoriteTracks(inSection: section.key)) ?? [])
         case .playlist(let key, let title, _):
             return await items(of: PlexPlaylist(ratingKey: key, title: title), known: nil).map(\.track)
         case .artist(let key, _, _):
@@ -84,12 +51,7 @@ extension AppModel {
     func tracks(of picks: [MixPick]) async -> [PlexTrack] {
         guard let library, let section = selectedSection else { return [] }
         if picks.isEmpty {
-            do {
-                return try await library.tracks(inSection: section.key)
-            } catch {
-                await connectionLost(error)
-                return []
-            }
+            return (try? await library.tracks(inSection: section.key)) ?? []
         }
         let fetched = await withTaskGroup(of: (Int, [PlexTrack]).self) { group in
             for (index, pick) in picks.enumerated() {

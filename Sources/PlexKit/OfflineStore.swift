@@ -645,8 +645,21 @@ public actor OfflineStore {
         try write(record, to: serverDirectory(server).appending(path: "server.json"))
     }
 
+    /// Nil until a connect has written it, or a legacy `library.json`
+    /// has been split: an install from before the per-request files
+    /// has only those, so without this the first launch after updating
+    /// would wait on the server where it used to open from disk.
     public func server(_ server: String) -> ServerRecord? {
-        read(serverDirectory(server).appending(path: "server.json"))
+        if let record: ServerRecord = read(serverDirectory(server).appending(path: "server.json")) { return record }
+        let manager = FileManager.default
+        guard let children = try? manager.contentsOfDirectory(at: serverDirectory(server), includingPropertiesForKeys: [.isDirectoryKey]) else {
+            return nil
+        }
+        for child in children
+        where manager.fileExists(atPath: child.appending(path: "library.json").path) {
+            migrateIfNeeded(server, child.lastPathComponent)
+        }
+        return read(serverDirectory(server).appending(path: "server.json"))
     }
 
     private func store<Value: Encodable & Sendable>(_ value: Value, for key: LibraryKey, server: String, section: String) throws {
@@ -660,7 +673,7 @@ public actor OfflineStore {
     /// server record beside it. A favorites file already there is left
     /// alone, since it is the list the pinned files were reconciled
     /// against; the snapshot's copy was taken from the same fetch or an
-    /// older one.
+    /// older one. `LibrarySnapshot` survives only for this read.
     private func migrateIfNeeded(_ server: String, _ section: String) {
         guard !section.isEmpty, migrated.insert("\(server)/\(section)").inserted else { return }
         let legacy = sectionDirectory(server, section).appending(path: "library.json")
@@ -676,62 +689,6 @@ public actor OfflineStore {
             try? saveServer(.init(name: snapshot.serverName, sections: snapshot.sections, baseURL: snapshot.baseURL), server: server)
         }
         try? FileManager.default.removeItem(at: legacy)
-    }
-
-    // MARK: - Snapshot
-
-    /// Writes the snapshot as its parts: the server record and the five
-    /// section lists. Until the library reads the parts itself, this is
-    /// how the browse root's load reaches them.
-    public func save(_ snapshot: LibrarySnapshot) throws {
-        let server = snapshot.server, section = snapshot.section.key
-        try saveServer(.init(name: snapshot.serverName, sections: snapshot.sections, baseURL: snapshot.baseURL), server: server)
-        try store(snapshot.albums, for: .albums, server: server, section: section)
-        try store(snapshot.artists, for: .artists, server: server, section: section)
-        try store(snapshot.favorites, for: .favorites, server: server, section: section)
-        try store(snapshot.history, for: .history, server: server, section: section)
-        try store(snapshot.playlists, for: .playlists, server: server, section: section)
-    }
-
-    /// The saved lists assembled as a snapshot for the section, or for any
-    /// section of the server when none is named. Needs the server record,
-    /// the albums and the artists; the rest default to empty. `savedAt` is
-    /// the album list's.
-    public func snapshot(server: String, section: String?) -> LibrarySnapshot? {
-        if let section { return assembleSnapshot(server, section) }
-        let manager = FileManager.default
-        guard let children = try? manager.contentsOfDirectory(at: serverDirectory(server), includingPropertiesForKeys: [.isDirectoryKey]) else {
-            return nil
-        }
-        for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
-        where (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-            if let snapshot = assembleSnapshot(server, child.lastPathComponent) { return snapshot }
-        }
-        return nil
-    }
-
-    private func assembleSnapshot(_ server: String, _ section: String) -> LibrarySnapshot? {
-        // Before the server record is looked for: a legacy section has
-        // none until its snapshot is split.
-        migrateIfNeeded(server, section)
-        guard let record = self.server(server),
-              let albums = load([PlexAlbum].self, for: .albums, server: server, section: section),
-              let artists = load([PlexArtist].self, for: .artists, server: server, section: section),
-              let savedAt = savedAt(.albums, server: server, section: section)
-        else { return nil }
-        return LibrarySnapshot(
-            server: server,
-            serverName: record.name,
-            sections: record.sections,
-            section: record.sections.first { $0.key == section } ?? PlexSection(key: section, type: "artist", title: ""),
-            albums: albums,
-            artists: artists,
-            favorites: load([PlexTrack].self, for: .favorites, server: server, section: section) ?? [],
-            history: load([PlayHistoryEntry].self, for: .history, server: server, section: section) ?? [],
-            playlists: load([PlexPlaylist].self, for: .playlists, server: server, section: section) ?? [],
-            savedAt: savedAt,
-            baseURL: record.baseURL
-        )
     }
 
     // MARK: - Art

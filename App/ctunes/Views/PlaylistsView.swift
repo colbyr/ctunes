@@ -23,7 +23,7 @@ struct PlaylistsView: View {
     @AppStorage("playlistsDownloadedOnly") private var downloadedOnly = false
     @AppStorage("playlistsLayout") private var layout: BrowseLayout = .grid
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
 
     private static let margin: CGFloat = 16
     private var columns: [GridItem] {
@@ -141,7 +141,7 @@ struct PlaylistsView: View {
                 }
             }
         }
-        .task(id: model.libraryGeneration) {
+        .task(id: model.libraryRevision) {
             await model.loadPlaylists()
             loaded = true
         }

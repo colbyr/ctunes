@@ -266,7 +266,7 @@ final class Downloads {
     /// every track. Sources come from the library so the token stays in a
     /// header.
     func pin(_ album: PlexAlbum, tracks: [PlexTrack], section: String, library: any LibrarySource) {
-        guard !library.isOffline else { return }
+        guard library.isConnected else { return }
         Task {
             await store.pinAlbum(album, tracks: tracks, server: library.serverIdentifier, section: section,
                                  art: Self.art(library), sources: sources(library))
@@ -286,7 +286,7 @@ final class Downloads {
     /// artist's whole list, filed under each.
     func pinArtist(key: String, title: String, thumb: String?, albums: [PlexAlbum], tracks: [PlexTrack],
                    section: String, library: any LibrarySource) {
-        guard !library.isOffline else { return }
+        guard library.isConnected else { return }
         Task {
             await store.pinArtist(key: key, title: title, thumb: thumb, albums: albums, tracks: tracks,
                                   server: library.serverIdentifier, section: section,
@@ -304,7 +304,7 @@ final class Downloads {
     }
 
     func pin(_ tracks: [PlexTrack], library: any LibrarySource) {
-        guard !library.isOffline else { return }
+        guard library.isConnected else { return }
         Task {
             await store.pinTracks(tracks, server: library.serverIdentifier, art: Self.art(library),
                                   sources: sources(library))

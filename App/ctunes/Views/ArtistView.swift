@@ -54,7 +54,7 @@ struct ArtistView: View {
     @AppStorage("artistView") private var view: AlbumView = .artist
     @AppStorage("artistLayout") private var layout: BrowseLayout = .grid
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     private var hidden: VetoSet { model.roster.hidden }
     private var scope: VetoScope { VetoScope(artistKey: route.ratingKey, title: route.title) }
     private var artworkURL: URL? {
@@ -151,7 +151,7 @@ struct ArtistView: View {
         }
         // Keyed on the generation so going offline, or coming back, reloads
         // from whichever library is current.
-        .task(id: model.libraryGeneration) {
+        .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
             if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
@@ -216,11 +216,8 @@ struct ArtistView: View {
         guard let library = model.library else { return }
         async let artists = library.artists(inSection: section.key)
         async let sectionAlbums = library.albums(inSection: section.key)
-        do {
-            albums = try await library.albums(forArtist: route.ratingKey, inSection: section.key)
-        } catch {
-            await model.connectionLost(error)
-            return
+        if let fetched = try? await library.albums(forArtist: route.ratingKey, inSection: section.key) {
+            albums = fetched
         }
         loaded = true
         portrait = (try? await artists)?.first { $0.ratingKey == route.ratingKey }?.thumb

@@ -374,7 +374,7 @@ struct MixBuilderView: View {
         }
         .onDisappear { building = false }
         .onChange(of: selected) { savedSelection = selected }
-        .task(id: model.libraryGeneration) {
+        .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
             if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {

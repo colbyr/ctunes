@@ -72,7 +72,7 @@ struct PlaylistView: View {
     @State private var scrollPosition = ScrollPosition()
     @State private var editMode: EditMode = .inactive
 
-    private var offline: Bool { model.library?.isOffline ?? false }
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     private var hidden: VetoSet { model.roster.hidden }
     private var current: PlexPlaylist { model.playlists.first { $0.id == playlist.id } ?? playlist }
     /// Regular and online: the rows reorder and remove.
@@ -125,7 +125,7 @@ struct PlaylistView: View {
             // Keyed on both generations: going offline, or coming back,
             // reloads from whichever library is current, and an add from
             // another screen's menu lands here too.
-            .task(id: Reload(library: model.libraryGeneration, playlists: model.playlistGeneration)) {
+            .task(id: Reload(library: model.libraryRevision, playlists: model.playlistGeneration)) {
                 await load()
                 await developmentHooks()
             }
@@ -294,21 +294,18 @@ struct PlaylistView: View {
             .deleteDisabled(true)
     }
 
-    /// The fetch: on appear, on either generation, and on pull to
-    /// refresh. Online, the items are remembered for offline.
+    /// The read: on appear, on either generation, and on pull to refresh.
+    /// The library answers from its saved copy and asks the server behind
+    /// it; a miss it can't fetch leaves the list as it is.
     private func load() async {
         guard let library = model.library else { return }
-        do {
-            async let all = library.albums(inSection: model.selectedSection?.key ?? "")
-            items = try await library.items(inPlaylist: playlist.ratingKey)
-            albums = (try? await all) ?? []
-        } catch {
-            await model.connectionLost(error)
-            return
+        async let all = library.albums(inSection: model.selectedSection?.key ?? "")
+        if let fetched = try? await library.items(inPlaylist: playlist.ratingKey) {
+            items = fetched
         }
+        albums = (try? await all) ?? []
         loaded = true
         if items.isEmpty { editMode = .inactive }
-        await model.rememberItems(items, inPlaylist: current)
         for thumb in Set(items.compactMap(\.track.thumb)) {
             ImageLoader.shared.prewarm(library.artworkURL(thumb))
         }

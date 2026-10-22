@@ -292,6 +292,34 @@ struct CachedLibraryTests {
         #expect(server.count("GET https://example.plex.direct:32400/playlists/440/items") == 1, "saved by the refresh")
     }
 
+    @Test("with no connection, pinned albums and favorites answer by album and by artist")
+    func pinnedFallbacks() async throws {
+        let (library, _, store) = try await make(connected: false)
+        let sources: @Sendable (PlexTrack) -> TrackSource? = { track in
+            track.part.flatMap { $0.cacheKey == nil ? nil : Support.source(part: $0) }
+        }
+        let first = [Support.track(id: 1, album: "9", artist: "A"), Support.track(id: 2, album: "9", artist: "A")]
+        let second = [Support.track(id: 3, album: "8", artist: "B")]
+        let favorite = Support.track(id: 4, album: "7", artist: "A")
+        for (album, tracks) in [("9", first), ("8", second)] {
+            await store.pinAlbum(
+                PlexAlbum(ratingKey: album, title: "Album", parentRatingKey: tracks[0].grandparentRatingKey, parentTitle: "Artist", year: nil, thumb: nil),
+                tracks: tracks, server: "M", section: "1", art: { _ in nil }, sources: sources)
+        }
+        await store.setFavoritesPinned(true, server: "M", section: "1")
+        await store.setFavorites([favorite, first[0]], server: "M", section: "1", sources: sources)
+
+        #expect(try await library.tracks(inAlbum: "9") == first)
+        #expect(try await library.tracks(inAlbum: "7") == [favorite], "reached through the favorites alone")
+        await #expect(throws: PlexError.self) { try await library.tracks(inAlbum: "nope") }
+        #expect(try await library.tracks(forArtist: "A", inSection: "1") == first + [favorite])
+        #expect(try await library.tracks(forArtist: "B", inSection: "1") == second)
+        #expect(try await library.favoriteTracks(inSection: "1") == [favorite, first[0]])
+        #expect(try await library.tracks(inSection: "1").count == 4)
+        #expect(try await library.searchTracks(inSection: "1", query: "track 3") == second)
+        #expect(try await library.track(ratingKey: "4") == favorite)
+    }
+
     @Test("artwork is the saved file, then the connection's URL, then the record's address")
     func artwork() async throws {
         let (library, server, _) = try await make()

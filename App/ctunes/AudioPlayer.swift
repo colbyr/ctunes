@@ -203,12 +203,12 @@ final class AudioPlayer {
     func scrubberAppeared() { scrubbersShown += 1 }
     func scrubberDisappeared() { scrubbersShown = max(0, scrubbersShown - 1) }
 
-    /// Swaps the library under a running queue. Offline the queue keeps
-    /// playing from pinned files; back online it reports timelines again
-    /// and the prefetch window refills.
+    /// The library, again whenever its connection changes. With no server
+    /// the queue keeps playing from files on disk; with one back it
+    /// reports timelines again and the prefetch window refills.
     func adopt(_ library: (any LibrarySource)?) {
         self.library = library
-        guard let library, !library.isOffline else {
+        guard let library, library.isConnected else {
             prefetch()
             return
         }
@@ -519,9 +519,10 @@ final class AudioPlayer {
         // in a burst and end.
         let server = library.serverIdentifier
         let asked = queue.currentIndex
-        // Online a cached copy has to be as good as the streaming quality
-        // asks; a pinned one plays as it is; offline anything on disk does.
-        let wanted: StreamQuality? = library.isOffline ? nil : streamQuality
+        // With a server a cached copy has to be as good as the streaming
+        // quality asks; a pinned one plays as it is; with none anything
+        // on disk does.
+        let wanted: StreamQuality? = library.isConnected ? streamQuality : nil
         var playable: (track: PlexTrack, part: PlexPart, local: URL?, url: URL)?
         while let track = currentTrack {
             if let part = track.part {
@@ -533,7 +534,7 @@ final class AudioPlayer {
             }
             log.error("nothing to play for the current entry, skipping")
             guard queue.advance(wrapping: false) else {
-                if library.isOffline, queue.jump(to: asked), let track = currentTrack {
+                if !library.isConnected, queue.jump(to: asked), let track = currentTrack {
                     waitForServer(on: track, startAt: startAt)
                 } else {
                     finish()
@@ -586,7 +587,7 @@ final class AudioPlayer {
             : streamQuality.bitrate.map { "stream(\($0)k)" } ?? "stream"
         log.info("load item \(source, privacy: .public) autoPlay=\(autoPlay) retry=\(self.itemLoadRetries)")
         let item = AVPlayerItem(url: url)
-        itemBaseURL = currentItemIsLocal ? nil : (library as? PlexLibrary)?.baseURL
+        itemBaseURL = currentItemIsLocal ? nil : library?.serverURL
         itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard let self else { return }
             switch item.status {
@@ -686,7 +687,7 @@ final class AudioPlayer {
             if stalled { watchForStall(player.timeControlStatus) }
             return
         }
-        if let current = library as? PlexLibrary, current.baseURL != itemBaseURL,
+        if let current = library?.serverURL, current != itemBaseURL,
            let track = currentTrack, let url = remoteURL(for: track) {
             log.notice("library moved since the item loaded, reloading from it at \(self.currentTime, format: .fixed(precision: 1))s")
             itemLoadRetries = 0
@@ -706,7 +707,7 @@ final class AudioPlayer {
                 loadItem(url: url, autoPlay: isPlaying, startAt: currentTime)
                 return
             }
-            if library?.isOffline == true {
+            if library?.isConnected == false {
                 if nextEntryIsOnDisk {
                     advance(wrapping: false)
                 } else {
@@ -1061,7 +1062,7 @@ final class AudioPlayer {
     /// it times the client out. Detached, since the main thread is the one
     /// blocked.
     private func reportStopBeforeExit() {
-        guard let track = currentTrack, let library, !library.isOffline, !hasEnded else { return }
+        guard let track = currentTrack, let library, library.isConnected, !hasEnded else { return }
         let time = currentTime, session = sessionIdentifier
         let sent = DispatchSemaphore(value: 0)
         Task.detached {
