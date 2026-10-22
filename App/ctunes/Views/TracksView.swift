@@ -23,6 +23,9 @@ struct TracksView: View {
     @Environment(LibraryNavigator.self) private var navigator
 
     private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
+    /// Whether the debug hooks have run, so a revision re-run doesn't
+    /// start playback again.
+    @State private var hooked = false
     private var hidden: VetoSet { model.roster.hidden }
     private var scope: VetoScope { VetoScope(album: album) }
 
@@ -173,12 +176,16 @@ struct TracksView: View {
                 }
             }
         }
-        // Keyed on the generation so going offline, or coming back, reloads
-        // from whichever library is current.
+        // Keyed on the revision: a list landing from the server, or a
+        // library switch, reads again from the saved copies.
         .task(id: model.libraryRevision) {
             await load()
             guard let library = model.library else { return }
-            if Self.autoPlay, !tracks.isEmpty {
+            // The hooks below drive the simulator once; the task runs
+            // again on every revision.
+            guard !tracks.isEmpty, !hooked else { return }
+            hooked = true
+            if Self.autoPlay {
                 let start = Self.autoPlayLast ? tracks.count - 1 : 0
                 player.play(tracks, startingAt: start, library: library)
                 if Self.autoPlayNearEnd, let seconds = tracks[start].durationSeconds {

@@ -145,9 +145,10 @@ struct SearchView: View {
         }
         // A short settle so a fast typist doesn't send a request per
         // key; the artists and albums above answer at once regardless.
-        // Keyed on the generation too, so a search opened on the snapshot
-        // while the server was still being found asks again once it is.
-        .task(id: TrackFetch(needle: needle, generation: model.libraryRevision)) {
+        // Keyed on the connection too, so a search opened before the
+        // server was found asks it once it is; not on the revision,
+        // which a connect bumps five times in a burst.
+        .task(id: TrackFetch(needle: needle, connected: model.isConnected)) {
             guard !needle.isEmpty else {
                 tracks = []
                 trackQuery = ""
@@ -171,7 +172,7 @@ struct SearchView: View {
     /// What the track fetch is keyed on.
     private struct TrackFetch: Hashable {
         let needle: String
-        let generation: Int
+        let connected: Bool
     }
 
     private var hairline: some View {

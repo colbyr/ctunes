@@ -209,8 +209,8 @@ struct FavoritesView: View {
                 }
             }
         }
-        // Keyed on the generation so going offline, or coming back, reloads
-        // from whichever library is current.
+        // Keyed on the revision: a list landing from the server, or a
+        // library switch, reads again from the saved copies.
         .task(id: model.libraryRevision) {
             await load()
             #if DEBUG

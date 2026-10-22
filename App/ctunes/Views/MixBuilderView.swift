@@ -39,6 +39,7 @@ struct MixBuilderView: View {
     @State private var selected: [String] = []
     @State private var loadingMix: PlayStyle?
     @State private var nothingToPlay = false
+    @State private var hooked = false
     /// The saved mix the builder is editing: the route's, or the one just
     /// saved, so a second Save updates rather than adds.
     @State private var editing: SavedMix.ID?
@@ -377,7 +378,9 @@ struct MixBuilderView: View {
         .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
-            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {
+            // Once: the task runs again on every revision.
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil, !hooked, !albums.isEmpty {
+                hooked = true
                 play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .mixAlbums : .shuffle)
             }
             #endif
