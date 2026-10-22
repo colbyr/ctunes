@@ -16,6 +16,7 @@ make sim         # build for simulator
 make sim-run     # build, install, launch in simulator
 make run         # build, install, launch on the attached iPhone
 make devices     # list attached devices
+make testflight  # tests, Release archive, upload to TestFlight
 make feedback    # TestFlight comments, screenshots and crash logs → build/feedback/
 ```
 

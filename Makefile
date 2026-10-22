@@ -17,7 +17,7 @@ SIM_APP    := $(DD)/Build/Products/Debug-iphonesimulator/$(SCHEME).app
 
 XCB := xcodebuild -scheme $(SCHEME) -project $(PROJECT) -derivedDataPath $(DD)
 
-.PHONY: test live-test token feedback build device install launch run sim sim-run devices clean
+.PHONY: test live-test token feedback testflight build device install launch run sim sim-run devices clean
 
 ## Run PlexKit tests natively on macOS — no simulator, ~5s
 test:
@@ -40,6 +40,16 @@ token:
 ## Connect, saved under build/feedback/. FEEDBACK_ARGS='--days 7' narrows it.
 feedback:
 	@scripts/testflight-feedback.py $(FEEDBACK_ARGS)
+
+## Archive a Release build and upload it to App Store Connect. Xcode bumps
+## the build number on upload; internal testers get it once it processes.
+testflight: test
+	rm -rf build/ctunes.xcarchive
+	$(XCB) -configuration Release -destination 'generic/platform=iOS' \
+		-archivePath build/ctunes.xcarchive -allowProvisioningUpdates archive
+	xcodebuild -exportArchive -archivePath build/ctunes.xcarchive \
+		-exportOptionsPlist scripts/ExportOptions.plist -exportPath build/export \
+		-allowProvisioningUpdates
 
 ## Build the package alone
 build:
