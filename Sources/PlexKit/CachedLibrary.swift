@@ -67,14 +67,17 @@ public actor CachedLibrary: LibrarySource {
     public nonisolated var serverIdentifier: String { id.server }
     public nonisolated var record: ServerRecord? { recordBox.withLock { $0 } }
 
-    /// Discovery found the server: every key a screen has read is asked
-    /// for again, floor or not, so the first seconds after a connect bring
-    /// what is on screen up to date without a pull.
-    public func attach(_ connection: PlexLibrary, record: ServerRecord? = nil) {
+    /// Discovery found the server: every key a screen has read and that
+    /// is older than the floor is asked for again, so the first seconds
+    /// after a connect bring what is on screen up to date without a pull,
+    /// while a relaunch inside the floor asks for nothing. A key that
+    /// failed on the old connection gets a fresh try.
+    public func attach(_ connection: PlexLibrary, record: ServerRecord? = nil) async {
         connectionBox.withLock { $0 = connection }
         if let record { recordBox.withLock { $0 = record } }
         logger.notice("attached \(connection.baseURL.host() ?? "?", privacy: .public)")
-        refresh(Array(loadedKeys))
+        failedAt = [:]
+        for key in loadedKeys where await isStale(key) { revalidate(key) }
     }
 
     /// Nothing answers. Saved copies keep serving; a miss throws.
@@ -324,6 +327,7 @@ public actor CachedLibrary: LibrarySource {
         _ key: LibraryKey, _ fetch: @escaping @Sendable (PlexLibrary) async throws -> Value
     ) -> Task<any Sendable, Error> {
         guard let connection else { return Task { throw PlexError.offline } }
+        logger.info("fetching \(String(describing: key), privacy: .public)")
         return Task {
             defer { inFlight[key] = nil }
             var connection = connection

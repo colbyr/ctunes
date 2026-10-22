@@ -235,7 +235,7 @@ struct CachedLibraryTests {
         #expect(server.requests.last?.contains(Self.otherBase.host()!) == true)
     }
 
-    @Test("attach asks again for every key a screen has read, floor or not")
+    @Test("attach asks again for the keys a screen has read that are stale, and not for fresh ones")
     func attachRefreshes() async throws {
         let (library, server, store) = try await make()
         _ = try await library.albums(inSection: "1")
@@ -243,7 +243,17 @@ struct CachedLibraryTests {
         server.route("GET", "/library/sections/1/albums", try Self.shorterAlbums())
         await library.attach(connection(server))
         await library.settle()
-        #expect(server.count("/albums") == 2)
+        #expect(server.count("/albums") == 1, "inside the floor: a relaunch asks for nothing")
+
+        await library.setFloors(revalidate: 0, retry: 15)
+        server.fail(host: Support.base.host())
+        _ = try await library.albums(inSection: "1")
+        await library.settle()
+        #expect(server.count("/albums") == 2, "the stale read tried and failed")
+        server.fail(host: nil)
+        await library.attach(connection(server))
+        await library.settle()
+        #expect(server.count("/albums") == 3, "a fresh connection forgets the failure")
         #expect(await store.load([PlexAlbum].self, for: .albums, server: "M", section: "1")?.count == 2)
     }
 

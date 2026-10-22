@@ -190,10 +190,14 @@ private func read<T: Codable & Sendable>(_ key: Key, _ fetch: @Sendable (PlexLib
   `refresh([.favorites])`; a failure restores the saved list. The playlist
   writes `refresh([.playlists, .playlistItems(rk)])` after, which is what
   `playlistsChanged` does by hand now.
-- `attach` swaps the connection and forces a refresh of whatever is loaded
-  in memory (the keys a screen has asked for this session), so the first
-  seconds after a connect bring the screens up to date without a pull.
-  `detach` clears it; nothing else changes, which is the point.
+- `attach` swaps the connection and revalidates whatever is loaded in
+  memory (the keys a screen has asked for this session) that is older
+  than the floor, forgetting any failure memo, so the first seconds after
+  a connect bring the screens up to date without a pull while a relaunch
+  inside the floor asks for nothing: on a cold start the root reads from
+  disk before discovery finishes, and forcing every loaded key there made
+  every launch refetch the lot. `detach` clears the connection; nothing
+  else changes, which is the point.
 - `musicSections()` is the connection's, else `server.json`'s. `artworkURL`
   is the saved cover first, then the connection's URL, then the server URL
   from `server.json` with the kept token, as `OfflineLibrary.artworkURL` does.
