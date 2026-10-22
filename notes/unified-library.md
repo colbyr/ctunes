@@ -125,7 +125,7 @@ successful response. The layout grows:
     <server>/<section>/playlists.json        [PlexPlaylist]
     <server>/albums/<rk>.json                [PlexTrack]   as today
     <server>/artists/<rk>.json               [PlexAlbum]   as today, now for every artist page opened
-    <server>/artists/<rk>/tracks.json        [PlexTrack]   tracks(forArtist:)
+    <server>/artists/<rk>-tracks.json        [PlexTrack]   tracks(forArtist:)
     <server>/playlists/<rk>.json             [PlaylistItem] as today
 
 Freshness is the file's modification date; no sidecar. The store gains

@@ -54,15 +54,88 @@ struct OfflineStoreTests {
         #expect(decoded == original)
     }
 
-    @Test("a snapshot built from the fixtures survives save and load")
+    @Test("a snapshot built from the fixtures survives save and load, as one file per list")
     func snapshotRoundTrip() async throws {
         let (store, _, _) = try makeStore()
         let snapshot = try Self.fixtureSnapshot()
         try await store.save(snapshot)
-        #expect(await store.snapshot(server: Self.server, section: "1") == snapshot)
-        #expect(await store.snapshot(server: Self.server, section: nil) == snapshot)
+        let loaded = try #require(await store.snapshot(server: Self.server, section: "1"))
+        #expect(loaded.dated(snapshot.savedAt) == snapshot)
+        #expect(abs(loaded.savedAt.timeIntervalSinceNow) < 5, "dated by the album list's file")
+        #expect(await store.snapshot(server: Self.server, section: nil)?.dated(snapshot.savedAt) == snapshot)
         #expect(await store.snapshot(server: Self.server, section: "2") == nil)
         #expect(await store.snapshot(server: "N", section: nil) == nil)
+        let section = store.directory.appending(path: "\(Self.server)/1")
+        for name in ["albums", "artists", "favorites", "history", "playlists"] {
+            #expect(FileManager.default.fileExists(atPath: section.appending(path: "\(name).json").path), "\(name)")
+        }
+        #expect(!FileManager.default.fileExists(atPath: section.appending(path: "library.json").path))
+        #expect(await store.server(Self.server) == .init(name: "Test", sections: snapshot.sections, baseURL: Support.base))
+    }
+
+    @Test("a saved request loads back under its key with its age, and a miss is nil")
+    func savedRequests() async throws {
+        let (store, _, _) = try makeStore()
+        let albums = [album("1"), album("2")]
+        let tracks = tracks([1, 2], album: "1")
+        #expect(await store.load([PlexAlbum].self, for: .albums, server: Self.server, section: "1") == nil)
+        #expect(await store.savedAt(.albums, server: Self.server, section: "1") == nil)
+        await store.save(albums, for: .albums, server: Self.server, section: "1")
+        await store.save(tracks, for: .artistTracks("A"), server: Self.server)
+        #expect(await store.load([PlexAlbum].self, for: .albums, server: Self.server, section: "1") == albums)
+        #expect(await store.load([PlexAlbum].self, for: .albums, server: Self.server, section: "2") == nil, "per section")
+        #expect(await store.load([PlexTrack].self, for: .artistTracks("A"), server: Self.server) == tracks)
+        let age = try #require(await store.savedAt(.albums, server: Self.server, section: "1"))
+        #expect(abs(age.timeIntervalSinceNow) < 5)
+
+        // Saved through the key, read through the pins' accessor, and back.
+        await store.save(tracks, for: .albumTracks("1"), server: Self.server)
+        #expect(await store.tracks(inAlbum: "1", server: Self.server) == tracks)
+        await store.saveTracks(tracks.reversed(), inAlbum: "1", server: Self.server)
+        #expect(await store.load([PlexTrack].self, for: .albumTracks("1"), server: Self.server) == tracks.reversed())
+
+        // A fresh store reads the files.
+        let relaunched = OfflineStore(directory: store.directory, cache: TrackCache(
+            directory: store.directory.appending(path: "x"), pinnedDirectory: store.directory.appending(path: "y"), session: .shared))
+        #expect(await relaunched.load([PlexAlbum].self, for: .albums, server: Self.server, section: "1") == albums)
+        await relaunched.remove(.albums, server: Self.server, section: "1")
+        #expect(await relaunched.load([PlexAlbum].self, for: .albums, server: Self.server, section: "1") == nil)
+    }
+
+    @Test("a legacy library.json is split into the per-list files once, keeping a favorites file already there")
+    func legacySnapshotMigrates() async throws {
+        let (store, _, _) = try makeStore()
+        let snapshot = try Self.fixtureSnapshot()
+        let section = store.directory.appending(path: "\(Self.server)/1")
+        try FileManager.default.createDirectory(at: section, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(snapshot).write(to: section.appending(path: "library.json"))
+        // The pin group had written its own list, reconciled against the files.
+        let pinned = Array(snapshot.favorites.suffix(1))
+        try encoder.encode(pinned).write(to: section.appending(path: "favorites.json"))
+
+        let loaded = try #require(await store.snapshot(server: Self.server, section: nil))
+        #expect(loaded.albums == snapshot.albums)
+        #expect(loaded.artists == snapshot.artists)
+        #expect(loaded.sections == snapshot.sections)
+        #expect(loaded.section == snapshot.section)
+        #expect(loaded.serverName == "Test")
+        #expect(loaded.baseURL == Support.base)
+        #expect(loaded.favorites == pinned, "the pin group's list wins")
+        #expect(await store.favoriteTracks(server: Self.server, section: "1") == pinned)
+        #expect(!FileManager.default.fileExists(atPath: section.appending(path: "library.json").path))
+        #expect(FileManager.default.fileExists(atPath: section.appending(path: "albums.json").path))
+        #expect(await store.server(Self.server)?.sections == snapshot.sections)
+    }
+
+    @Test("a browsed artist's album list is saved without making the artist a pin")
+    func browsedArtist() async throws {
+        let (store, _, _) = try makeStore()
+        await store.save([album("1"), album("2")], for: .artistAlbums("A"), server: Self.server)
+        #expect(await store.pinnedAlbumKeys(server: Self.server).isEmpty)
+        #expect(await store.inventory(server: Self.server).artists.isEmpty)
+        #expect(await store.load([PlexAlbum].self, for: .artistAlbums("A"), server: Self.server)?.count == 2)
     }
 
     @Test("nothing on disk carries a token")
@@ -242,12 +315,20 @@ struct OfflineStoreTests {
         #expect(await cache.usage() == 3 * 1024)
     }
 
-    @Test("favorites are ignored until the pin is on")
+    @Test("favorites are saved but not fetched until the pin is on")
     func favoritesOff() async throws {
         let (store, cache, counter) = try makeStore()
-        await store.setFavorites(tracks([1], album: "9"), server: Self.server, section: "1", sources: sources)
+        let list = tracks([1], album: "9")
+        await store.setFavorites(list, server: Self.server, section: "1", sources: sources)
         try await cache.drain()
         #expect(counter.count == 0)
+        #expect(await store.favoriteTracks(server: Self.server, section: "1") == list, "the one list, pin or not")
+        #expect(await store.availableAlbums(server: Self.server).isEmpty, "not a pinned group")
+
+        await store.setFavoritesPinned(true, server: Self.server, section: "1")
+        await store.setFavorites(list, server: Self.server, section: "1", sources: sources)
+        try await cache.drain()
+        #expect(counter.count == 1)
     }
 
     @Test("favorites are kept per library: each section's group pins on its own")
@@ -765,5 +846,17 @@ struct OfflineStoreTests {
         #expect(inventory.state(ofArtist: "A", albums: albums) == .partial(done: 2, total: 7))
         #expect(inventory.state(ofArtist: "A", albums: []) == .complete(undownloadable: 0), "before the list loads")
         #expect(inventory.state(ofArtist: "B", albums: albums) == .none)
+    }
+}
+
+private extension LibrarySnapshot {
+    /// The same snapshot dated `date`: the store dates a loaded one by its
+    /// album list's file, not the value it was saved with.
+    func dated(_ date: Date) -> LibrarySnapshot {
+        LibrarySnapshot(
+            server: server, serverName: serverName, sections: sections, section: section,
+            albums: albums, artists: artists, favorites: favorites, history: history,
+            playlists: playlists, savedAt: date, baseURL: baseURL
+        )
     }
 }
