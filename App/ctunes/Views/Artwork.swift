@@ -11,6 +11,10 @@ struct Artwork: View {
     /// The glyph on the parchment while there is no image: a note for a
     /// cover, a list for a playlist with no composite yet.
     var placeholder = "music.note"
+    /// A smaller size of the same cover, shown while `url` loads if it is
+    /// already in memory: the grid's 400px tile under an album page's
+    /// 900px header, so the cover never opens blank.
+    var fallback: URL? = nil
 
     @State private var image: UIImage?
 
@@ -38,8 +42,8 @@ struct Artwork: View {
             guard let url else { image = nil; return }
             // Synchronous hit avoids a placeholder flash on reused rows.
             if let hit = ImageLoader.shared.cached(url) { image = hit; return }
-            image = nil
-            image = await ImageLoader.shared.image(for: url)
+            image = fallback.flatMap { ImageLoader.shared.cached($0) }
+            if let loaded = await ImageLoader.shared.image(for: url) { image = loaded }
         }
     }
 }

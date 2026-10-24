@@ -252,6 +252,12 @@ struct TracksView: View {
         model.library?.artworkURL(album.thumb ?? tracks.first?.thumb, size: 900)
     }
 
+    /// The grid tile's size of the same cover, already in memory when the
+    /// page was opened from a tile.
+    private var tileArtworkURL: URL? {
+        model.library?.artworkURL(album.thumb ?? tracks.first?.thumb)
+    }
+
 
     /// Title over the artist, the artist tappable. Sized like the bar's own
     /// title and subtitle so it reads as the native pair.
@@ -290,7 +296,7 @@ struct TracksView: View {
             // The cover carries the download mark the grid tiles do, or
             // an arrow that starts the download; a tap does what the mark
             // shows, and the menu is a long press away.
-            Artwork(url: artworkURL, size: 240, corner: 12)
+            Artwork(url: artworkURL, size: 240, corner: 12, fallback: tileArtworkURL)
                 .artworkShadow()
                 .overlay(alignment: .bottomTrailing) {
                     DownloadOverlay(state: state, offline: offline) {

@@ -382,7 +382,7 @@ struct NowPlayingView: View {
     /// for the queue, and it gives way in height too: the square fits
     /// whatever the pane has left.
     private func art(edge: CGFloat?) -> some View {
-        Artwork(url: artworkURL, size: edge, corner: 14)
+        Artwork(url: artworkURL, size: edge, corner: 14, fallback: model.library?.artworkURL(player.currentTrack?.thumb))
             .shadow(radius: 12, y: 6)
             // A measured edge needs no cap; a flexible frame around it
             // only centred the square in the room it didn't take.
