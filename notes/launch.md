@@ -29,8 +29,8 @@ Current state that matters (from the inventory):
 
 ### Pricing recommendation
 
-> Superseded by `notes/payments.md`: free download, 7-day trial, then a
-> yearly subscription. Kept for the reasoning.
+> Current plan in `notes/payments.md` (the trial + subscription detour was
+> dropped; this stands).
 
 Go paid-up-front rather than yearly subscription:
 
