@@ -214,13 +214,8 @@ struct MusicView: View {
                     if !group.name.isEmpty {
                         if view == .artist, let key = group.albums.first?.parentRatingKey {
                             Button { path.append(ArtistRoute(ratingKey: key, title: group.name)) } label: {
-                                HStack(spacing: 6) {
-                                    AlbumGroupHeader(group: group)
-                                    Image(systemName: "chevron.right")
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .contentShape(.rect)
+                                AlbumGroupHeader(group: group)
+                                    .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open \(group.name)")

@@ -455,20 +455,15 @@ struct NowPlayingView: View {
         }
     }
 
-    /// A name with a caret that opens its page. The cover gets out of the
+    /// A name that opens its page. The cover gets out of the
     /// way first; the column stays put.
     private func routeLink(_ name: String, label: String, open: @escaping () -> Void) -> some View {
         Button {
             if !presentation.isColumn { presentation.isShown = false }
             open()
         } label: {
-            HStack(spacing: 4) {
-                Text(name).lineLimit(2)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .contentShape(.rect)
+            Text(name).lineLimit(2)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

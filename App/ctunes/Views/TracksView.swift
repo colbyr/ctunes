@@ -274,12 +274,7 @@ struct TracksView: View {
                     .font(.headline)
                     .foregroundStyle(Color.ink)
                     .lineLimit(1)
-                HStack(spacing: 3) {
-                    Text(artist).font(.caption)
-                    if album.parentRatingKey != nil {
-                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
-                    }
-                }
+                Text(artist).font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             }
