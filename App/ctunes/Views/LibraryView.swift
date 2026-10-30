@@ -8,7 +8,7 @@ struct LibraryView: View {
     @State private var path = NavigationPath()
     @State private var query = ""
     /// The search pill is open. On the root and the deeper pages that
-    /// means the search page is on top of the stack; under a mix builder
+    /// means the search page is on top of the stack; under Quick Mix
     /// the pill filters the builder's pool instead.
     @State private var searching = false
     /// How deep the search page sits in the stack, nil while it isn't
@@ -21,11 +21,11 @@ struct LibraryView: View {
     /// The `ctunes://` route a widget asked for, taken here since the
     /// URL can land before this stack exists.
     let links: DeepLinks
-    /// True while a mix builder is on top of the stack; the search pill then
+    /// True while Quick Mix is on top of the stack; the search pill then
     /// filters the builder's pool instead of opening the search page.
     @State private var buildingMix = false
     @State private var nowPlaying = NowPlayingPresentation()
-    /// Written by the bottom bar, read by the mix builder, whose search
+    /// Written by the bottom bar, read by Quick Mix, whose search
     /// results would otherwise sit under the keyboard.
     @State private var keyboard = KeyboardInset()
     /// Routes and notices posted by the item menus, which sit on screens

@@ -89,7 +89,7 @@ had none of those, so this note is about the layout.
   pill comes back as the field. The mini player pill stays at the
   bottom; it is a custom view, and the strip takes only bar items.
 - **The play cards join the strip too.** The album, artist, playlist,
-  Favorites and mix builder pages already hand their Play and Shuffle
+  Favorites and Quick Mix pages already hand their Play and Shuffle
   (Mix Albums and Shuffle) cards to the toolbar as icons once the cards
   scroll away; under a vertical bar (`iconsInBar`) the icons are there
   from the start and the page shows no cards, so the strip reads back,
@@ -130,7 +130,7 @@ had none of those, so this note is about the layout.
 Checked in the Xcode 27.1 Duo simulator: closed, the browse root, the
 album page scrolled, the Now Playing sheet and Settings; open in
 landscape, flat and in the book pose, the column on the crease beside
-the album page, the artist page and the mix builder with their cards
+the album page, the artist page and Quick Mix with their cards
 in the strip, and the browse root at three tiles across. The iPad Pro
 13 on iOS 27.0 showed the leading column over the fallback stack. Not
 yet seen: the inner display in portrait (the cover's stacked split),

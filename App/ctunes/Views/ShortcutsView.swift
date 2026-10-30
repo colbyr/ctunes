@@ -6,7 +6,7 @@ import SwiftUI
 /// One saved mix as it sits at the top of the Music screen: a raised card
 /// so it reads as an action rather than another row. The body plays; the
 /// chevron past the rule opens the thing itself for a single pick, and
-/// the mix builder on the picks otherwise. A long press edits or removes.
+/// Quick Mix on the picks otherwise. A long press edits or removes.
 struct ShortcutCard: View {
     let model: AppModel
     let mix: SavedMix
@@ -61,7 +61,7 @@ struct ShortcutCard: View {
         .glassCard(cornerRadius: 24)
         .contextMenu {
             Button(action: edit) {
-                Label("Edit in Mix Builder", systemImage: "slider.horizontal.3")
+                Label("Edit in Quick Mix", systemImage: "slider.horizontal.3")
             }
             Button(role: .destructive) { model.removeShortcut(mix.id) } label: {
                 Label("Remove Shortcut", systemImage: "bookmark.slash")
@@ -72,7 +72,7 @@ struct ShortcutCard: View {
 
 /// What stands for a mix: its one pick's art (the heart disc for the
 /// favorites, a round portrait for an artist, the cover or composite
-/// otherwise), and for several picks or none the mix builder's own
+/// otherwise), and for several picks or none Quick Mix's own
 /// glyph. Shared by the card and the Settings rows.
 struct MixArt: View {
     let model: AppModel
@@ -360,7 +360,7 @@ struct ShortcutsList: View {
                     Label("New Mix…", systemImage: "plus.circle.fill")
                 }
             } footer: {
-                Text("Mixes saved from the Mix Builder. Hidden when everything in it is hidden for the current listeners.")
+                Text("Mixes saved from Quick Mix. Hidden when everything in it is hidden for the current listeners.")
             }
         }
         .settingsBackground()
@@ -441,7 +441,7 @@ private struct ShortcutDetail: View {
                     close()
                     navigator.open(.mix(MixRoute(mixID: id)))
                 } label: {
-                    Label("Edit in Mix Builder", systemImage: "slider.horizontal.3")
+                    Label("Edit in Quick Mix", systemImage: "slider.horizontal.3")
                 }
             } header: {
                 Text(mix.picks.count == 1 ? "Plays" : "Mixes")

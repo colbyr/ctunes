@@ -27,7 +27,7 @@ extension Color {
     static let heart = dynamic(light: 0xD9486E, dark: 0xF07A96)
     /// The glyph on top of a heart fill.
     static let heartInk = Color.white
-    /// The mix builder, and the playlists: one accent each, neither amber.
+    /// Quick Mix, and the playlists: one accent each, neither amber.
     static let mix = dynamic(light: 0x4E6FA8, dark: 0x93ADDD)
     static let playlist = dynamic(light: 0x2E8A7F, dark: 0x7FC9BE)
     /// The amber fill: play, progress, the favorites disc, the owner's avatar.

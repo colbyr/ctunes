@@ -446,7 +446,7 @@ Steps 1–3 are two to three days; 4 and 5 a day.
 
 - Queued hearts, replayed on attach.
 - A longer floor on cellular, if the revalidation shows up in data use.
-- The slow line on the search page and the mix builder, which load
+- The slow line on the search page and Quick Mix, which load
   without a `loaded` placeholder today.
 
 ## As built (Oct 2026)

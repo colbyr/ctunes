@@ -13,7 +13,7 @@ import Foundation
 struct WidgetFeed: Codable, Sendable, Equatable {
     struct Card: Codable, Sendable, Hashable, Identifiable {
         /// What stands for the mix: the heart disc, a round portrait, a
-        /// cover, a playlist composite, or the mix builder's glyph for
+        /// cover, a playlist composite, or Quick Mix's glyph for
         /// several picks or none.
         enum Art: String, Codable, Sendable {
             case favorites, artist, album, playlist, mix

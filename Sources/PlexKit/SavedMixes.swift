@@ -43,7 +43,7 @@ public enum MixPick: Hashable, Sendable {
         }
     }
 
-    /// `artist:123`, `favorites:`. What the mix builder keeps its
+    /// `artist:123`, `favorites:`. What Quick Mix keeps its
     /// selection as, and what decides equality.
     public var id: String {
         "\(kind.rawValue):\(ratingKey ?? "")"
@@ -163,7 +163,7 @@ public enum PlayStyle: String, Codable, Sendable, CaseIterable, Identifiable {
     }
 }
 
-/// A mix kept for later: what the mix builder had picked and how it was
+/// A mix kept for later: what Quick Mix had picked and how it was
 /// to play, under a name, as one of the play buttons at the top of the
 /// Music screen. No picks is the whole library, as in the builder. Kept
 /// in the same iCloud key-value store as the listeners, so every device

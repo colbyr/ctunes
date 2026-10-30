@@ -69,7 +69,7 @@ behind it; a first launch waits on the connecting screen. **What a person
 keeps is filed under the Plex account** (`AppModel.account`, the `uuid`
 from plex.tv's `/api/v2/user`, looked up at sign-in and kept in the
 keychain beside the token so it answers offline): the listeners, the
-shortcuts, the mix builder's picks, recent searches and the section
+shortcuts, Quick Mix's picks, recent searches and the section
 choice, the library-scoped ones through `AppModel.storageKey(_:)`. Device
 settings, downloads, the play cache and artwork tints are not.
 
@@ -277,7 +277,7 @@ and nothing could close.
 open in landscape) is read off `toolbarVerticalEdge` by
 `VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; every browse
 screen then adds `SearchBarItem` to its toolbar, the album, artist,
-playlist, Favorites and mix builder pages keep their Play and Shuffle
+playlist, Favorites and Quick Mix pages keep their Play and Shuffle
 cards off the page and in the strip from the start (`iconsInBar`), and
 the bottom bar drops the search pill until a search is open and sets
 the mini player 48pt tall against the strip's inset, level with the
@@ -368,7 +368,7 @@ is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 **Browsing** (`AlbumBrowse.swift`, `AlbumBrowserControls.swift`,
 `BrowseItems.swift`): the arrange chip is two menus. The first, its glyph
 the current layout, holds what to browse (`BrowseSubject`, on the root
-and the mix builder only) and the layout (`BrowseLayout`, grid or list);
+and Quick Mix only) and the layout (`BrowseLayout`, grid or list);
 the second holds the sort (`AlbumView`). The Downloaded filter is the
 round chip at the head of the listener row (`IconChip` in
 `ListenerChips.swift`), filled like an active listener while on. The
@@ -388,7 +388,7 @@ drawing of an item; `BrowseList` is the list layout's stack, a
 top of whatever page is up, closing the pill (the ×, or back past the
 page) pops it, and a page opened from a result folds the pill to its icon
 and keeps the query, so back lands on the same results. `LibraryView`
-tracks where the page sits as `searchDepth`; under a mix builder the pill
+tracks where the page sits as `searchDepth`; under Quick Mix the pill
 filters the builder's pool instead and no page is pushed. The page shows
 what was opened from it before while the field is empty ("Recently
 Searched", `RecentSearches`, 20 per account and library in `UserDefaults`, a track
@@ -437,8 +437,8 @@ the list and `OfflineStore` the items of every playlist opened
 the favorites, never a node in the pin tree.
 
 **Shortcuts** (`SavedMixes.swift` in PlexKit, `ShortcutsView.swift`)
-are the full-width play cards under the Mix Builder and Playlists tiles
-on the browse root: a `SavedMix` is what the mix builder had picked
+are the full-width play cards under the Quick Mix and Playlists tiles
+on the browse root: a `SavedMix` is what Quick Mix had picked
 (`[MixPick]`: the favorites, a playlist, an artist or an album, each
 with its title and thumb saved beside the key, identity being the kind
 and key; none is the whole library) plus a `PlayStyle` and a name,
@@ -762,7 +762,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the saved library with the connection unreachable; "Try again" and the retry timer connect for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
-| `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes the mix builder with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
+| `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes Quick Mix with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
 | `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music"; `mix:<title or id>` plays a shortcut through `PlayMixIntent`, the widgets' tap. Combine with `CTUNES_DEV_OFFLINE=1` for the saved-library path, or leave the token off for the signed-out error |
 | `CTUNES_DEV_WIDGET_FEED` | `1` logs the widget feed each time the browse root writes it, under category `Widget` |
 | `CTUNES_DEV_URL` | a `ctunes://` URL, opened a few seconds after launch the way a widget's link would; `simctl openurl` from the terminal stops at the "Open in…?" prompt |

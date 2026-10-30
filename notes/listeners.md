@@ -32,7 +32,7 @@ storage details).
    nothing (a track picked from a menu is always meant). `nil` is a
    library-wide list (favorites, a mix, the car's tabs), where every veto
    counts. `LibraryActions.playable` in `ItemMenus.swift` applies this
-   for every menu action; the album page, artist page, mix builder,
+   for every menu action; the album page, artist page, Quick Mix,
    favorites and CarPlay apply it themselves.
 3. **Vetoes don't absorb each other.** Pins narrow (an artist pin becomes
    album pins when one album is removed) because file wanting depends on

@@ -33,7 +33,7 @@ enum LibraryRoute: Hashable {
     case artist(ArtistRoute)
     case album(PlexAlbum)
     case playlist(PlexPlaylist)
-    /// The mix builder, on a saved mix's picks or the last selection.
+    /// Quick Mix, on a saved mix's picks or the last selection.
     case mix(MixRoute)
     case favorites
 }

@@ -2,7 +2,7 @@ import Foundation
 
 /// One music library: a section on a server. Rating keys are unique per
 /// server, but what a person keeps about their music (the shortcuts, the
-/// mix builder's picks, the favorites, a listener's vetoes) is about one
+/// Quick Mix's picks, the favorites, a listener's vetoes) is about one
 /// library's content, so state like that is filed under this.
 public struct LibraryID: Codable, Sendable, Hashable {
     /// `PlexServer.machineIdentifier`.

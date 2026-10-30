@@ -43,9 +43,9 @@ struct ArrangeChip: View {
     @Binding var layout: BrowseLayout
     /// What the sorts are over, for the Artists view's name.
     var scope: BrowseScope = .albums
-    /// Only the root and the mix builder browse more than one kind.
+    /// Only the root and Quick Mix browse more than one kind.
     var subject: Binding<BrowseSubject>? = nil
-    /// The kinds on offer: the mix builder has no playlists.
+    /// The kinds on offer: Quick Mix has no playlists.
     var subjects: [BrowseSubject] = BrowseSubject.allCases
 
     var body: some View {
@@ -105,7 +105,7 @@ struct AlbumBrowserControls: View {
     var scope: BrowseScope = .albums
     var subject: Binding<BrowseSubject>? = nil
     var subjects: [BrowseSubject] = BrowseSubject.allCases
-    /// Only the main browser, the playlists page and the mix builder filter.
+    /// Only the main browser, the playlists page and Quick Mix filter.
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {

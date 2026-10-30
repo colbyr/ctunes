@@ -69,7 +69,7 @@ final class AppModel {
 
     /// The library open, once a section is chosen. What is kept per
     /// library (the shortcuts, the listeners' vetoes, the favorites group,
-    /// the mix builder's picks) is read and written under it.
+    /// Quick Mix's picks) is read and written under it.
     private(set) var libraryID: LibraryID?
 
     /// The signed-in plex.tv account's `uuid`, kept in the keychain beside

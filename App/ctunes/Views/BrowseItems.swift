@@ -270,7 +270,7 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
     let subtitle: String?
     var download: DownloadState = .none
     var dimmed = false
-    /// Off in the mix builder, where a tap picks the item and the menu
+    /// Off in Quick Mix, where a tap picks the item and the menu
     /// stays a long press away.
     var showsMore = true
     let action: () -> Void

@@ -1,7 +1,7 @@
 import PlexKit
 import SwiftUI
 
-/// Pushed onto the navigation path to open the mix builder: on a saved
+/// Pushed onto the navigation path to open Quick Mix: on a saved
 /// mix's picks, or on the last selection with no id.
 struct MixRoute: Hashable {
     var mixID: SavedMix.ID? = nil
@@ -338,7 +338,7 @@ struct MixBuilderView: View {
                 ProgressView()
             }
         }
-        .navigationTitle(editing.flatMap { model.shortcut($0)?.name } ?? "Mix")
+        .navigationTitle(editing.flatMap { model.shortcut($0)?.name } ?? "Quick Mix")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { SearchBarItem() }
         .toolbar {
