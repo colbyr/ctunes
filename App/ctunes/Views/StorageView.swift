@@ -39,7 +39,7 @@ struct StorageList: View {
         .confirmationDialog("Remove all downloads?", isPresented: $confirmingRemoveAll, titleVisibility: .visible) {
             Button("Remove All Downloads", role: .destructive) { downloads.removeAll() }
         } message: {
-            Text("Everything kept offline will stream again. Nothing is removed from your library.")
+            Text("Everything will stream again. Your library isn't affected.")
         }
         .removeDownloadConfirmation($removing)
         .task { downloads.refresh() }
@@ -93,7 +93,7 @@ struct StorageList: View {
 
     private var emptySection: some View {
         Section {
-            Text("Long-press an artist, album, playlist or track and choose Download to keep it offline.")
+            Text("Long-press anything and choose Download to keep it offline.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -151,7 +151,7 @@ struct StorageList: View {
                 }
             }
         } header: {
-            SectionHeading("Cache", detail: "Recently played and upcoming tracks are kept so they don't stream twice.")
+            SectionHeading("Cache", detail: "Recent and upcoming tracks, so they don't stream twice.")
         }
     }
 
@@ -281,7 +281,7 @@ struct StorageList: View {
                 LabeledContent("Favorites", value: "\(usage.files) of \(DownloadText.count(inventory.favorites.count, "track")) · \(DownloadText.bytes(usage.bytes))")
             }
         } header: {
-            SectionHeading("Downloads", detail: "Downloads are available to play offline.")
+            SectionHeading("Downloads", detail: "Playable offline.")
         }
     }
 

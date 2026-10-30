@@ -76,7 +76,7 @@ struct SettingsSheet: View {
                 Task { await model.signOut() }
             }
         } message: {
-            Text("Downloads and listener vetoes on this device are removed. Your library and ratings stay on the server.")
+            Text("Downloads on this device are removed. Your library stays in Plex.")
         }
     }
 
@@ -100,7 +100,7 @@ struct SettingsSheet: View {
             Text("Library")
         } footer: {
             if offline {
-                Text("Offline. Playing downloaded music until the server answers.")
+                Text("Offline. Playing downloads until the server is back.")
             }
         }
     }
@@ -133,7 +133,7 @@ struct SettingsSheet: View {
         } header: {
             Text("Playback")
         } footer: {
-            Text("Anything below Original is transcoded to AAC by the server, and the tracks you play are kept in the play cache at that quality. Downloaded tracks always play as stored. Takes effect from the next track.")
+            Text("Below Original, the server transcodes to AAC. Downloads play as stored. Applies from the next track.")
         }
     }
 
@@ -158,10 +158,10 @@ struct SettingsSheet: View {
     }
 
     private var downloadsFooter: String {
-        var lines = ["Anything below Original is converted to MP3 by the server before it downloads, at up to the chosen bitrate. Tracks already downloaded keep their quality; remove and download again to change it."]
+        var lines = ["Below Original, tracks download as MP3 at up to that bitrate. Existing downloads keep their quality."]
         lines.append(model.downloads.allowsCellular
-            ? "Downloads and the play cache use cellular data."
-            : "Downloads wait for Wi-Fi, and nothing played on cellular is kept.")
+            ? "Downloads can use cellular data."
+            : "Downloads wait for Wi-Fi.")
         return lines.joined(separator: " ")
     }
 
@@ -180,7 +180,7 @@ struct SettingsSheet: View {
                 }
             }
         } footer: {
-            Text("Each listener can hide artists, albums and tracks. Choose who's listening from the Music screen.")
+            Text("Each listener can hide artists, albums and tracks.")
         }
     }
 
@@ -204,7 +204,7 @@ struct SettingsSheet: View {
                 }
             }
         } footer: {
-            Text("The play buttons at the top of the Music screen: mixes saved from the Mix Builder, played in order, shuffled or mixed by album.")
+            Text("Mixes saved from the Mix Builder, shown on the Music screen.")
         }
     }
 
@@ -229,7 +229,7 @@ struct SettingsSheet: View {
                 }
             }
         } footer: {
-            Text("Downloads are the artists, albums, tracks and favorites you keep offline. The play cache holds recently played and upcoming tracks so they don't stream twice.")
+            Text("Downloads and the play cache.")
         }
     }
 
@@ -260,7 +260,7 @@ struct SettingsSheet: View {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "ctunes \(version) (\(build))"
+        return "Tunes for Plex \(version) (\(build))"
     }
 
 }

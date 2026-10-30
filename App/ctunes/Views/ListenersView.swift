@@ -65,7 +65,7 @@ struct ListenersList: View {
                     Label("Add Listener", systemImage: "plus.circle.fill")
                 }
             } footer: {
-                Text("Listeners are saved on this phone, not in Plex. Choose who's listening from the Music screen.")
+                Text("Synced with iCloud. Choose who's listening from the Music screen.")
             }
         }
         .settingsBackground()
@@ -214,7 +214,7 @@ private struct ListenerDetail: View {
         .onAppear { editingName = listener.name == ListenersList.newName }
     }
 
-    private static let howToHide = "Hide an album or a track from its menu, or from the avatars at the top of its page."
+    private static let howToHide = "Hide an album or track from its menu or the avatars on its page."
 
     /// The listener's vetoes by kind, for the row summary and the header.
     static func count(_ listener: Listener) -> HiddenCount {
