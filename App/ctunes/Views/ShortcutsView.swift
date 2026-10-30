@@ -127,9 +127,9 @@ extension PlayStyle {
 
     var explanation: String {
         switch self {
-        case .play: "The picks in order, each as it is listed: a playlist's order, an album front to back, an artist's albums oldest first, favorites newest first."
-        case .shuffle: "Every track shuffled, spread out by artist and album."
-        case .mixAlbums: "Whole albums front to back, the albums shuffled."
+        case .play: "In order: playlists as listed, albums front to back, artists oldest first, favorites newest first."
+        case .shuffle: "Every track, shuffled and spread by artist and album."
+        case .mixAlbums: "Whole albums in shuffled order."
         }
     }
 }
@@ -360,7 +360,7 @@ struct ShortcutsList: View {
                     Label("New Mix…", systemImage: "plus.circle.fill")
                 }
             } footer: {
-                Text("Shortcuts are the play buttons at the top of the Music screen: mixes saved from the Mix Builder. One whose every pick is hidden for the people listening stays off the screen until they change.")
+                Text("Mixes saved from the Mix Builder. Hidden when everything in it is hidden for the current listeners.")
             }
         }
         .settingsBackground()
