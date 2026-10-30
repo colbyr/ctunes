@@ -264,9 +264,9 @@ struct MusicView: View {
 
     @State private var scrollPosition = ScrollPosition()
 
-    /// The mix builder and the playlists page, side by side.
+    /// Quick Mix and the playlists page, side by side.
     @ViewBuilder private var heroTiles: some View {
-        HeroTile(title: "Mix Builder",systemImage: "square.stack", accent: .mix) { path.append(MixRoute()) }
+        HeroTile(title: "Quick Mix",systemImage: "square.stack", accent: .mix) { path.append(MixRoute()) }
         HeroTile(title: "Playlists", systemImage: "music.note.list", accent: .playlist) { path.append(PlaylistsRoute()) }
     }
 
@@ -362,6 +362,9 @@ struct MusicView: View {
             if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle("Tunes")
+        // Beside the Now Playing column the bar's large title sits flush
+        // on the divider with no margin; the inline title is centred.
+        .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .toolbar { SearchBarItem() }
         .toolbar {
             // A playlist with nothing in it yet, named here; online only,
@@ -666,7 +669,7 @@ struct OfflineBanner: View {
     }
 }
 
-/// Half-width entry to the mix builder or the playlists page, sharing the
+/// Half-width entry to Quick Mix or the playlists page, sharing the
 /// hero card's chrome, each in its own color so the two read apart at a
 /// glance.
 private struct HeroTile: View {
@@ -684,7 +687,7 @@ private struct HeroTile: View {
                     .frame(width: 36, height: 36)
                     .background(accent.opacity(0.16), in: .circle)
                 // Half a phone's width beside the chevron is tight for
-                // "Mix Builder": one line, shrunk before it would truncate.
+                // "Quick Mix": one line, shrunk before it would truncate.
                 Text(title).font(.headline).lineLimit(1).minimumScaleFactor(0.75)
                 Spacer(minLength: 0)
                 // A page to go to, not an action: the favorites card's
