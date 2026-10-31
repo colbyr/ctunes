@@ -80,7 +80,7 @@ struct ResumeIntent: AudioPlaybackIntent {
 
 /// Registered at install and refreshed by `updateAppShortcutParameters()`
 /// when the playlists change. Every phrase has to carry the app's name;
-/// "Infinite Disc Changer" and "Tunes" work through `INAlternativeAppNames` in `Info.plist`.
+/// "Infinite Disc Changer" and "Disc Changer" work through `INAlternativeAppNames` in `Info.plist`.
 struct CtunesShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
