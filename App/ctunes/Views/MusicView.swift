@@ -361,7 +361,7 @@ struct MusicView: View {
         .overlay {
             if !loaded { LoadingPlaceholder(model: model) }
         }
-        .navigationTitle("Colby's Infinite Disc Changer")
+        .navigationTitle("Infinite Disc Changer")
         // Beside the Now Playing column the bar's large title sits flush
         // on the divider with no margin; the inline title is centred.
         .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
