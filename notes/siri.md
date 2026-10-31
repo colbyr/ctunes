@@ -128,8 +128,10 @@ build settled:
   The paths are the same as `CarPlayController`'s.
 - "Play On Rotation" is the top ten albums by the root's rotation
   score, each front to back, in that order; the dialog names the first.
-- `INAlternativeAppNames` = ["Tunes"] in `Info.plist`, so "in Tunes"
-  matches as well as "in Tunes for Plex".
+- `INAlternativeAppNames` = ["Infinite Disc Changer", "Tunes"] in
+  `Info.plist`, so either matches as well as "in Disc Changer", the
+  display name. The app was "Tunes for Plex" until the rename; "Tunes"
+  stays for the habit.
 - The App Intents metadata is extracted by the build with no project
   change (`Metadata.appintents` in the bundle lists the five actions).
 - Verified in the simulator through `CTUNES_DEV_INTENT`: every intent

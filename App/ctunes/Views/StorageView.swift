@@ -521,7 +521,7 @@ private struct SectionHeading: View {
 enum DeviceStorage {
     /// The name on the home screen.
     static var appName: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Tunes for Plex"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Disc Changer"
     }
 }
 

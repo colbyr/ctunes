@@ -81,7 +81,7 @@ struct PlayMixIntent: AudioPlaybackIntent {
         #if WIDGET
         // Never reached: the app performs every one. Here so the
         // extension's copy has a body to compile.
-        return .result(dialog: "Open Tunes to play.")
+        return .result(dialog: "Open Disc Changer to play.")
         #else
         let playback = try await IntentPlayback.ready()
         let played = try await playback.play(mixID: mix.id)

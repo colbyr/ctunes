@@ -20,18 +20,18 @@ enum IntentFailure: Error, CustomLocalizedStringResourceConvertible {
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
-        case .signedOut: "Sign in to Tunes first."
-        case .connecting: "Tunes is still connecting to your Plex server. Try again in a moment."
-        case .unreachable: "Tunes couldn't reach your Plex server."
-        case .noSection: "Pick a music library in Tunes first."
-        case .fetchFailed: "Tunes couldn't load that from your Plex server."
+        case .signedOut: "Sign in to Disc Changer first."
+        case .connecting: "Disc Changer is still connecting to your Plex server. Try again in a moment."
+        case .unreachable: "Disc Changer couldn't reach your Plex server."
+        case .noSection: "Pick a music library in Disc Changer first."
+        case .fetchFailed: "Disc Changer couldn't load that from your Plex server."
         case .noFavorites: "You haven't favorited anything yet."
         case .nothingToPlay: "There's nothing to play."
         case .nothingDownloaded: "Nothing there is downloaded, and the server can't be reached."
         case .nothingToResume: "There's nothing to resume."
-        case .noSuchPlaylist: "Tunes couldn't find that playlist."
-        case .noSuchItem: "Tunes couldn't find that in your library."
-        case .noSuchShortcut: "Tunes couldn't find that shortcut."
+        case .noSuchPlaylist: "Disc Changer couldn't find that playlist."
+        case .noSuchItem: "Disc Changer couldn't find that in your library."
+        case .noSuchShortcut: "Disc Changer couldn't find that shortcut."
         }
     }
 }

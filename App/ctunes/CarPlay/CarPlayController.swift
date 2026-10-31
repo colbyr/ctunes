@@ -132,7 +132,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
         case .signedOut, .linking:
             return .message(
                 title: "Sign in on your iPhone",
-                subtitle: "Open Tunes for Plex on your phone to link your Plex account.",
+                subtitle: "Open Disc Changer on your phone to link your Plex account.",
                 retry: false
             )
         case .connectFailed:
@@ -166,7 +166,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver {
     }
 
     private func messageTemplate(title: String, subtitle: String, retry: Bool) -> CPListTemplate {
-        let list = CPListTemplate(title: "Tunes", sections: [])
+        let list = CPListTemplate(title: "Disc Changer", sections: [])
         list.emptyViewTitleVariants = [title]
         list.emptyViewSubtitleVariants = [subtitle]
         guard retry else { return list }

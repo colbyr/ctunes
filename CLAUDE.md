@@ -242,8 +242,9 @@ builds the queue an entity's own page would (the artist in release
 order, the album, the song's album from that song with the song always
 kept, the playlist under every veto), `.shuffle` is the spread shuffle
 with a song kept first, `.repeat` is `setRepeat(.all)`, and `.next` and
-`.tail` go through `playNext` and `addToQueue`. "Tunes" alone works as the app name through
-`INAlternativeAppNames`. **Nothing here needs an entitlement or an
+`.tail` go through `playNext` and `addToQueue`. The home screen name is "Disc Changer" (the
+store's is "Colby's Infinite Disc Changer"); "Infinite Disc Changer" and
+the old "Tunes" work as the app name through `INAlternativeAppNames`. **Nothing here needs an entitlement or an
 extension**; the metadata is extracted at build time
 (`Metadata.appintents` in the bundle, five actions).
 

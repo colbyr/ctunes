@@ -14,10 +14,11 @@ struct AuthView: View {
                 .clipShape(.rect(cornerRadius: 22))
                 .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
 
-            Text("Tunes")
+            Text("Colby's Infinite Disc Changer")
                 .font(.largeTitle.bold())
+                .multilineTextAlignment(.center)
 
-            Text("Your Plex library, for everyone listening")
+            Text("A music player for Plex")
                 .foregroundStyle(.secondary)
 
             if case .linking = model.state {

@@ -260,7 +260,7 @@ struct SettingsSheet: View {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "Tunes for Plex \(version) (\(build))"
+        return "Colby's Infinite Disc Changer \(version) (\(build))"
     }
 
 }
