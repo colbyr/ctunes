@@ -1,0 +1,41 @@
+I wanted a music player for my Plex library that works the way I like. This is it.
+
+I'm the real audience here, but, if it suit you too, welcome aboard. Pay once and it's yours. No subscription, no ads, no tracking, and no server in the middle.
+
+LOAD THE CHANGER
+• Sign in with Plex and your server is found for you
+• Browse albums, artists and playlists as a grid or a list, sorted by On Rotation, Recently Added, A to Z or Back Catalog
+• One search across artists, albums, playlists and songs
+• Album and artist pages tinted to match the cover art
+• Heart tracks, and create, rename and reorder playlists
+
+TAILOR TRACKS FOR WHO'S LISTENING
+• Add a listener for each person you listen with
+• Hide artists, albums or tracks for each listener
+• Choose who's listening and the library adjusts, in the app and in the car
+• Listeners and Shortcuts sync through your own iCloud account
+
+QUICK MIX
+• Pick some artists, albums or playlists, or nothing at all for the whole library, then Play, Shuffle or Mix Albums
+• Save a mix as a Shortcut and play it from Home, a widget or Siri
+• Shuffle spreads out artists and albums, so one record doesn't hog the queue
+
+EVERYTHING ELSE
+• CarPlay with On Rotation, Artists, Recently Added, Favorites and Playlists
+• Download albums, playlists and favorites, in original quality or 320, 192 or 128 kbps
+• Keep Favorites Downloaded, so they're always on hand
+• No signal? Browse your saved library and play what's downloaded
+• Ask Siri to play any artist, album, song or playlist, without opening the app
+• Home Screen and Lock Screen widgets for your Shortcuts
+• Lock Screen, Control Center, headphone and AirPlay controls
+
+RUNS ON
+• iPhone, iPad and Mac
+
+WHAT YOU NEED
+• A Plex Media Server with a music library
+• Listening away from home is a Plex requirement, not mine: your server needs Remote Access on, plus Plex Pass or a Remote Watch Pass
+
+Colby's Infinite Disc Changer is an independent app made by one developer. It isn't made by or affiliated with Plex, Inc. Plex and Plex Media Server are trademarks of Plex.
+
+Questions? Email disc-changer@colbyr.com.
