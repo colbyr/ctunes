@@ -250,6 +250,9 @@ final class AppModel {
                 return
             }
             token = found
+            // Discovery reads the monitor's token, which sign-out cleared
+            // and a first launch left as the empty placeholder.
+            if let client { monitor.start(client: client, token: found) }
             account = try? await auth.lookUpAccount(token: found)
             await connect()
         } catch {
