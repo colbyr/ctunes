@@ -528,7 +528,7 @@ sync through `NSUbiquitousKeyValueStore` under one `listeners.<account>`
 key holding the `[Listener]` JSON, last writer wins: the roster is the
 signed-in Plex account's, empty while signed out. Every listener is the same:
 renamed, recolored, removed; there is no owner. A first launch starts with
-one, "You", listening (`ListenerRoster.starter`), under the fixed
+one, "Me", listening (`ListenerRoster.starter`), under the fixed
 `Listener.starterID` so two devices set up before iCloud syncs agree on
 it; an empty roster stays empty. The active set is per
 device and never leaves `UserDefaults`, which also keeps a full copy so

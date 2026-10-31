@@ -284,11 +284,11 @@ public struct ListenerRoster: Codable, Sendable, Equatable {
         try c.encode(activeIDs, forKey: .activeIDs)
     }
 
-    /// A first launch's roster: one listener, "You", listening, in the
+    /// A first launch's roster: one listener, "Me", listening, in the
     /// palette's last slot (amber).
     public static func starter(paletteSize: Int) -> ListenerRoster {
-        let you = Listener(id: Listener.starterID, name: "You", colorIndex: max(paletteSize - 1, 0))
-        return ListenerRoster(listeners: [you], activeIDs: [you.id])
+        let me = Listener(id: Listener.starterID, name: "Me", colorIndex: max(paletteSize - 1, 0))
+        return ListenerRoster(listeners: [me], activeIDs: [me.id])
     }
 
     public init(from decoder: Decoder) throws {

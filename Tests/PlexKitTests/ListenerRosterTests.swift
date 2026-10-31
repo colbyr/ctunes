@@ -104,7 +104,7 @@ struct ListenerRosterTests {
     @Test("the starter listener is an ordinary one: renamed, removed")
     func starter() {
         var roster = ListenerRoster.starter(paletteSize: 6)
-        #expect(roster.active.map(\.name) == ["You"])
+        #expect(roster.active.map(\.name) == ["Me"])
         #expect(roster.listeners.first?.colorIndex == 5)
         roster.update(Listener.starterID) { $0.name = "Colby" }
         #expect(roster.listeners.first?.initial == "C")
