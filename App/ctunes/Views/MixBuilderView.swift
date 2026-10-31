@@ -282,7 +282,7 @@ struct MixBuilderView: View {
                                          scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
                         .padding(.top, 16)
                         .id(Self.poolAnchor)
-                    HiddenLine(model: model, count: hiddenCount)
+                    HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
                         .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     // In the stack rather than an overlay, so it sits under
                     // the picks and the controls instead of over them.

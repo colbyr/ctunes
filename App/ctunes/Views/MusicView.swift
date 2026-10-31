@@ -317,7 +317,7 @@ struct MusicView: View {
                 AlbumBrowserControls(model: model, artists: artists, view: $view, layout: $layout,
                                      scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
                     .padding(.top, 16)
-                HiddenLine(model: model, count: hiddenCount)
+                HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
                     .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 // In the stack rather than an overlay, so it sits under the
                 // cards and the controls instead of over them.

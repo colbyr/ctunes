@@ -116,15 +116,16 @@ struct AlbumBrowserControls: View {
 }
 
 /// "2 artists & 1 album hidden for Laura & Kids" under the chips, or
-/// "Everything" when nothing is, so the grid doesn't jump as listeners
-/// toggle.
+/// "Everything" when nothing is ("All Downloads" under the download
+/// filter), so the grid doesn't jump as listeners toggle.
 struct HiddenLine: View {
     let model: AppModel
     let count: HiddenCount
+    var downloadedOnly = false
 
     var body: some View {
         Text(count.isEmpty
-            ? "Everything"
+            ? (downloadedOnly ? "All Downloads" : "Everything")
             : "\(count.description) hidden for \(ListenerRoster.joinNames(model.roster.activeNames))")
             .font(.footnote)
             .foregroundStyle(.secondary)
