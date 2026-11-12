@@ -217,6 +217,7 @@ struct NowPlayingView: View {
                     Button { player.jump(to: entry) } label: {
                         HStack(spacing: 12) {
                             Artwork(url: model.library?.artworkURL(entry.item.thumb), size: 44)
+                                .artworkShadow()
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.item.title).lineLimit(1)
                                 Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))
@@ -401,18 +402,13 @@ struct NowPlayingView: View {
     /// it.
     private var titleRow: some View {
         HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(player.currentTrack?.title ?? "Nothing playing")
-                        .font(.title3.bold())
-                        .lineLimit(3)
-                    // The credited artist on a compilation or a feature;
-                    // the album artist is already at the top.
-                    if let credited = player.currentTrack?.trackArtist {
-                        Text(credited)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                // Two lines are always held, so a title that wraps doesn't
+                // shove the transport down when the track changes.
+                ZStack(alignment: .topLeading) {
+                    Text(" \n ").hidden()
+                    titleText.lineLimit(3)
                 }
+                .font(.title3.bold())
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // The heart belongs to the track, so it sits beside the
                 // title, level with its first line.
@@ -420,6 +416,14 @@ struct NowPlayingView: View {
                     .frame(width: 44, height: 26)
         }
         .padding(.horizontal, 12)
+    }
+
+    /// The title, followed by the credited artist on a compilation or a
+    /// feature; the album artist is already at the top.
+    private var titleText: Text {
+        guard let track = player.currentTrack else { return Text("Nothing playing") }
+        guard let credited = track.trackArtist else { return Text(track.title) }
+        return Text("\(track.title)\(Text(" — \(credited)").fontWeight(.regular).foregroundStyle(.secondary))")
     }
 
     /// The scrubber and the transport.
@@ -431,7 +435,7 @@ struct NowPlayingView: View {
     }
 
     /// The album artist, the one with a page to open. The credited artist
-    /// on a feature or a compilation is shown under the title instead.
+    /// on a feature or a compilation follows the title instead.
     @ViewBuilder private var artistLine: some View {
         let track = player.currentTrack
         let name = track?.grandparentTitle ?? ""
