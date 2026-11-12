@@ -240,6 +240,11 @@ private struct SearchPill: View {
     @Binding var query: String
     @Binding var searching: Bool
     @FocusState private var focused: Bool
+    /// The first keyboard in a process holds the main thread for a beat
+    /// while it loads. Asked for mid-push, that froze the search page half
+    /// way in and the keyboard then slid in late; once the push has landed
+    /// the beat passes unseen. Warm, it rides the push.
+    @MainActor private static var keyboardLoaded = false
 
     private var filtering: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -257,7 +262,15 @@ private struct SearchPill: View {
                         // A fresh search wants the keyboard; the pill
                         // reopening over kept results (back from an album
                         // opened from them) wants the results.
-                        .onAppear { if query.isEmpty { focused = true } }
+                        .onAppear {
+                            guard query.isEmpty else { return }
+                            guard !Self.keyboardLoaded else { focused = true; return }
+                            Self.keyboardLoaded = true
+                            Task {
+                                try? await Task.sleep(for: .milliseconds(400))
+                                if searching { focused = true }
+                            }
+                        }
                     if !query.isEmpty {
                         Button {
                             query = ""

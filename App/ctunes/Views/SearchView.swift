@@ -14,6 +14,10 @@ final class RecentSearches {
     @ObservationIgnored private var key = ""
     private static let limit = 20
 
+    init(key: String? = nil) {
+        if key != nil { load(key: key) }
+    }
+
     /// Nil, signed out or with no library open, is an empty list.
     func load(key: String?) {
         self.key = key ?? ""
@@ -60,7 +64,19 @@ struct SearchView: View {
     /// artists and albums alone.
     @State private var tracks: [PlexTrack] = []
     @State private var trackQuery = ""
-    @State private var recents = RecentSearches()
+    @State private var recents: RecentSearches
+
+    init(model: AppModel, section: PlexSection, catalog: LibraryCatalog,
+         query: Binding<String>, path: Binding<NavigationPath>) {
+        self.model = model
+        self.section = section
+        self.catalog = catalog
+        _query = query
+        _path = path
+        // Loaded before the first frame: from `.task` the page drew its
+        // empty state and then swapped the list in under the push.
+        _recents = State(initialValue: RecentSearches(key: model.storageKey("recentSearches")))
+    }
 
     private var needle: String { LibrarySearch.needle(query) }
     private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
