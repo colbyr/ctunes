@@ -827,8 +827,11 @@ final class AudioPlayer {
     /// so say paused rather than show playing over silence, and leave the
     /// resume to the end of whatever has the session. A player that is
     /// running regardless activated the session itself; leave it be.
+    /// On a Mac activation is unimplemented (`-4`) and nothing holds the
+    /// audio, so the failure says nothing about whether the player can play.
     private func activationFailed(_ error: Error) {
         log.error("session activation failed: \(error, privacy: .public)")
+        guard !ProcessInfo.processInfo.isiOSAppOnMac else { return }
         guard isPlaying, !playerIsRunning else { return }
         player.pause()
         handleInterruptionBegan()
