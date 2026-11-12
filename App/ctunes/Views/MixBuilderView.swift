@@ -10,19 +10,19 @@ struct MixRoute: Hashable {
 /// Picks artists, albums, playlists and the favorites, any mix of them,
 /// and plays every track in the union as a one-shot queue, in order,
 /// shuffled by track or album by album. The pool lists one kind at a
-/// time, switched from the layout menu; the picks of every kind share the
-/// grid above it. With nothing picked the mix is the whole library. The
-/// pool never offers what a listening rider vetoed. Save keeps the picks
-/// and a style under a name as a shortcut on the Music screen; opened on
-/// a saved mix, Save updates it.
+/// time, switched from the layout menu; a tap checks an item in place and
+/// the picks of every kind gather in the mix bar, which takes the mini
+/// player's slot (`MixDraft`, `MixBar`). The pool never offers what a
+/// listening rider vetoed. What was played lands in the Recent row at the
+/// top, from which a mix plays again or is pinned to the Music screen.
 struct MixBuilderView: View {
     let model: AppModel
     let section: PlexSection
     let route: MixRoute
     @Binding var query: String
-    @Binding var building: Bool
     @Environment(AudioPlayer.self) private var player
     @Environment(LibraryNavigator.self) private var navigator
+    @Environment(MixDraft.self) private var draft
     /// The stack ignores the keyboard, so the pool makes its own room.
     @Environment(KeyboardInset.self) private var keyboard
 
@@ -34,23 +34,12 @@ struct MixBuilderView: View {
     /// request fails, which leaves On Rotation on the server's play counts.
     @State private var rotation: Rotation = .none
     @State private var loaded = false
-    /// Pick ids (`MixPick.id`: `artist:<ratingKey>`, `favorites:`) in the
-    /// order they were tapped.
-    @State private var selected: [String] = []
-    @State private var loadingMix: PlayStyle?
-    @State private var nothingToPlay = false
     @State private var hooked = false
-    /// The saved mix the builder is editing: the route's, or the one just
-    /// saved, so a second Save updates rather than adds.
-    @State private var editing: SavedMix.ID?
-    @State private var saving = false
-    /// Whether the action cards are on screen; once they scroll away the
-    /// toolbar takes over with icon-only copies.
-    @State private var actionsVisible = true
-    /// The cards' icons in the bar: once the cards scroll away, or under
-    /// a vertical bar, where the strip holds them from the start and the
-    /// page shows no cards at all.
-    private var iconsInBar: Bool { !actionsVisible || navigator.hasVerticalBar }
+    /// The route's saved mix has been put in the bar; coming back from a
+    /// page pushed over the builder shouldn't put it there again.
+    @State private var routeApplied = false
+    /// A Recent card being pinned, or a pinned one being renamed.
+    @State private var pinning: PinRequest?
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     /// The pool's width, for the tile floor.
     @State private var width: CGFloat = 0
@@ -65,22 +54,18 @@ struct MixBuilderView: View {
     @AppStorage("mixView.playlist") private var playlistSort: AlbumView = .artist
     @AppStorage("mixLayout") private var layout: BrowseLayout = .grid
     @AppStorage("mixDownloadedOnly.album") private var downloadedOnly = false
-    /// Comma-joined pick ids under `mixSelection.<account>.<server>.<section>`,
-    /// so the last mix is waiting next time in the library it was made in.
-    private var savedSelection: [String] {
-        get {
-            guard let key = model.storageKey("mixSelection") else { return [] }
-            return (UserDefaults.standard.string(forKey: key) ?? "").split(separator: ",").map(String.init)
-        }
-        nonmutating set {
-            guard let key = model.storageKey("mixSelection") else { return }
-            UserDefaults.standard.set(newValue.joined(separator: ","), forKey: key)
-        }
+
+    private struct PinRequest: Identifiable {
+        let picks: [MixPick]
+        let style: PlayStyle
+        let editing: SavedMix.ID?
+        var id: String { RecentMix.key(for: picks) }
     }
 
     /// Debug-only preselection from `CTUNES_DEV_MIX=<kind>:<key>,<key>`,
-    /// the keys taken as that kind. Nil without a colon, so the saved
-    /// selection applies; a bare `<kind>:` is an explicitly empty one.
+    /// the keys taken as that kind once the pool loads. Nil without a
+    /// colon, so the saved picks apply; a bare `<kind>:` is an explicitly
+    /// empty one.
     static var developmentSelection: [String]? {
         #if DEBUG
         guard let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
@@ -97,8 +82,8 @@ struct MixBuilderView: View {
         /// What a save keeps; its `id` is the selection's key.
         let pick: MixPick
         let subtitle: String?
-        /// A listening rider has vetoed it. Stays in the selected grid,
-        /// dimmed, so toggling the rider off brings it straight back.
+        /// A listening rider has vetoed it. Off the pool, but still drawn
+        /// dimmed wherever it is listed.
         let vetoed: Bool
         /// Offline with nothing downloaded: still in the pool, dimmed.
         var unavailable = false
@@ -171,12 +156,10 @@ struct MixBuilderView: View {
         )
     }
 
-    /// The album pool sectioned the way the main screen is, minus the
-    /// picks. Empty groups fall away with their albums. Search shows the
-    /// flat ranked `rest` instead.
+    /// The album pool sectioned the way the main screen is. Search shows
+    /// the flat ranked `rest` instead.
     private var poolGroups: [AlbumGroup] {
-        let unpicked = browsable.filter { !selected.contains("album:\($0.ratingKey)") }
-        return AlbumBrowse.groups(unpicked, view: albumSort, hiding: hidden, rotation: rotation)
+        AlbumBrowse.groups(browsable, view: albumSort, hiding: hidden, rotation: rotation)
     }
 
     /// The playlist pool under the Downloaded only filter: the ones with a
@@ -199,43 +182,25 @@ struct MixBuilderView: View {
         }
     }
 
-    /// Selected items of every kind in tap order, vetoed ones included.
-    private var picks: [Item] {
-        let artistsByKey = Dictionary(artists.map { ($0.ratingKey, $0) }, uniquingKeysWith: { first, _ in first })
-        let albumsByKey = Dictionary(albums.map { ($0.ratingKey, $0) }, uniquingKeysWith: { first, _ in first })
-        let playlistsByKey = Dictionary(model.playlists.map { ($0.ratingKey, $0) }, uniquingKeysWith: { first, _ in first })
-        return selected.compactMap { id in
-            let parts = id.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-            guard parts.count == 2 else { return nil }
-            switch MixPickKind(rawValue: parts[0]) {
-            case .artist: return artistsByKey[parts[1]].map { item(artist: $0) }
-            case .album: return albumsByKey[parts[1]].map { item(album: $0) }
-            case .playlist: return playlistsByKey[parts[1]].map { item(playlist: $0) }
-            case .favorites: return favoritesItem
-            case nil: return nil
-            }
+    /// The pool narrowed by the search pill; picks stay in place, checked.
+    private var rest: [Item] {
+        guard !needle.isEmpty else { return pool }
+        switch kind {
+        case .artist, .playlist, .favorites:
+            return pool.filter { $0.title.localizedCaseInsensitiveContains(needle) }
+        case .album:
+            let ranked = AlbumBrowse.search(browsable, query: needle, view: albumSort, hiding: hidden, rotation: rotation).map(\.ratingKey)
+            let byKey = Dictionary(pool.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+            return ranked.compactMap { byKey[$0] }
         }
     }
 
-    /// The picks that will actually go into the mix.
-    private var playable: [Item] { picks.filter { !$0.vetoed } }
-
-    /// The two cards: Play and Shuffle for one album, playlist or the
-    /// favorites, Mix Albums and Shuffle for anything else.
-    private var styles: [PlayStyle] { PlayStyle.cases(for: picks.map(\.pick)) }
-
-    /// Search narrows `rest` only, so a pick never disappears from the
-    /// selected grid.
-    private var rest: [Item] {
-        let unpicked = pool.filter { !selected.contains($0.id) }
-        guard !needle.isEmpty else { return unpicked }
+    /// What a tap picks under the current subject, for the hint.
+    private var poolNoun: String {
         switch kind {
-        case .artist, .playlist, .favorites:
-            return unpicked.filter { $0.title.localizedCaseInsensitiveContains(needle) }
-        case .album:
-            let ranked = AlbumBrowse.search(browsable, query: needle, view: albumSort, hiding: hidden, rotation: rotation).map(\.ratingKey)
-            let byKey = Dictionary(unpicked.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
-            return ranked.compactMap { byKey[$0] }
+        case .artist: "artists"
+        case .album: "albums"
+        case .playlist, .favorites: "playlists"
         }
     }
 
@@ -256,24 +221,14 @@ struct MixBuilderView: View {
     }
 
     var body: some View {
-        let picks = picks
+        let recents = RecentMixItem.all(model)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    // Under a vertical bar the strip has these from the start.
-                    if !navigator.hasVerticalBar {
-                        MixActions(styles: styles, loading: loadingMix, action: play)
-                            // Bottom inset clears the card's shadow; see `cardShadow`.
-                            .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                    if !recents.isEmpty {
+                        recentRow(recents)
+                            .padding(.bottom, 16)
                     }
-                    Group {
-                        if picks.isEmpty {
-                            emptySelection
-                        } else {
-                            items(picks, selected: true)
-                        }
-                    }
-                    .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                     Rectangle()
                         .fill(Color.divider)
                         .frame(height: 1)
@@ -282,8 +237,16 @@ struct MixBuilderView: View {
                                          scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
                         .padding(.top, 16)
                         .id(Self.poolAnchor)
-                    HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
-                        .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                    HStack(spacing: 0) {
+                        HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
+                        if draft.picks.isEmpty {
+                            Text(" · tap \(poolNoun) to start a mix")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .lineLimit(1)
+                    .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     // In the stack rather than an overlay, so it sits under
                     // the picks and the controls instead of over them.
                     if loaded, rest.isEmpty, !needle.isEmpty {
@@ -297,7 +260,7 @@ struct MixBuilderView: View {
                     } else if kind == .album && needle.isEmpty {
                         ForEach(poolGroups) { group in
                             Section {
-                                items(group.albums.map { item(album: $0, showArtist: albumSort != .artist) }, selected: false)
+                                items(group.albums.map { item(album: $0, showArtist: albumSort != .artist) })
                                     .padding(.init(top: group.name.isEmpty ? 14 : 2, leading: Self.margin, bottom: 0, trailing: Self.margin))
                             } header: {
                                 if !group.name.isEmpty {
@@ -309,7 +272,7 @@ struct MixBuilderView: View {
                             }
                         }
                     } else {
-                        items(rest, selected: false)
+                        items(rest)
                             .padding(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
                     }
                 }
@@ -325,71 +288,139 @@ struct MixBuilderView: View {
         .parchment()
         .scrollDismissesKeyboard(.immediately)
         .scrollEdgeEffectStyle(.soft, for: .top)
-        // Past the action cards (about their height plus the row insets).
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top > 90
-        } action: { _, scrolledPast in
-            withAnimation(.snappy) { actionsVisible = !scrolledPast }
-        }
-        // Room for the floating pills, and for the keyboard under them.
-        .contentMargins(.bottom, 84 + (keyboard.isUp ? keyboard.height : 0), for: .scrollContent)
+        // Room for the floating pills, the mix bar's two rows, and the
+        // keyboard under them.
+        .contentMargins(.bottom, (draft.isBarShown ? 150 : 84) + (keyboard.isUp ? keyboard.height : 0), for: .scrollContent)
         .overlay {
             if !loaded {
                 ProgressView()
             }
         }
-        .navigationTitle(editing.flatMap { model.shortcut($0)?.name } ?? "Quick Mix")
+        .navigationTitle(draft.editing.flatMap { model.shortcut($0)?.name } ?? "Quick Mix")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { SearchBarItem() }
-        .toolbar {
-            // Keeps the picks as a shortcut on the Music screen; declared
-            // first so it sits leftmost, ahead of the play icons.
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Save", systemImage: "bookmark") { saving = true }
-                    .disabled(!loaded)
-            }
-            // The cards' actions follow you down the pool as icons.
-            if iconsInBar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ForEach(styles) { style in
-                        Button(style.verb, systemImage: style.symbol) { play(style) }
-                            .disabled(loadingMix != nil)
-                    }
-                }
-            }
+        // Handed the environment explicitly: a Mac window crossing the
+        // compact/regular line re-hosts an open sheet without it.
+        .sheet(isPresented: Bindable(draft).reviewing) {
+            MixReviewSheet(model: model)
+                .environment(draft)
+                .environment(player)
+                .environment(nowPlaying)
+                .environment(navigator)
         }
-        .sheet(isPresented: $saving) {
-            SaveMixSheet(model: model, picks: picks.map(\.pick), editing: editing) { saved in editing = saved }
+        .sheet(item: $pinning) { request in
+            SaveMixSheet(model: model, picks: request.picks, editing: request.editing, style: request.style)
         }
         .onAppear {
-            building = true
+            draft.building = true
             query = ""
-            // A saved mix opens on its picks; otherwise the last selection
-            // is waiting, unless a dev hook names one.
-            if let id = route.mixID, editing == nil, let mix = model.shortcut(id) {
-                editing = id
-                selected = mix.picks.map(\.id)
-            } else if selected.isEmpty {
-                selected = Self.developmentSelection ?? savedSelection
+            // A saved mix opens on its picks; otherwise the last picks are
+            // waiting.
+            if !routeApplied, let id = route.mixID, let mix = model.shortcut(id) {
+                draft.picks = mix.picks
+                draft.editing = id
+            } else if draft.picks.isEmpty, Self.developmentSelection == nil {
+                draft.picks = MixDraft.saved(model)
             }
+            routeApplied = true
         }
-        .onDisappear { building = false }
-        .onChange(of: selected) { savedSelection = selected }
+        .onDisappear { draft.building = false }
+        .onChange(of: draft.picks) { draft.save(model) }
         .task(id: model.libraryRevision) {
             await load()
             #if DEBUG
             // Once: the task runs again on every revision.
-            if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil, !hooked, !albums.isEmpty {
+            if !hooked, !albums.isEmpty, let ids = Self.developmentSelection {
                 hooked = true
-                play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .mixAlbums : .shuffle)
+                draft.picks = ids.compactMap(developmentPick)
+                draft.reviewing = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_REVIEW"] != nil && !draft.picks.isEmpty
+                if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {
+                    draft.play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .mixAlbums : .shuffle,
+                               actions: actions)
+                }
             }
             #endif
         }
         .refreshable { await load() }
-        .alert("Nothing to play", isPresented: $nothingToPlay) {
-            Button("OK") {}
-        } message: {
-            Text("Nothing selected has any tracks to play right now.")
+    }
+
+    private var actions: LibraryActions {
+        LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
+    }
+
+    #if DEBUG
+    /// A `kind:key` from the dev hook as a pick from the loaded pool.
+    private func developmentPick(_ id: String) -> MixPick? {
+        let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        switch MixPickKind(rawValue: parts[0]) {
+        case .artist: return artists.first { $0.ratingKey == parts[1] }.map(MixPick.init(artist:))
+        case .album: return albums.first { $0.ratingKey == parts[1] }.map(MixPick.init(album:))
+        case .playlist: return model.playlists.first { $0.ratingKey == parts[1] }.map(MixPick.init(playlist:))
+        case .favorites: return .favorites
+        case nil: return nil
+        }
+    }
+    #endif
+
+    /// The mixes played here, then the pinned ones not played yet, as
+    /// cards that play on a tap in the style they last played in.
+    private func recentRow(_ recents: [RecentMixItem]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            AlbumGroupHeader(name: "Recent")
+                .padding(.horizontal, Self.margin)
+            ScrollView(.horizontal) {
+                HStack(spacing: 12) {
+                    ForEach(recents) { item in
+                        Button {
+                            draft.play(item.picks, style: item.style, actions: actions)
+                        } label: {
+                            RecentMixCard(model: model, item: item,
+                                          playing: draft.isPlaying(item.id, player: player),
+                                          loading: draft.loadingKey == item.id)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu { recentMenu(item) }
+                    }
+                }
+                .padding(.horizontal, Self.margin)
+                // Room for the cards' shadow; see `cardShadow`.
+                .padding(.vertical, 14)
+            }
+            .scrollIndicators(.hidden)
+            .padding(.vertical, -14)
+        }
+        .padding(.top, 8)
+    }
+
+    @ViewBuilder private func recentMenu(_ item: RecentMixItem) -> some View {
+        ForEach(PlayStyle.cases(for: item.picks)) { style in
+            Button(style.verb, systemImage: style.symbol) {
+                draft.play(item.picks, style: style, actions: actions)
+            }
+        }
+        Button("Edit Picks", systemImage: "slider.horizontal.3") {
+            draft.picks = item.picks
+            draft.editing = item.pinned?.id
+            draft.reviewing = true
+        }
+        if let pinned = item.pinned {
+            Button("Rename or Restyle…", systemImage: "pencil") {
+                pinning = PinRequest(picks: pinned.picks, style: pinned.style, editing: pinned.id)
+            }
+            Button("Unpin from Music Screen", systemImage: "pin.slash") {
+                model.removeShortcut(pinned.id)
+                if draft.editing == pinned.id { draft.editing = nil }
+            }
+        } else {
+            Button("Pin to Music Screen…", systemImage: "pin") {
+                pinning = PinRequest(picks: item.picks, style: item.style, editing: nil)
+            }
+        }
+        if let recent = item.recent {
+            Button("Remove from Recent", systemImage: "xmark", role: .destructive) {
+                model.forgetRecentMix(recent.id)
+            }
         }
     }
 
@@ -406,27 +437,12 @@ struct MixBuilderView: View {
         rotation = Rotation(history: history, albums: albums)
     }
 
-    /// Stands in for the selected items, sized by an invisible tile in the
-    /// same columns, or one invisible row, so the pool doesn't jump when
-    /// the first pick lands.
-    private var emptySelection: some View {
-        let blank = Item(pick: .album(ratingKey: "", title: " ", artistKey: nil, artist: nil, thumb: nil), subtitle: " ", vetoed: false)
-        return items([blank], selected: false)
-            .hidden()
-            .overlay {
-                Text("Mix the whole library, or pick artists, albums and playlists below.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-    }
-
-    @ViewBuilder private func items(_ items: [Item], selected isSelected: Bool) -> some View {
+    @ViewBuilder private func items(_ items: [Item]) -> some View {
         switch layout {
         case .grid:
             LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
                 ForEach(items) { item in
+                    let isSelected = draft.contains(item.id)
                     self.item(item, selected: isSelected) {
                         MixTile(item: item, selected: isSelected, url: model.library?.artworkURL(item.thumb))
                     }
@@ -434,18 +450,18 @@ struct MixBuilderView: View {
             }
         case .list:
             BrowseList(items: items) { item in
+                let isSelected = draft.contains(item.id)
                 BrowseRow(url: model.library?.artworkURL(item.thumb), round: item.kind == .artist,
                           placeholder: Self.placeholder(for: item.kind),
                           art: item.kind == .favorites ? AnyView(FavoritesArt(size: BrowseRow<EmptyView, EmptyView>.artSize, corner: 6)) : nil,
                           title: item.title,
                           subtitle: item.subtitle, download: item.download, dimmed: item.vetoed || item.unavailable, showsMore: false) {
-                    toggle(item.id)
+                    draft.toggle(item.pick)
                 } accessory: {
-                    // A pick's mark, or the plus that adds one; the ring
-                    // color from the tiles, gray once vetoed.
-                    Image(systemName: isSelected ? "xmark.circle.fill" : "plus.circle")
+                    // A pick's check, or the plus that adds one.
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "plus.circle")
                         .font(.title3)
-                        .foregroundStyle(isSelected ? (item.vetoed ? .gray : Color.mix) : .secondary)
+                        .foregroundStyle(isSelected ? AnyShapeStyle(Color.pill) : AnyShapeStyle(.secondary))
                 } menu: {
                     menu(for: item)
                 }
@@ -458,7 +474,7 @@ struct MixBuilderView: View {
     /// One tile: a tap toggles it, a long press gets the same menu the
     /// tile has elsewhere.
     private func item(_ item: Item, selected isSelected: Bool, @ViewBuilder label: () -> some View) -> some View {
-        Button { toggle(item.id) } label: { label() }
+        Button { draft.toggle(item.pick) } label: { label() }
             .buttonStyle(.plain)
             .accessibilityLabel(isSelected ? "Remove \(item.title)" : "Add \(item.title)")
             .accessibilityHint(item.vetoed ? "Hidden for a listener, so it won't be played" : "")
@@ -495,49 +511,6 @@ struct MixBuilderView: View {
         }
     }
 
-    private func toggle(_ id: String) {
-        withAnimation(.snappy) {
-            if let index = selected.firstIndex(of: id) {
-                selected.remove(at: index)
-            } else {
-                selected.append(id)
-            }
-        }
-    }
-
-    /// Every track across the selection, or the whole library when nothing
-    /// is picked, ordered once at enqueue time: in pick order, spread-
-    /// shuffled like Shuffle Favorites, or kept in whole albums with only
-    /// the album order shuffled. The fetch is the shortcut cards' own.
-    private func play(_ mode: PlayStyle) {
-        guard let library = model.library, loadingMix == nil else { return }
-        let picked = playable.map(\.pick)
-        guard selected.isEmpty || !picked.isEmpty else {
-            nothingToPlay = true
-            return
-        }
-        loadingMix = mode
-        let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
-        Task {
-            defer { loadingMix = nil }
-            var tracks = await model.tracks(of: picked)
-            // Nothing picked under Downloaded only: the albums the filter shows.
-            if picked.isEmpty, downloadedOnly {
-                let shown = Set(browsable.map(\.ratingKey))
-                tracks = tracks.filter { shown.contains($0.parentRatingKey ?? "") }
-            }
-            // A pick's vetoed albums and tracks drop out here; offline,
-            // only what's on disk can go in the queue.
-            let playable = actions.playable(tracks, within: nil)
-            guard !playable.isEmpty else {
-                nothingToPlay = true
-                return
-            }
-            player.play(mode.ordered(playable), startingAt: 0, library: library)
-            nowPlaying.isShown = true
-        }
-    }
-
     private struct MixTile: View {
         let item: Item
         let selected: Bool
@@ -549,15 +522,16 @@ struct MixBuilderView: View {
         var body: some View {
             VStack(alignment: round ? .center : .leading, spacing: 8) {
                 art
-                    .overlay(alignment: .topTrailing) {
+                    .overlay(alignment: .bottomTrailing) {
                         if selected {
-                            Image(systemName: "xmark")
+                            Image(systemName: "checkmark")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(Color.pillInk)
                                 .frame(width: 24, height: 24)
                                 .background(Color.pill, in: .circle)
                                 .overlay(Circle().stroke(Color.parchmentTop, lineWidth: 2))
-                                .offset(x: round ? 0 : 6, y: round ? 0 : -6)
+                                .padding(round ? 2 : 6)
+                                .transition(.scale.combined(with: .opacity))
                         }
                     }
                 VStack(alignment: round ? .center : .leading, spacing: 1) {
@@ -577,7 +551,7 @@ struct MixBuilderView: View {
             .contentShape(.rect)
         }
 
-        private var ring: Color { item.vetoed ? .gray : .mix }
+        private var ring: Color { .pill }
 
         @ViewBuilder private var art: some View {
             if round {
@@ -585,12 +559,13 @@ struct MixBuilderView: View {
                     .clipShape(.circle)
                     .artworkShadow()
                     .overlay(alignment: .bottomTrailing) {
-                        // Pulled in toward the rim, where a circle has room.
-                        DownloadBadge(state: item.download).padding(4)
+                        // Pulled in toward the rim, where a circle has room;
+                        // a pick's check takes its place.
+                        if !selected { DownloadBadge(state: item.download).padding(4) }
                     }
                     .overlay {
                         if selected {
-                            Circle().stroke(ring, lineWidth: 2)
+                            Circle().stroke(ring, lineWidth: 3)
                         }
                     }
             } else {
@@ -602,36 +577,16 @@ struct MixBuilderView: View {
                     }
                 }
                 .artworkShadow()
-                .overlay(alignment: .bottomTrailing) { DownloadBadge(state: item.download) }
+                .overlay(alignment: .bottomTrailing) {
+                    if !selected { DownloadBadge(state: item.download) }
+                }
                 .overlay {
                     if selected {
-                        RoundedRectangle(cornerRadius: 8).stroke(ring, lineWidth: 2)
+                        RoundedRectangle(cornerRadius: 8).stroke(ring, lineWidth: 3)
                     }
                 }
             }
         }
-    }
-}
-
-/// The actions at the top of the page, styled like the shortcut cards on
-/// the root: two cards, always live, since an empty selection mixes
-/// everything. Which two follows the picks.
-private struct MixActions: View {
-    let styles: [PlayStyle]
-    let loading: PlayStyle?
-    let action: (PlayStyle) -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ForEach(styles) { style in
-                MixActionCard(
-                    systemImage: style.symbol, title: style.verb, subtitle: nil,
-                    enabled: loading == nil || loading == style, loading: loading == style,
-                    tint: .mix
-                ) { action(style) }
-            }
-        }
-        .animation(.snappy, value: styles)
     }
 }
 

@@ -21,9 +21,11 @@ struct LibraryView: View {
     /// The `ctunes://` route a widget asked for, taken here since the
     /// URL can land before this stack exists.
     let links: DeepLinks
-    /// True while Quick Mix is on top of the stack; the search pill then
-    /// filters the builder's pool instead of opening the search page.
-    @State private var buildingMix = false
+    /// Quick Mix's picks, and whether it is on top of the stack: the
+    /// search pill then filters the builder's pool instead of opening the
+    /// search page, and the mix bar takes the mini player's slot.
+    @State private var mixDraft = MixDraft()
+    private var buildingMix: Bool { mixDraft.building }
     @State private var nowPlaying = NowPlayingPresentation()
     /// Written by the bottom bar, read by Quick Mix, whose search
     /// results would otherwise sit under the keyboard.
@@ -114,6 +116,7 @@ struct LibraryView: View {
         .environment(nowPlaying)
         .environment(navigator)
         .environment(keyboard)
+        .environment(mixDraft)
         // The cover is handed the observables by hand. When a Mac window
         // drags across the compact/regular boundary UIKit re-hosts the
         // open presentation, and that pass evaluates the content without
@@ -382,7 +385,7 @@ struct LibraryView: View {
             }
             .navigationDestination(for: MixRoute.self) { route in
                 if let section = model.selectedSection {
-                    MixBuilderView(model: model, section: section, route: route, query: $query, building: $buildingMix)
+                    MixBuilderView(model: model, section: section, route: route, query: $query)
                 }
             }
             .navigationDestination(for: PlaylistsRoute.self) { _ in

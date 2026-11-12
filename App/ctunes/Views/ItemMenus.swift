@@ -64,20 +64,30 @@ struct LibraryActions {
     }
 
     /// The whole list from the top, or from one of its tracks. Nothing
-    /// to play is a notice, never silence.
-    func play(_ tracks: [PlexTrack], within container: VetoKind?, from track: PlexTrack? = nil) {
-        guard let library = model.library else { return }
+    /// to play is a notice, never silence. Quick Mix plays without
+    /// opening Now Playing: its bar becomes the mini player instead.
+    @discardableResult
+    func play(_ tracks: [PlexTrack], within container: VetoKind?, from track: PlexTrack? = nil,
+              presenting: Bool = true) -> Bool {
+        guard let library = model.library else { return false }
         let tracks = playable(tracks, within: container, keeping: track)
-        guard !tracks.isEmpty else { return nothingToPlay() }
+        guard !tracks.isEmpty else {
+            nothingToPlay()
+            return false
+        }
         let start = track.flatMap { track in tracks.firstIndex { $0.id == track.id } } ?? 0
         player.play(tracks, startingAt: start, library: library)
-        nowPlaying.isShown = true
+        if presenting { nowPlaying.isShown = true }
+        return true
     }
 
     /// Every shuffle in the app is the spread shuffle. With a leading
     /// track it plays first and the rest of the list follows shuffled.
     func shuffle(_ tracks: [PlexTrack], within container: VetoKind?, leading track: PlexTrack? = nil) {
-        guard let track else { return play(tracks.spreadShuffled(), within: container) }
+        guard let track else {
+            play(tracks.spreadShuffled(), within: container)
+            return
+        }
         let rest = tracks.filter { $0.id != track.id }.spreadShuffled()
         play([track] + rest, within: container, from: track)
     }

@@ -25,6 +25,7 @@ struct BottomBar: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
+    @Environment(MixDraft.self) private var draft
     @Namespace private var glass
     /// The home indicator inset under the bar. The stack ignores the
     /// keyboard's safe area, so this never includes it.
@@ -39,10 +40,17 @@ struct BottomBar: View {
 
     var body: some View {
         GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
+            // Bottom-aligned: the mix bar stands taller than the pills.
+            HStack(alignment: .bottom, spacing: 8) {
+                // Quick Mix's picks take the player's slot, column or not;
+                // playing them hands it back.
+                if draft.isBarShown {
+                    MixBar(model: model, compact: searching)
+                        .glassEffectID("mix", in: glass)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .bottom)))
                 // In a wide window the column is always up, and the pill
                 // would only duplicate its transport.
-                if let track = player.currentTrack, !nowPlaying.isColumn {
+                } else if let track = player.currentTrack, !nowPlaying.isColumn {
                     MiniPlayerPill(model: model, track: track, compact: searching, short: navigator.hasVerticalBar && !searching) {
                         nowPlaying.isShown = true
                     }
@@ -126,6 +134,7 @@ struct BottomBar: View {
         .animation(.bouncy(duration: 0.4), value: searching)
         .animation(.bouncy(duration: 0.4), value: player.currentTrack == nil)
         .animation(.bouncy(duration: 0.4), value: nowPlaying.isShown)
+        .animation(.bouncy(duration: 0.4), value: draft.isBarShown)
     }
 }
 

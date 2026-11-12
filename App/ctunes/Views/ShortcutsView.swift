@@ -176,30 +176,36 @@ extension LibraryActions {
     /// playlists change, ordered by its style, minus what the active
     /// listeners hide by any veto, since a mix is a mixed bag. Favorites
     /// alone with nothing hearted yet say so rather than "Nothing to play".
-    func play(_ mix: SavedMix) async {
+    /// A mix that plays goes to the front of Quick Mix's Recent row.
+    @discardableResult
+    func play(_ mix: SavedMix, presenting: Bool = true) async -> Bool {
         let tracks = await model.tracks(of: mix.picks)
         if tracks.isEmpty, mix.picks == [.favorites], !offline {
             navigator.notice = "No favorites yet. Tap ··· on a track, or the heart in Now Playing, to favorite it."
-            return
+            return false
         }
-        play(mix.style.ordered(tracks), within: nil)
+        guard play(mix.style.ordered(tracks), within: nil, presenting: presenting) else { return false }
+        model.recordMix(mix.picks, style: mix.style)
+        return true
     }
 }
 
 // MARK: - Saving one
 
-/// The builder's Save: a name, prefilled from the picks, and how to play.
-/// Saving a mix already on the screen updates it in place.
+/// Pinning a recent mix to the Music screen: a name, prefilled from the
+/// picks, and how to play, starting from how it last played. Saving a
+/// mix already pinned updates it in place.
 struct SaveMixSheet: View {
     let model: AppModel
     let picks: [MixPick]
     /// The saved mix being edited, if any.
     let editing: SavedMix.ID?
-    /// Called with the saved mix's id, so the builder keeps editing it.
-    let onSave: (SavedMix.ID) -> Void
+    /// How it plays to begin with, when not editing one.
+    var style: PlayStyle? = nil
+    var onSave: (SavedMix.ID) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var style: PlayStyle = .shuffle
+    @State private var chosen: PlayStyle = .shuffle
     @FocusState private var editingName: Bool
 
     private var existing: SavedMix? { editing.flatMap { model.shortcut($0) } }
@@ -218,14 +224,14 @@ struct SaveMixSheet: View {
                             .submitLabel(.done)
                     }
                 } footer: {
-                    Text("Appears on the Music screen as “\(style.verb) \(finalName)”.")
+                    Text("Appears on the Music screen as “\(chosen.verb) \(finalName)”.")
                 }
                 Section {
-                    StyleRows(styles: styles, style: $style, accent: .mix)
+                    StyleRows(styles: styles, style: $chosen, accent: .mix)
                 } header: {
                     Text("Plays as")
                 } footer: {
-                    Text(style.explanation)
+                    Text(chosen.explanation)
                 }
                 Section {
                     PickRows(model: model, picks: picks)
@@ -234,24 +240,24 @@ struct SaveMixSheet: View {
                 }
             }
             .settingsBackground()
-            .navigationTitle(existing == nil ? "Save Mix" : "Update Mix")
+            .navigationTitle(existing == nil ? "Pin Mix" : "Update Mix")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(existing == nil ? "Pin" : "Save") {
                         let name = finalName
                         if let existing {
                             model.updateShortcut(existing.id) {
                                 $0.name = name
                                 $0.picks = picks
-                                $0.style = style
+                                $0.style = chosen
                             }
                             onSave(existing.id)
                         } else {
-                            onSave(model.addShortcut(name: name, picks: picks, style: style).id)
+                            onSave(model.addShortcut(name: name, picks: picks, style: chosen).id)
                         }
                         dismiss()
                     }
@@ -260,10 +266,12 @@ struct SaveMixSheet: View {
             .onAppear {
                 if let existing {
                     name = existing.name
-                    style = existing.style
+                    chosen = existing.style
+                } else if let style {
+                    chosen = style
                 }
                 // A mix that was one playlist and grew loses Play.
-                if !styles.contains(style) { style = styles[0] }
+                if !styles.contains(chosen) { chosen = styles[0] }
                 editingName = existing == nil
             }
         }

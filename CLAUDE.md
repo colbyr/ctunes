@@ -449,16 +449,30 @@ playlist or the favorites, Mix Albums and Shuffle for anything else;
 the Save sheet and the Settings page offer the same two. The builder's
 pool has a Playlists subject with the favorites at its head, so the
 default Shuffle Favorites (under the fixed `SavedMix.starterID`) is a
-saved mix like any other; an emptied list stays empty. Save (the
-builder's bookmark) asks for a name, prefilled by `suggestedName`, and
-opened on a saved mix (`MixRoute(mixID:)`) updates it. **The list is
+saved mix like any other; an emptied list stays empty. **Quick Mix has
+no Save** (`MixBar.swift`): a tap checks an item in place, the picks
+gather in the mix bar that takes the mini player's slot while the
+builder is up (`MixDraft`, owned by `LibraryView`, in the environment),
+its chevron opens a review sheet, and its buttons play without opening
+Now Playing, after which the picks clear. Every mix played (the bar, a
+Recent card, a shortcut card) is recorded as a `RecentMix`
+(`RecentMixes.swift`): identity is the *set* of picks, ranked last
+played first and then by frecency (30-day half-life), 20 kept, stored
+per account and library in `UserDefaults` only (`recentMixes.<account>…`;
+play counts don't sync). The builder's Recent row shows them, then the
+pinned mixes not played here; pinning one is `SaveMixSheet` (name
+prefilled by `suggestedName`) and makes it a `SavedMix`. Opened on a
+saved mix (`MixRoute(mixID:)`) the bar holds its picks and the sheet
+offers Update. Nothing picked plays nothing: the whole-library mix is
+gone from the builder, though an old shortcut with no picks still
+plays. **The list is
 per account and library** (a pick is that library's content): it syncs
 whole under the iCloud key `shortcuts.<account>.<server>.<section>`
 (`AppModel.storageKey`), last
 writer wins, with a `UserDefaults` copy under the same key, and
 `AppModel.libraryChanged` swaps it in when the library changes; none
-show before a library is open. The builder's last selection is kept the
-same way (`mixSelection.<account>.<server>.<section>`). The card's body plays through
+show before a library is open. The builder's unplayed picks are kept the
+same way (`mixPicks.<account>.<server>.<section>`, JSON). The card's body plays through
 `LibraryActions.play(_ mix:)`, which fetches every pick concurrently
 (`tracks(of picks:)`, pick order kept, each track once), applies every
 veto since a mix is a mixed bag, and orders by the style; the builder
@@ -764,6 +778,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
 | `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes Quick Mix with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
+| `CTUNES_DEV_MIX_REVIEW` | `1` opens the mix bar's picks sheet once `CTUNES_DEV_MIX` has preselected picks |
 | `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music"; `mix:<title or id>` plays a shortcut through `PlayMixIntent`, the widgets' tap. Combine with `CTUNES_DEV_OFFLINE=1` for the saved-library path, or leave the token off for the signed-out error |
 | `CTUNES_DEV_WIDGET_FEED` | `1` logs the widget feed each time the browse root writes it, under category `Widget` |
 | `CTUNES_DEV_URL` | a `ctunes://` URL, opened a few seconds after launch the way a widget's link would; `simctl openurl` from the terminal stops at the "Open in…?" prompt |

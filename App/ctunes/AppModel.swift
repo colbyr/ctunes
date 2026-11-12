@@ -124,6 +124,11 @@ final class AppModel {
     /// waits. Empty until a library is open. A library's first open
     /// starts with Shuffle Favorites; an emptied list stays empty.
     private(set) var shortcuts: [SavedMix] = []
+    /// What Quick Mix played lately, per account and library like the
+    /// shortcuts but kept on this device only (`recentMixes.<account>…`
+    /// in `UserDefaults`): play counts from two devices would only
+    /// overwrite each other.
+    private(set) var recentMixes: [RecentMix] = []
 
     /// Per account and server: `selected-section-key.<account>.<server>`.
     /// Section keys are small numbers that every server reuses.
@@ -131,6 +136,7 @@ final class AppModel {
     /// `listeners.<account>`, in `UserDefaults` and iCloud alike.
     private static let listenersKey = "listeners"
     private static let shortcutsKey = "shortcuts"
+    private static let recentMixesKey = "recentMixes"
     private static let serverDefaultsKey = "last-server-id"
 
     private func sectionKey(server: String) -> String {
@@ -764,6 +770,7 @@ final class AppModel {
         roster.library = id
         downloads.section = id?.section
         loadShortcuts()
+        loadRecentMixes()
         seedDevelopmentVetoes()
     }
 
@@ -894,6 +901,48 @@ final class AppModel {
             UserDefaults.standard.set(data, forKey: key)
         }
         Self.push(shortcuts, toCloudKey: key)
+    }
+
+    // MARK: - Recent mixes
+
+    /// One more play of these picks, at the front of Quick Mix's Recent row.
+    func recordMix(_ picks: [MixPick], style: PlayStyle) {
+        recentMixes = RecentMixes.recording(picks, style: style, at: .now, in: recentMixes)
+        saveRecentMixes()
+    }
+
+    func forgetRecentMix(_ id: RecentMix.ID) {
+        recentMixes.removeAll { $0.id == id }
+        saveRecentMixes()
+    }
+
+    /// The recent one with these picks, for its play count.
+    func recentMix(for picks: [MixPick]) -> RecentMix? {
+        let key = RecentMix.key(for: picks)
+        return recentMixes.first { $0.id == key }
+    }
+
+    /// The pinned one with these picks, whatever order they were tapped in.
+    func pinnedMix(for picks: [MixPick]) -> SavedMix? {
+        let key = RecentMix.key(for: picks)
+        return shortcuts.first { $0.pickKey == key }
+    }
+
+    private func loadRecentMixes() {
+        guard let key = storageKey(Self.recentMixesKey),
+              let data = UserDefaults.standard.data(forKey: key),
+              let saved = try? JSONDecoder().decode([RecentMix].self, from: data)
+        else {
+            recentMixes = []
+            return
+        }
+        recentMixes = saved
+    }
+
+    private func saveRecentMixes() {
+        guard let key = storageKey(Self.recentMixesKey),
+              let data = try? JSONEncoder().encode(recentMixes) else { return }
+        UserDefaults.standard.set(data, forKey: key)
     }
 
     // MARK: Cloud sync
