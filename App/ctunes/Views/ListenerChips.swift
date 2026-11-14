@@ -78,62 +78,6 @@ struct ListenerChips<Trailing: View>: View {
     }
 }
 
-/// The listener chips on their own, for the Music screen's top bar: they
-/// decide the mixes row as well as the grid, so they sit over both.
-struct ListenerBarChips: View {
-    let model: AppModel
-    let artists: [AlbumGroup]
-    /// The Downloaded filter, at the head as in the inline row.
-    var downloadedOnly: Binding<Bool>? = nil
-    @State private var sheet: ListenersSheetTarget?
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if let downloadedOnly {
-                Button {
-                    withAnimation(.snappy) { downloadedOnly.wrappedValue.toggle() }
-                } label: {
-                    IconChip(active: downloadedOnly.wrappedValue, systemImage: "arrow.down.circle")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Downloaded only")
-                .accessibilityAddTraits(downloadedOnly.wrappedValue ? .isSelected : [])
-            }
-            ForEach(model.roster.listeners) { listener in
-                let active = model.roster.isActive(listener.id)
-                Button {
-                    withAnimation(.snappy) { model.toggleListening(listener.id) }
-                } label: {
-                    FilterChip(active: active) {
-                        ListenerAvatar(listener: listener).opacity(active ? 1 : 0.45)
-                        Text(listener.name)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
-                .contextMenu { ListenerChipMenu(model: model, listener: listener) { sheet = $0 } }
-            }
-            if model.roster.listeners.count <= 1 {
-                Button { sheet = .list } label: {
-                    Image(systemName: "plus")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 34, height: 34)
-                        .background(.fill.tertiary, in: .circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add listener")
-            }
-        }
-        // The bar would squeeze the names out of the chips.
-        .fixedSize()
-        .sheet(item: $sheet) { target in
-            ListenersSheet(model: model, artists: artists, opening: target.listener)
-        }
-    }
-}
-
 /// Which page of the Listeners sheet a chip opens.
 enum ListenersSheetTarget: Identifiable {
     case list

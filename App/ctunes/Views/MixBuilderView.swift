@@ -135,7 +135,8 @@ struct MixBuilderView: View {
 
     private var favoritesItem: Item {
         Item(pick: .favorites, subtitle: "Hearted tracks", vetoed: false,
-             unavailable: model.connection == .unreachable && !model.isFavoritesPinned)
+             unavailable: model.connection == .unreachable && !model.isFavoritesPinned,
+             download: model.downloads.favoritesState)
     }
 
     /// Under the album pool's Artists view the header names the artist, so

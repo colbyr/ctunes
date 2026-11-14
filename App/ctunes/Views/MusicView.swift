@@ -177,7 +177,7 @@ struct MusicView: View {
                 }
                 if showsFavorites {
                     Button { path.append(FavoritesRoute()) } label: {
-                        FavoritesTile(count: favorites?.count)
+                        FavoritesTile(count: favorites?.count, download: model.downloads.favoritesState)
                     }
                     .buttonStyle(.plain)
                 }
@@ -190,23 +190,27 @@ struct MusicView: View {
                 }
             }
         case .list:
-            if connected {
-                NewPlaylistRow { navigator.composing = [] }
-                Rectangle()
-                    .fill(Color.divider)
-                    .frame(height: 1)
-                    .padding(.leading, BrowseRow<EmptyView, EmptyView>.artSize + 12)
-            }
-            if showsFavorites {
-                FavoritesRow(count: favorites?.count) { path.append(FavoritesRoute()) }
-                Rectangle()
-                    .fill(Color.divider)
-                    .frame(height: 1)
-                    .padding(.leading, BrowseRow<EmptyView, EmptyView>.artSize + 12)
-            }
-            BrowseList(items: playlists) { playlist in
-                PlaylistRow(model: model, playlist: playlist) { path.append(playlist) } menu: {
-                    PlaylistMenu(model: model, playlist: playlist)
+            // One stack, so the section's padding is the list's and not
+            // each row's and rule's.
+            VStack(spacing: 0) {
+                if connected {
+                    NewPlaylistRow { navigator.composing = [] }
+                    Rectangle()
+                        .fill(Color.divider)
+                        .frame(height: 1)
+                        .padding(.leading, BrowseRow<EmptyView, EmptyView>.artSize + 12)
+                }
+                if showsFavorites {
+                    FavoritesRow(count: favorites?.count, download: model.downloads.favoritesState) { path.append(FavoritesRoute()) }
+                    Rectangle()
+                        .fill(Color.divider)
+                        .frame(height: 1)
+                        .padding(.leading, BrowseRow<EmptyView, EmptyView>.artSize + 12)
+                }
+                BrowseList(items: playlists) { playlist in
+                    PlaylistRow(model: model, playlist: playlist) { path.append(playlist) } menu: {
+                        PlaylistMenu(model: model, playlist: playlist)
+                    }
                 }
             }
         }
@@ -275,16 +279,10 @@ struct MusicView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                // The title is the page's, not the bar's: a large title
-                // collapses into the bar as it scrolls away, and this one
-                // should simply go.
-                Text("Infinite Disc Changer")
-                    .font(.largeTitle.bold())
-                    .foregroundStyle(Color.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .accessibilityAddTraits(.isHeader)
-                    .padding(.init(top: 16, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                // Who is listening, and the download filter, under the
+                // title: they decide the mixes as well as the grid.
+                ListenerChips(model: model, artists: artists, downloadedOnly: $downloadedOnly)
+                    .padding(.bottom, 8)
                 if let mode = bannerMode {
                     OfflineBanner(mode: mode) {
                         Task { await model.reconnect(force: true) }
@@ -354,19 +352,12 @@ struct MusicView: View {
         .overlay {
             if !loaded { LoadingPlaceholder(model: model) }
         }
-        // Named for the back button's menu and accessibility; drawn by
-        // the page (above), never in the bar.
         .navigationTitle("Infinite Disc Changer")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(removing: .title)
+        // Beside the Now Playing column the bar's large title sits flush
+        // on the divider with no margin; the inline title is centred.
+        .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .toolbar { SearchBarItem() }
         .toolbar {
-            // Who is listening decides the mixes as well as the grid, so
-            // the chips sit over both, bare rather than in a glass pill.
-            ToolbarItem(placement: .topBarLeading) {
-                ListenerBarChips(model: model, artists: artists, downloadedOnly: $downloadedOnly)
-            }
-            .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }

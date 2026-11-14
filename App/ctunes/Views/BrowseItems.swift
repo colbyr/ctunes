@@ -154,11 +154,13 @@ struct PlaylistTile: View {
 struct FavoritesTile: View {
     /// How many are hearted, or nil until the count lands.
     let count: Int?
+    var download: DownloadState = .none
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             FavoritesArt(size: nil, corner: 8)
-                .artworkShadow()
+                .artworkShadow(soft: true)
+                .overlay(alignment: .bottomTrailing) { DownloadBadge(state: download) }
             VStack(alignment: .leading, spacing: 1) {
                 Text("Favorites")
                     .font(.footnote)
@@ -173,13 +175,36 @@ struct FavoritesTile: View {
     }
 }
 
-/// New Playlist as the tile after the favorites': a plus on the
-/// playlists' own wash.
+/// The New Playlist item's art: an empty sleeve, a dashed outline with
+/// an amber plus, so it reads as a place to make one rather than one.
+struct NewPlaylistArt: View {
+    let size: CGFloat?
+    let corner: CGFloat
+
+    var body: some View {
+        Color.clear
+            .frame(width: size, height: size)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                GeometryReader { proxy in
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .strokeBorder(.secondary.opacity(0.6), style: .init(lineWidth: 1.5, dash: [4, 4]))
+                        .overlay {
+                            Image(systemName: "plus")
+                                .font(.system(size: proxy.size.width * 0.32, weight: .light))
+                                .foregroundStyle(Color.accentText)
+                        }
+                }
+            }
+    }
+}
+
+/// New Playlist as the tile before the favorites'.
 struct NewPlaylistTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            FavoritesArt(size: nil, corner: 8, symbol: "plus", tint: .playlist)
-            Text("New Playlist").font(.footnote).lineLimit(1)
+            NewPlaylistArt(size: nil, corner: 8)
+            Text("New Playlist").font(.footnote.weight(.medium)).foregroundStyle(Color.accentText).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(.rect)
@@ -192,8 +217,8 @@ struct NewPlaylistRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                FavoritesArt(size: BrowseRow<EmptyView, EmptyView>.artSize, corner: 6, symbol: "plus", tint: .playlist)
-                Text("New Playlist").font(.body).lineLimit(1)
+                NewPlaylistArt(size: BrowseRow<EmptyView, EmptyView>.artSize, corner: 6)
+                Text("New Playlist").font(.body.weight(.medium)).foregroundStyle(Color.accentText).lineLimit(1)
                 Spacer(minLength: 8)
             }
             .padding(.vertical, 6)
@@ -208,13 +233,15 @@ struct NewPlaylistRow: View {
 /// favorites have no menu, their page has the download.
 struct FavoritesRow: View {
     let count: Int?
+    var download: DownloadState = .none
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 FavoritesArt(size: BrowseRow<EmptyView, EmptyView>.artSize, corner: 6)
-                    .artworkShadow()
+                    .artworkShadow(soft: true)
+                    .overlay(alignment: .bottomTrailing) { DownloadBadge(state: download).padding(-3) }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Favorites")
                         .font(.body)
@@ -238,13 +265,10 @@ struct FavoritesRow: View {
     }
 }
 
-/// A heart on the heart's own wash, the size of a cover; another glyph
-/// and color for New Playlist's tile.
+/// A heart on the heart's own wash, the size of a cover.
 struct FavoritesArt: View {
     let size: CGFloat?
     let corner: CGFloat
-    var symbol = "heart.fill"
-    var tint = Color.heart
 
     var body: some View {
         Color.clear
@@ -257,11 +281,11 @@ struct FavoritesArt: View {
                     // square.
                     Rectangle()
                         .fill(Color.parchmentTop)
-                        .overlay(Rectangle().fill(tint.opacity(0.16)))
+                        .overlay(Rectangle().fill(Color.heart.opacity(0.16)))
                         .overlay {
-                            Image(systemName: symbol)
+                            Image(systemName: "heart.fill")
                                 .font(.system(size: proxy.size.width * 0.4))
-                                .foregroundStyle(tint)
+                                .foregroundStyle(Color.heart)
                         }
                 }
             }

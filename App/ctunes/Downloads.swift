@@ -197,6 +197,12 @@ final class Downloads {
         state(album).hasFiles || available.contains(album.ratingKey)
     }
 
+    /// The favorites' badge.
+    var favoritesState: DownloadState {
+        guard let server else { return .none }
+        return settled(inventory.favoritesState(server: server))
+    }
+
     func state(_ playlist: PlexPlaylist) -> DownloadState {
         settled(inventory.state(ofPlaylist: playlist))
     }

@@ -350,7 +350,7 @@ struct MixReviewSheet: View {
                 ForEach(picks, id: \.id) { pick in
                     HStack(spacing: 14) {
                         PickArt(model: model, pick: pick, size: 44)
-                            .artworkShadow()
+                            .artworkShadow(soft: pick.kind == .favorites)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(pick.title).lineLimit(1)
                             Text(caption(pick)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
@@ -532,23 +532,25 @@ struct MixesRow: View {
                 }
                 // The way in to the mixer, now that the screen has no
                 // tile for it: always last, at the right edge, there even
-                // with no mixes. A plain button, not a card, so it doesn't
-                // read as a mix.
+                // with no mixes. A flat tinted card, not a raised one, so
+                // it doesn't read as a mix.
                 Button { navigator.open(.mix(MixRoute())) } label: {
-                    VStack(spacing: 6) {
+                    VStack(alignment: .leading) {
                         Image(systemName: "square.stack")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(Color.mix)
-                            .frame(width: 52, height: 52)
-                            .background(Color.mix.opacity(0.16), in: .circle)
+                            .font(.title2.weight(.semibold))
+                        Spacer(minLength: 12)
                         Text("Mixer")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.mix)
+                            .font(.headline)
                             .lineLimit(1)
                     }
-                    .padding(.horizontal, 24)
+                    .foregroundStyle(Color.mix)
+                    .padding(12)
+                    // As wide as the view and sort chips under it (two 34pt
+                    // circles 8 apart), so the edges line up.
+                    .frame(width: 76, alignment: .leading)
                     .frame(maxHeight: .infinity)
-                    .contentShape(.rect)
+                    .background(Color.mix.opacity(0.14), in: .rect(cornerRadius: 18))
+                    .contentShape(.rect(cornerRadius: 18))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open the mixer")
@@ -689,7 +691,7 @@ struct RecentMixCard: View {
                                         .foregroundStyle(.white))
                             }
                         }
-                        .artworkShadow()
+                        .artworkShadow(soft: pick.kind == .favorites)
                 }
                 if item.picks.isEmpty {
                     MixArt(model: model, picks: [], size: 44)

@@ -110,6 +110,25 @@ public struct DownloadInventory: Sendable, Equatable {
         track.part?.cachePath(server: server).map(failed.contains) ?? false
     }
 
+    /// The favorites group's download, track by track like an album's:
+    /// none while the pin is off.
+    public func favoritesState(server: String) -> DownloadState {
+        guard favoritesPinned else { return .none }
+        var rollup = DownloadState.Rollup()
+        for track in favorites {
+            rollup.total += 1
+            if isDownloaded(track, server: server) {
+                rollup.done += 1
+            } else if isDownloading(track, server: server) {
+                rollup.missing += 1
+                if isFailed(track, server: server) { rollup.failed += 1 }
+            } else {
+                rollup.undownloadable += 1
+            }
+        }
+        return DownloadState(rollup)
+    }
+
     public func isArtistPinned(_ key: String) -> Bool {
         artists.contains { $0.key == key }
     }

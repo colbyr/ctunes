@@ -263,9 +263,10 @@ private struct RemoveDownloadConfirmation: ViewModifier {
 }
 
 extension View {
-    /// The lift under album art and artist portraits.
-    func artworkShadow() -> some View {
-        shadow(color: .black.opacity(0.22), radius: 5, y: 3)
+    /// The lift under album art and artist portraits. Soft for pale art
+    /// (the favorites' square), under which the full one reads heavier.
+    func artworkShadow(soft: Bool = false) -> some View {
+        shadow(color: .black.opacity(soft ? 0.12 : 0.22), radius: 5, y: 3)
     }
 
     /// The softer, wider lift under the hero cards. Reaches about 14pt
