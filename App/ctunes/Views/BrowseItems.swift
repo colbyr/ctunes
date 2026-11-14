@@ -173,6 +173,37 @@ struct FavoritesTile: View {
     }
 }
 
+/// New Playlist as the tile after the favorites': a plus on the
+/// playlists' own wash.
+struct NewPlaylistTile: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FavoritesArt(size: nil, corner: 8, symbol: "plus", tint: .playlist)
+            Text("New Playlist").font(.footnote).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+    }
+}
+
+struct NewPlaylistRow: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                FavoritesArt(size: BrowseRow<EmptyView, EmptyView>.artSize, corner: 6, symbol: "plus", tint: .playlist)
+                Text("New Playlist").font(.body).lineLimit(1)
+                Spacer(minLength: 8)
+            }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// The same as a row, the list layout's shape without the `···`: the
 /// favorites have no menu, their page has the download.
 struct FavoritesRow: View {
@@ -207,10 +238,13 @@ struct FavoritesRow: View {
     }
 }
 
-/// A heart on the heart's own wash, the size of a cover.
+/// A heart on the heart's own wash, the size of a cover; another glyph
+/// and color for New Playlist's tile.
 struct FavoritesArt: View {
     let size: CGFloat?
     let corner: CGFloat
+    var symbol = "heart.fill"
+    var tint = Color.heart
 
     var body: some View {
         Color.clear
@@ -218,12 +252,16 @@ struct FavoritesArt: View {
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 GeometryReader { proxy in
+                    // On an opaque ground: over a see-through wash the
+                    // art's shadow fell from the glyph rather than the
+                    // square.
                     Rectangle()
-                        .fill(Color.heart.opacity(0.16))
+                        .fill(Color.parchmentTop)
+                        .overlay(Rectangle().fill(tint.opacity(0.16)))
                         .overlay {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: symbol)
                                 .font(.system(size: proxy.size.width * 0.4))
-                                .foregroundStyle(Color.heart)
+                                .foregroundStyle(tint)
                         }
                 }
             }

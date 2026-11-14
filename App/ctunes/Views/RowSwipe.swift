@@ -3,9 +3,7 @@ import UIKit
 
 /// One action a row reveals when swiped left, for rows that live in a
 /// `ScrollView` and so can't have `.swipeActions`: the album page's tracks
-/// (a `ScrollView` so the cover's long press is the cover's alone) and the
-/// playlists page's list layout (a `ScrollView` because a `List` recurses
-/// in a Mac window's live resize).
+/// (a `ScrollView` so the cover's long press is the cover's alone).
 struct RowSwipe {
     let title: String
     let systemImage: String

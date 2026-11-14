@@ -905,9 +905,27 @@ final class AppModel {
 
     // MARK: - Recent mixes
 
-    /// One more play of these picks, at the front of Quick Mix's Recent row.
-    func recordMix(_ picks: [MixPick], style: PlayStyle) {
+    /// The mix that started the player's queue and the entry it started
+    /// on, so its card reads Playing for as long as that queue lasts.
+    private(set) var playingMix: (key: String, entry: PlayQueue<PlexTrack>.Entry.ID)?
+
+    /// One more play of these picks, which `player` has just started:
+    /// any whole collection played anywhere, or a mix of them.
+    func recordMix(_ picks: [MixPick], style: PlayStyle, player: AudioPlayer) {
         recentMixes = RecentMixes.recording(picks, style: style, at: .now, in: recentMixes)
+        saveRecentMixes()
+        playingMix = player.queue.entries.first.map { (RecentMix.key(for: picks), $0.id) }
+    }
+
+    /// Whether the queue the mix with this key started is still playing.
+    func isPlaying(mix key: String, player: AudioPlayer) -> Bool {
+        guard let playingMix, playingMix.key == key, !player.hasEnded else { return false }
+        return player.queue.index(of: playingMix.entry) != nil
+    }
+
+    /// A pin's picks edited: its history goes with them.
+    func moveRecentMix(_ oldKey: String, to picks: [MixPick]) {
+        recentMixes = RecentMixes.moving(oldKey, to: picks, in: recentMixes)
         saveRecentMixes()
     }
 

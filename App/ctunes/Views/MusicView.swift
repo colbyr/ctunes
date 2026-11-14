@@ -28,12 +28,11 @@ struct MusicView: View {
     /// stay off the screen when that is nothing. Fetched beside the
     /// albums and again when the shortcuts change.
     @State private var playlistTracks: [String: [PlexTrack]] = [:]
-    /// The shortcut whose tracks are being fetched, for its spinner.
-    @State private var loadingShortcut: SavedMix.ID?
     @State private var showingListeners = false
     @State private var showingSettings = false
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
+    @Environment(MixDraft.self) private var draft
     @AppStorage("albumView") private var view: AlbumView = .mostPlayed
     @AppStorage("albumDownloadedOnly") private var downloadedOnly = false
     @AppStorage("browseSubject") private var subject: BrowseSubject = .albums
@@ -162,7 +161,7 @@ struct MusicView: View {
         count.map { "\($0) album\($0 == 1 ? "" : "s")" }
     }
 
-    /// The favorites lead the playlists, as on the playlists page.
+    /// The favorites lead the playlists.
     private var showsFavorites: Bool {
         !downloadedOnly || model.isFavoritesPinned
     }
@@ -171,6 +170,11 @@ struct MusicView: View {
         switch layout {
         case .grid:
             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                // Online only, like every playlist write.
+                if connected {
+                    Button { navigator.composing = [] } label: { NewPlaylistTile() }
+                        .buttonStyle(.plain)
+                }
                 if showsFavorites {
                     Button { path.append(FavoritesRoute()) } label: {
                         FavoritesTile(count: favorites?.count)
@@ -186,6 +190,13 @@ struct MusicView: View {
                 }
             }
         case .list:
+            if connected {
+                NewPlaylistRow { navigator.composing = [] }
+                Rectangle()
+                    .fill(Color.divider)
+                    .frame(height: 1)
+                    .padding(.leading, BrowseRow<EmptyView, EmptyView>.artSize + 12)
+            }
             if showsFavorites {
                 FavoritesRow(count: favorites?.count) { path.append(FavoritesRoute()) }
                 Rectangle()
@@ -258,17 +269,8 @@ struct MusicView: View {
     private var tileMinimum: CGFloat { BrowseTile.minimum(forWidth: width) }
     /// The screen's width, for the hero cards' layout and the tile floor.
     @State private var width: CGFloat = 0
-    /// Two shortcut cards across need about 400pt each before a title
-    /// like "Mix Albums Bon Jovi" and its count stop wrapping.
-    private static let heroRowMinimum: CGFloat = 880
 
     @State private var scrollPosition = ScrollPosition()
-
-    /// Quick Mix and the playlists page, side by side.
-    @ViewBuilder private var heroTiles: some View {
-        HeroTile(title: "Quick Mix",systemImage: "square.stack", accent: .mix) { path.append(MixRoute()) }
-        HeroTile(title: "Playlists", systemImage: "music.note.list", accent: .playlist) { path.append(PlaylistsRoute()) }
-    }
 
     var body: some View {
         ScrollView {
@@ -279,35 +281,11 @@ struct MusicView: View {
                     }
                     .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
                 }
-                // The two half-width tiles, then the shortcuts, each a
-                // full-width card on a phone and two across when the
-                // screen has the width, where one is mostly empty. By
-                // measured width, not size class: beside the Now Playing
-                // column, or in a small Mac window, a "regular" stack can
-                // be 600pt, where two across wraps a title one word per
-                // line.
-                VStack(spacing: 12) {
-                    HStack(spacing: 12) { heroTiles }
-                    let shown = visibleShortcuts
-                    if !shown.isEmpty {
-                        let columns = width >= Self.heroRowMinimum ? 2 : 1
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columns), spacing: 12) {
-                            ForEach(shown) { mix in
-                                ShortcutCard(model: model, mix: mix, subtitle: subtitle(for: mix),
-                                             loading: loadingShortcut == mix.id) {
-                                    play(mix)
-                                } open: {
-                                    open(mix)
-                                } edit: {
-                                    path.append(MixRoute(mixID: mix.id))
-                                }
-                                .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .animation(.snappy, value: shown.map(\.id))
-                    }
-                }
-                .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
+                // The mixes: the mixer's button, the pinned ones, then
+                // what was played here, a row that scrolls.
+                let mixes = RecentMixItem.all(model, pinned: visibleShortcuts).filter { $0.picks.isEmpty || !$0.picks.allSatisfy(isHidden) }
+                MixesRow(model: model, items: mixes, margin: Self.margin, open: open)
+                    .padding(.init(top: 8, leading: 0, bottom: 16, trailing: 0))
                 // The browser starts here: a rule, then the chips with the
                 // arrange button, then the hidden-artist line when any are.
                 Rectangle()
@@ -367,13 +345,6 @@ struct MusicView: View {
         .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .toolbar { SearchBarItem() }
         .toolbar {
-            // A playlist with nothing in it yet, named here; online only,
-            // like every playlist write.
-            if subject == .playlists, connected {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("New Playlist", systemImage: "plus") { navigator.composing = [] }
-                }
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }
@@ -398,6 +369,12 @@ struct MusicView: View {
             #endif
         }
         .refreshable { await load() }
+        // A mix played from Quick Mix's bar: home, at the top, where its
+        // card is (the row scrolls to it).
+        .onChange(of: draft.landed) { _, key in
+            guard key != nil else { return }
+            withAnimation(.snappy) { scrollPosition.scrollTo(edge: .top) }
+        }
         // A playlist shortcut added in Settings needs its tracks counted
         // too; keyed on the playlists the shortcuts name, not the list
         // itself, so restyling one doesn't refetch.
@@ -576,37 +553,18 @@ struct MusicView: View {
         }
     }
 
-    /// Fetched fresh rather than from the count's copy: hearts and
-    /// playlists may have changed since the screen loaded. A play of the
-    /// favorites refreshes their count too.
-    private func play(_ mix: SavedMix) {
-        guard loadingShortcut == nil else { return }
-        loadingShortcut = mix.id
-        let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
-        Task {
-            defer { loadingShortcut = nil }
-            await actions.play(mix)
-            if mix.picks.contains(.favorites), let library = model.library,
-               let fresh = try? await library.favoriteTracks(inSection: section.key) {
-                catalog.favorites = fresh
-            }
-        }
-    }
-
-    /// The chevron: one pick opens the thing itself; a mix of several,
-    /// or of the whole library, opens the builder on its picks.
-    private func open(_ mix: SavedMix) {
-        guard mix.picks.count == 1 else { return path.append(MixRoute(mixID: mix.id)) }
-        switch mix.picks[0] {
+    /// A single pick's own page, from its card's menu.
+    private func open(_ pick: MixPick) {
+        switch pick {
         case .favorites:
-            path.append(FavoritesRoute())
+            navigator.open(.favorites)
         case .playlist(let key, let title, _):
-            path.append(model.playlists.first { $0.ratingKey == key } ?? PlexPlaylist(ratingKey: key, title: title))
+            navigator.open(.playlist(model.playlists.first { $0.ratingKey == key } ?? PlexPlaylist(ratingKey: key, title: title)))
         case .artist(let key, let title, _):
-            path.append(ArtistRoute(ratingKey: key, title: title))
+            navigator.open(.artist(ArtistRoute(ratingKey: key, title: title)))
         case .album(let key, let title, let artistKey, let artist, let thumb):
-            path.append(albums.first { $0.ratingKey == key }
-                ?? PlexAlbum(ratingKey: key, title: title, parentRatingKey: artistKey, parentTitle: artist, year: nil, thumb: thumb))
+            navigator.open(.album(albums.first { $0.ratingKey == key }
+                ?? PlexAlbum(ratingKey: key, title: title, parentRatingKey: artistKey, parentTitle: artist, year: nil, thumb: thumb)))
         }
     }
 }
@@ -669,39 +627,3 @@ struct OfflineBanner: View {
     }
 }
 
-/// Half-width entry to Quick Mix or the playlists page, sharing the
-/// hero card's chrome, each in its own color so the two read apart at a
-/// glance.
-private struct HeroTile: View {
-    let title: String
-    let systemImage: String
-    let accent: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.subheadline)
-                    .foregroundStyle(accent)
-                    .frame(width: 36, height: 36)
-                    .background(accent.opacity(0.16), in: .circle)
-                // Half a phone's width beside the chevron is tight for
-                // "Quick Mix": one line, shrunk before it would truncate.
-                Text(title).font(.headline).lineLimit(1).minimumScaleFactor(0.75)
-                Spacer(minLength: 0)
-                // A page to go to, not an action: the favorites card's
-                // chevron, a size down to leave the title its width.
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .glassCard()
-            .contentShape(.rect(cornerRadius: 22))
-        }
-        .buttonStyle(.plain)
-    }
-}

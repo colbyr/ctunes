@@ -406,15 +406,13 @@ being found must ask again once it answers. Offline, the same word-prefix
 match runs over the tracks on disk. Tapping a song plays its album from
 that song; its `···` is the track menu with the song as its only sibling.
 
-**Playlists** (`PlaylistView.swift`, `PlaylistsView.swift`,
-`notes/playlists.md`) are the third browse subject beside Albums and
+**Playlists** (`PlaylistView.swift`, `notes/playlists.md`) are the third browse subject beside Albums and
 Artists, so the grid, the list layout, the sorts (A to Z, Recently
 Updated by `updatedAt`, Most Played by `viewCount`, Back Catalog) and the
-Downloaded filter come for free. The root's Playlists hero tile opens
-`PlaylistsRoute`, the page that manages them: the listener chips and
-arrange buttons over a grid or list (its own `playlistsView` sort and
-`playlistsDownloadedOnly` filter, the app's layout), New Playlist in the
-toolbar, delete from the item menu; the CarPlay tab bar gets a Playlists tab (Recently Added's slot
+Downloaded filter come for free. There is no separate playlists page:
+under the root's Playlists subject the Favorites tile leads, then a New
+Playlist tile (online only), then the playlists, deleted from the item
+menu; the CarPlay tab bar gets a Playlists tab (Recently Added's slot
 when the car shows four). `AppModel.playlists` is the section's list
 (`/playlists?playlistType=audio&sectionID=`), fetched with the browse
 root's other requests and after every write, so the Add to Playlist
@@ -437,56 +435,81 @@ the list and `OfflineStore` the items of every playlist opened
 (`<server>/playlists/<rk>.json`); a pinned playlist is a group beside
 the favorites, never a node in the pin tree.
 
-**Shortcuts** (`SavedMixes.swift` in PlexKit, `ShortcutsView.swift`)
-are the full-width play cards under the Quick Mix and Playlists tiles
-on the browse root: a `SavedMix` is what Quick Mix had picked
+**Shortcuts** (`SavedMixes.swift` in PlexKit, `ShortcutsView.swift`,
+`MixBar.swift`) are the row of mix cards at the top of the browse root
+(`MixesRow`): a small Mixer button (the only way into the builder from
+the root; the builder is "Mixer" on screen, Quick Mix in the code), the
+pinned mixes in their order, then the recents. Its accent is the amber,
+not `Color.mix`, and the favorites are drawn as the square
+`FavoritesArt` everywhere. A `SavedMix` (a pin) is a set of picks
 (`[MixPick]`: the favorites, a playlist, an artist or an album, each
 with its title and thumb saved beside the key, identity being the kind
-and key; none is the whole library) plus a `PlayStyle` and a name,
-titled "{verb} {name}". **The builder offers two styles, chosen by the
-picks** (`PlayStyle.cases(for:)`): Play and Shuffle for one album,
-playlist or the favorites, Mix Albums and Shuffle for anything else;
-the Save sheet and the Settings page offer the same two. The builder's
-pool has a Playlists subject with the favorites at its head, so the
-default Shuffle Favorites (under the fixed `SavedMix.starterID`) is a
-saved mix like any other; an emptied list stays empty. **Quick Mix has
-no Save** (`MixBar.swift`): a tap checks an item in place, the picks
-gather in the mix bar that takes the mini player's slot while the
-builder is up (`MixDraft`, owned by `LibraryView`, in the environment),
-its chevron opens a review sheet, and its buttons play without opening
-Now Playing, after which the picks clear. Every mix played (the bar, a
-Recent card, a shortcut card) is recorded as a `RecentMix`
-(`RecentMixes.swift`): identity is the *set* of picks, ranked last
-played first and then by frecency (30-day half-life), 20 kept, stored
-per account and library in `UserDefaults` only (`recentMixes.<account>…`;
-play counts don't sync). The builder's Recent row shows them, then the
-pinned mixes not played here; pinning one is `SaveMixSheet` (name
-prefilled by `suggestedName`) and makes it a `SavedMix`. Opened on a
-saved mix (`MixRoute(mixID:)`) the bar holds its picks and the sheet
-offers Update. Nothing picked plays nothing: the whole-library mix is
-gone from the builder, though an old shortcut with no picks still
-plays. **The list is
+and key) plus a `PlayStyle` and a name. **The builder offers two
+styles, chosen by the picks** (`PlayStyle.cases(for:)`): Play and
+Shuffle for one album, playlist or the favorites, Mix Albums and
+Shuffle for anything else. The builder's pool has a Playlists subject
+with the favorites at its head, so the default Shuffle Favorites (under
+the fixed `SavedMix.starterID`) is a pin like any other; an emptied
+list stays empty. **Quick Mix has no Save**: a tap checks an item in
+place, and while the builder is up the mix bar replaces the mini player,
+empty or not ("Nothing selected"). The picks live in `MixDraft`, owned by
+`LibraryView` and in the environment. The bar's chevron opens a review
+sheet, and its buttons play without opening Now Playing, after which the
+picks clear. Every mix played (the bar, a card) and every whole
+collection played anywhere (Play, Shuffle or Mix Albums on an album,
+artist, playlist or the favorites, from its page or menu; not a track
+tap) is recorded as a `RecentMix` through `AppModel.recordMix`, which
+also notes the queue entry it started so the card reads Playing while
+that queue lasts (`RecentMixes.swift`): identity is the *set* of picks,
+ranked last played first and then by frecency (30-day half-life), 20
+kept, stored per account and library in `UserDefaults` only
+(`recentMixes.<account>…`; play counts don't sync). A card's tap plays
+it in place. **The row never re-sorts while the app runs**
+(`MixDraft.rowOrder`): a card jumping on play, a pin, or on the way
+back to the screen, carried it out of view. A pin's row id is the pin's,
+so an edit keeps its slot; a recent pinned or a pin removed changes id
+but keeps its slot (`rowKeys` matches it by picks); only a mix never
+shown leads. An edit carries the pin's play history to its new picks
+(`RecentMixes.moving`), so the old picks don't linger as a recent. Its
+long press offers both styles, the pick's page, Open in Mixer, and:
+- for a recent: Pin… (`SaveMixSheet`, name prefilled by
+  `suggestedName`), Remove;
+- for a pin: Edit Mix, Remove Pin.
+
+Every artist, album and playlist menu also has Open in Mixer
+(`LibraryRoute.mixer`, off in the builder's own pool), which replaces
+the bar's picks. **A push from a context menu waits ~450ms for the menu
+to close** (`MixesRow.afterMenu`, the `.mixer` route): pushed at once,
+the builder opened and the stack fell straight back.
+
+**Editing a pin is a mode** (`MixRoute(mixID:)`, from Edit Mix or
+Settings) and its one editor: the page is titled "Edit {name}", Cancel
+and Save replace back, and the sheet opens at once as `MixEditSheet`:
+the Pin Mix sheet's own form (`MixForm`: name, plays as, the picks),
+the picks removable there and added behind it.
+`MixDraft.beginEditing` sets the unplayed picks aside, `saveEdit` and
+`endEditing` put them back, and the builder pops itself when editing
+ends. Nothing picked plays nothing: there is no
+whole-library mix, though an old pin with no picks still plays. **The list is
 per account and library** (a pick is that library's content): it syncs
 whole under the iCloud key `shortcuts.<account>.<server>.<section>`
 (`AppModel.storageKey`), last
 writer wins, with a `UserDefaults` copy under the same key, and
 `AppModel.libraryChanged` swaps it in when the library changes; none
 show before a library is open. The builder's unplayed picks are kept the
-same way (`mixPicks.<account>.<server>.<section>`, JSON). The card's body plays through
+same way (`mixPicks.<account>.<server>.<section>`, JSON). A card plays through
 `LibraryActions.play(_ mix:)`, which fetches every pick concurrently
 (`tracks(of picks:)`, pick order kept, each track once), applies every
 veto since a mix is a mixed bag, and orders by the style; the builder
-plays through the same fetch. The chevron opens the thing itself for a
-single pick and the builder otherwise; a long press edits or removes.
+plays through the same fetch.
 **A card whose every pick is hidden for the active listeners is left
 off the screen**: an artist or album by its veto or a wider one, an
 artist with every album vetoed, the favorites or a playlist once their
 tracks are known and none survive, which is why the root fetches the
-items of every playlist a shortcut names. Settings (Shortcuts, beside
+items of every playlist a pin names. Settings (Shortcuts, beside
 Listeners) reorders, removes, renames and restyles, and opens the
-builder for a new mix or to edit picks. The playlists page and the
-root's Playlists subject lead with a Favorites tile so the page is
-reachable without a shortcut.
+builder for a new mix or to edit picks. The root's Playlists subject
+leads with a Favorites tile so the page is reachable without a pin.
 
 **Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu` and
 `TrackMenu` are the one place an artist, album or track's actions live.
@@ -777,7 +800,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the saved library with the connection unreachable; "Try again" and the retry timer connect for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |
 | `CTUNES_DEV_PLAYLIST` | `ratingKey\|title` pushes that playlist's page; `list` switches the browse root to the Playlists subject |
-| `CTUNES_DEV_MIX` | `artist`, `album` or `playlist` pushes Quick Mix with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
+| `CTUNES_DEV_MIX` | `edit` opens the first pinned mix's editor; `artist`, `album` or `playlist` pushes Quick Mix with that pool showing; `artist:2899,649` also preselects those ratingKeys as artists, and a bare `album:` starts with nothing selected instead of the saved picks. With `CTUNES_DEV_AUTOPLAY` set, the mix plays once the pool loads, as Shuffle unless `CTUNES_DEV_MIX_MODE=albums` |
 | `CTUNES_DEV_MIX_REVIEW` | `1` opens the mix bar's picks sheet once `CTUNES_DEV_MIX` has preselected picks |
 | `CTUNES_DEV_INTENT` | runs an intent on launch, before any screen loads, and logs the outcome under `os.Logger` category `Siri`: `favorites`, `rotation`, `resume`, `playlist:<name>` or `shuffle:<name>` run the App Shortcuts (the name matched as the entity query matches speech); `search:<query>` logs what `AudioSearchQuery` would hand Siri, `play:<query>` plays its best hit through `PlayAudioIntent`, `playshuffle:<query>` shuffled, `playnext:<query>` as Play Next, and a bare `play:` is "play music"; `mix:<title or id>` plays a shortcut through `PlayMixIntent`, the widgets' tap. Combine with `CTUNES_DEV_OFFLINE=1` for the saved-library path, or leave the token off for the signed-out error |
 | `CTUNES_DEV_WIDGET_FEED` | `1` logs the widget feed each time the browse root writes it, under category `Widget` |

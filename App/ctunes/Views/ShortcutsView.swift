@@ -1,75 +1,6 @@
 import PlexKit
 import SwiftUI
 
-// MARK: - The card
-
-/// One saved mix as it sits at the top of the Music screen: a raised card
-/// so it reads as an action rather than another row. The body plays; the
-/// chevron past the rule opens the thing itself for a single pick, and
-/// Quick Mix on the picks otherwise. A long press edits or removes.
-struct ShortcutCard: View {
-    let model: AppModel
-    let mix: SavedMix
-    let subtitle: String?
-    let loading: Bool
-    let action: () -> Void
-    let open: () -> Void
-    let edit: () -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: action) {
-                HStack(spacing: 14) {
-                    MixArt(model: model, picks: mix.picks, size: 44)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(mix.title).font(.headline).lineLimit(1)
-                        if let subtitle {
-                            // One line: a longer listener list wrapping made
-                            // the card grow as listeners toggled.
-                            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    Spacer()
-                    if loading {
-                        ProgressView()
-                    } else {
-                        Image(systemName: mix.style.symbol)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(mix.accent)
-                    }
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(.rect)
-            }
-            .disabled(loading)
-            Rectangle()
-                .fill(Color.divider)
-                .frame(width: 1)
-                .padding(.vertical, 12)
-            Button(action: open) {
-                Image(systemName: "chevron.right")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(.rect)
-            }
-            .accessibilityLabel(mix.picks.count == 1 ? "Open \(mix.name)" : "Edit \(mix.name)")
-        }
-        .buttonStyle(.plain)
-        .glassCard(cornerRadius: 24)
-        .contextMenu {
-            Button(action: edit) {
-                Label("Edit in Quick Mix", systemImage: "slider.horizontal.3")
-            }
-            Button(role: .destructive) { model.removeShortcut(mix.id) } label: {
-                Label("Remove Shortcut", systemImage: "bookmark.slash")
-            }
-        }
-    }
-}
-
 /// What stands for a mix: its one pick's art (the heart disc for the
 /// favorites, a round portrait for an artist, the cover or composite
 /// otherwise), and for several picks or none Quick Mix's own
@@ -100,11 +31,8 @@ struct PickArt: View {
     var body: some View {
         switch pick {
         case .favorites:
-            Image(systemName: "heart.fill")
-                .font(size >= 44 ? .title3 : .body)
-                .foregroundStyle(Color.heartInk)
-                .frame(width: size, height: size)
-                .background(Color.heart, in: .circle)
+            // The square of the playlists grid, the one drawing of it.
+            FavoritesArt(size: size, corner: 6)
         case .artist:
             Artwork(url: model.library?.artworkURL(pick.thumb), size: size, corner: 6, placeholder: "music.microphone")
                 .clipShape(.circle)
@@ -112,6 +40,24 @@ struct PickArt: View {
             Artwork(url: model.library?.artworkURL(pick.thumb), size: size, corner: 6, placeholder: "music.note.list")
         case .album:
             Artwork(url: model.library?.artworkURL(pick.thumb), size: size, corner: 6)
+        }
+    }
+}
+
+extension MixPick {
+    /// An artist from just a key and name, with the portrait the browse
+    /// root's catalog has for them.
+    @MainActor static func artist(_ ratingKey: String, title: String) -> MixPick {
+        let thumb = AppRuntime.shared.catalog.artists.first { $0.ratingKey == ratingKey }?.thumb
+        return .artist(ratingKey: ratingKey, title: title, thumb: thumb)
+    }
+
+    /// The outline of its art: round for an artist's portrait, a
+    /// rounded square for a cover and the favorites.
+    var artShape: AnyShape {
+        switch kind {
+        case .artist: AnyShape(.circle)
+        case .album, .playlist, .favorites: AnyShape(.rect(cornerRadius: 6))
         }
     }
 }
@@ -185,7 +131,7 @@ extension LibraryActions {
             return false
         }
         guard play(mix.style.ordered(tracks), within: nil, presenting: presenting) else { return false }
-        model.recordMix(mix.picks, style: mix.style)
+        model.recordMix(mix.picks, style: mix.style, player: player)
         return true
     }
 }
@@ -206,7 +152,6 @@ struct SaveMixSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var chosen: PlayStyle = .shuffle
-    @FocusState private var editingName: Bool
 
     private var existing: SavedMix? { editing.flatMap { model.shortcut($0) } }
     private var styles: [PlayStyle] { PlayStyle.cases(for: picks) }
@@ -215,31 +160,7 @@ struct SaveMixSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack {
-                        Text("Name").frame(width: 64, alignment: .leading)
-                        TextField(SavedMix.suggestedName(for: picks), text: $name)
-                            .focused($editingName)
-                            .submitLabel(.done)
-                    }
-                } footer: {
-                    Text("Appears on the Music screen as “\(chosen.verb) \(finalName)”.")
-                }
-                Section {
-                    StyleRows(styles: styles, style: $chosen, accent: .mix)
-                } header: {
-                    Text("Plays as")
-                } footer: {
-                    Text(chosen.explanation)
-                }
-                Section {
-                    PickRows(model: model, picks: picks)
-                } header: {
-                    Text(picks.count == 1 ? "Plays" : "Mixes")
-                }
-            }
-            .settingsBackground()
+            MixForm(model: model, picks: picks, name: $name, style: $chosen, autofocus: existing == nil)
             .navigationTitle(existing == nil ? "Pin Mix" : "Update Mix")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -261,6 +182,7 @@ struct SaveMixSheet: View {
                         }
                         dismiss()
                     }
+                    .tint(Color.mix)
                 }
             }
             .onAppear {
@@ -272,10 +194,66 @@ struct SaveMixSheet: View {
                 }
                 // A mix that was one playlist and grew loses Play.
                 if !styles.contains(chosen) { chosen = styles[0] }
-                editingName = existing == nil
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// A pin's name, how it plays and what it plays: the Pin Mix sheet's
+/// form, and the editor's in the mixer, where a pick can be removed.
+struct MixForm: View {
+    let model: AppModel
+    let picks: [MixPick]
+    @Binding var name: String
+    @Binding var style: PlayStyle
+    /// The name field takes the keyboard on appear: a new pin.
+    var autofocus = false
+    /// Removes a pick; nil where the picks are fixed.
+    var remove: ((MixPick) -> Void)? = nil
+    @FocusState private var editingName: Bool
+
+    private var styles: [PlayStyle] { PlayStyle.cases(for: picks) }
+    private var finalName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? SavedMix.suggestedName(for: picks) : trimmed
+    }
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Text("Name").frame(width: 64, alignment: .leading)
+                    TextField(SavedMix.suggestedName(for: picks), text: $name)
+                        .focused($editingName)
+                        .submitLabel(.done)
+                }
+            } footer: {
+                Text("Appears on the Music screen as “\(style.verb) \(finalName)”.")
+            }
+            Section {
+                StyleRows(styles: styles, style: $style, accent: .mix)
+            } header: {
+                Text("Plays as")
+            } footer: {
+                Text(style.explanation)
+            }
+            Section {
+                PickRows(model: model, picks: picks, remove: remove)
+            } header: {
+                Text(picks.count == 1 ? "Plays" : "Mixes")
+            } footer: {
+                if remove != nil {
+                    Text("Tap albums, artists or playlists behind this sheet to add them.")
+                }
+            }
+        }
+        .settingsBackground()
+        .onAppear { editingName = autofocus }
+        // Picks that no longer offer the style take the first they do.
+        .onChange(of: styles) { _, styles in
+            if !styles.contains(style), let first = styles.first { style = first }
+        }
     }
 }
 
@@ -311,6 +289,7 @@ private struct StyleRows: View {
 private struct PickRows: View {
     let model: AppModel
     let picks: [MixPick]
+    var remove: ((MixPick) -> Void)? = nil
 
     var body: some View {
         ForEach(picks, id: \.id) { pick in
@@ -319,10 +298,18 @@ private struct PickRows: View {
                 Text(pick.title).lineLimit(1)
                 Spacer()
                 Text(pick.kind.label).font(.caption).foregroundStyle(.secondary)
+                if let remove {
+                    Button { remove(pick) } label: {
+                        Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove \(pick.title)")
+                }
             }
         }
+        .onDelete(perform: remove.map { remove in { offsets in offsets.map { picks[$0] }.forEach(remove) } })
         if picks.isEmpty {
-            Text("Nothing picked: the whole library.").foregroundStyle(.secondary)
+            Text(remove == nil ? "Nothing picked: the whole library." : "Nothing picked yet.").foregroundStyle(.secondary)
         }
     }
 }
@@ -368,7 +355,7 @@ struct ShortcutsList: View {
                     Label("New Mix…", systemImage: "plus.circle.fill")
                 }
             } footer: {
-                Text("Mixes saved from Quick Mix. Hidden when everything in it is hidden for the current listeners.")
+                Text("Mixes pinned to the Music screen. Hidden when everything in it is hidden for the current listeners.")
             }
         }
         .settingsBackground()
@@ -449,7 +436,7 @@ private struct ShortcutDetail: View {
                     close()
                     navigator.open(.mix(MixRoute(mixID: id)))
                 } label: {
-                    Label("Edit in Quick Mix", systemImage: "slider.horizontal.3")
+                    Label("Edit in Mixer", systemImage: "slider.horizontal.3")
                 }
             } header: {
                 Text(mix.picks.count == 1 ? "Plays" : "Mixes")

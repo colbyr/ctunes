@@ -33,8 +33,11 @@ enum LibraryRoute: Hashable {
     case artist(ArtistRoute)
     case album(PlexAlbum)
     case playlist(PlexPlaylist)
-    /// Quick Mix, on a saved mix's picks or the last selection.
+    /// The mixer, on a saved mix's picks or the last selection.
     case mix(MixRoute)
+    /// The mixer with these picks in the bar in place of what was there:
+    /// "Open in Mixer" on a card or an item's menu.
+    case mixer([MixPick])
     case favorites
 }
 
@@ -83,19 +86,26 @@ struct LibraryActions {
 
     /// Every shuffle in the app is the spread shuffle. With a leading
     /// track it plays first and the rest of the list follows shuffled.
-    func shuffle(_ tracks: [PlexTrack], within container: VetoKind?, leading track: PlexTrack? = nil) {
+    @discardableResult
+    func shuffle(_ tracks: [PlexTrack], within container: VetoKind?, leading track: PlexTrack? = nil) -> Bool {
         guard let track else {
-            play(tracks.spreadShuffled(), within: container)
-            return
+            return play(tracks.spreadShuffled(), within: container)
         }
         let rest = tracks.filter { $0.id != track.id }.spreadShuffled()
-        play([track] + rest, within: container, from: track)
+        return play([track] + rest, within: container, from: track)
     }
 
     /// Whole albums front to back, the album order shuffled, the way the
     /// artist page's Mix Albums does it.
-    func mixAlbums(_ tracks: [PlexTrack], within container: VetoKind?) {
+    @discardableResult
+    func mixAlbums(_ tracks: [PlexTrack], within container: VetoKind?) -> Bool {
         play(tracks.albumShuffled(), within: container)
+    }
+
+    /// A whole collection just played, into the Music screen's mixes.
+    func remember(_ pick: MixPick, as style: PlayStyle, if played: Bool) {
+        guard played else { return }
+        model.recordMix([pick], style: style, player: player)
     }
 
     func enqueue(_ tracks: [PlexTrack], within container: VetoKind?, next: Bool) {
@@ -220,28 +230,41 @@ struct ArtistMenu: View {
     /// and the hero cards.
     var showArtist = true
     var showPlayback = true
+    /// Off in the mixer's own pool.
+    var showMixer = true
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
 
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
-        if showArtist {
-            Section {
+        Section {
+            if showArtist {
                 Button { actions.open(.artist(ArtistRoute(ratingKey: ratingKey, title: title))) } label: {
                     Label("Go to Artist", systemImage: "music.microphone")
+                }
+            }
+            if showMixer {
+                Button { actions.open(.mixer([.artist(ratingKey, title: title)])) } label: {
+                    Label("Open in Mixer", systemImage: "square.stack.3d.up")
                 }
             }
         }
         if showPlayback {
             Section {
                 Button {
-                    Task { actions.mixAlbums(await model.tracks(ofArtist: ratingKey), within: .artist) }
+                    Task {
+                        let played = actions.mixAlbums(await model.tracks(ofArtist: ratingKey), within: .artist)
+                        actions.remember(.artist(ratingKey, title: title), as: .mixAlbums, if: played)
+                    }
                 } label: {
                     Label("Mix Albums", systemImage: "square.stack")
                 }
                 Button {
-                    Task { actions.shuffle(await model.tracks(ofArtist: ratingKey), within: .artist) }
+                    Task {
+                        let played = actions.shuffle(await model.tracks(ofArtist: ratingKey), within: .artist)
+                        actions.remember(.artist(ratingKey, title: title), as: .shuffle, if: played)
+                    }
                 } label: {
                     Label("Shuffle", systemImage: "shuffle")
                 }
@@ -271,6 +294,8 @@ struct AlbumMenu: View {
     /// Off on the album's own page, which has the link and the Play and
     /// Shuffle cards; the queue items stay.
     var showAlbum = true
+    /// Off in the mixer's own pool.
+    var showMixer = true
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
@@ -292,17 +317,28 @@ struct AlbumMenu: View {
                     Label("Go to Artist", systemImage: "music.microphone")
                 }
             }
+            if showMixer {
+                Button { actions.open(.mixer([MixPick(album: album)])) } label: {
+                    Label("Open in Mixer", systemImage: "square.stack.3d.up")
+                }
+            }
         }
         if playable {
             Section {
                 if showAlbum {
                     Button {
-                        Task { actions.play(await model.tracks(of: album, known: tracks), within: .album) }
+                        Task {
+                            let played = actions.play(await model.tracks(of: album, known: tracks), within: .album)
+                            actions.remember(MixPick(album: album), as: .play, if: played)
+                        }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
                     Button {
-                        Task { actions.shuffle(await model.tracks(of: album, known: tracks), within: .album) }
+                        Task {
+                            let played = actions.shuffle(await model.tracks(of: album, known: tracks), within: .album)
+                            actions.remember(MixPick(album: album), as: .shuffle, if: played)
+                        }
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
                     }
@@ -345,6 +381,8 @@ struct PlaylistMenu: View {
     /// Off on the playlist's own page, which has the link and the Play
     /// and Shuffle cards; the queue items stay.
     var showPlaylist = true
+    /// Off in the mixer's own pool.
+    var showMixer = true
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
@@ -356,10 +394,15 @@ struct PlaylistMenu: View {
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
         let tracks: () async -> [PlexTrack] = { await model.items(of: playlist, known: items).map(\.track) }
-        if showPlaylist {
-            Section {
+        Section {
+            if showPlaylist {
                 Button { actions.open(.playlist(playlist)) } label: {
                     Label("Go to Playlist", systemImage: "music.note.list")
+                }
+            }
+            if showMixer {
+                Button { actions.open(.mixer([MixPick(playlist: playlist)])) } label: {
+                    Label("Open in Mixer", systemImage: "square.stack.3d.up")
                 }
             }
         }
@@ -367,12 +410,16 @@ struct PlaylistMenu: View {
             Section {
                 if showPlaylist {
                     Button {
-                        Task { actions.play(await tracks(), within: nil) }
+                        Task {
+                            actions.remember(MixPick(playlist: playlist), as: .play, if: actions.play(await tracks(), within: nil))
+                        }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
                     Button {
-                        Task { actions.shuffle(await tracks(), within: nil) }
+                        Task {
+                            actions.remember(MixPick(playlist: playlist), as: .shuffle, if: actions.shuffle(await tracks(), within: nil))
+                        }
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
                     }

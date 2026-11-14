@@ -3,7 +3,7 @@ import SwiftUI
 
 /// How a browse screen lays its items out: covers in a grid, or rows
 /// with the art at the leading edge. Per screen, like the sort: the root,
-/// an artist's page, the playlists page and the mix pools each keep their
+/// an artist's page and the mix pools each keep their
 /// own, so the root can stay a grid while an artist's page reads as a list.
 enum BrowseLayout: String, CaseIterable {
     case grid, list
@@ -105,7 +105,7 @@ struct AlbumBrowserControls: View {
     var scope: BrowseScope = .albums
     var subject: Binding<BrowseSubject>? = nil
     var subjects: [BrowseSubject] = BrowseSubject.allCases
-    /// Only the main browser, the playlists page and Quick Mix filter.
+    /// Only the main browser and Quick Mix filter.
     var downloadedOnly: Binding<Bool>? = nil
 
     var body: some View {

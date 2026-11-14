@@ -274,6 +274,7 @@ struct ArtistView: View {
                 return
             }
             player.play(mode.ordered(playable), startingAt: 0, library: library)
+            model.recordMix([.artist(route.ratingKey, title: route.title)], style: mode, player: player)
             nowPlaying.isShown = true
         }
     }

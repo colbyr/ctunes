@@ -410,6 +410,7 @@ struct TracksView: View {
     private func play() {
         guard let library = model.library, !playableTracks.isEmpty else { return }
         player.play(playableTracks, startingAt: 0, library: library)
+        model.recordMix([MixPick(album: album)], style: .play, player: player)
         nowPlaying.isShown = true
     }
 
@@ -417,6 +418,7 @@ struct TracksView: View {
     private func shuffle() {
         guard let library = model.library, !playableTracks.isEmpty else { return }
         player.play(playableTracks.spreadShuffled(), startingAt: 0, library: library)
+        model.recordMix([MixPick(album: album)], style: .shuffle, player: player)
         nowPlaying.isShown = true
     }
 

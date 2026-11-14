@@ -70,6 +70,23 @@ public enum RecentMixes {
         return list.filter { $0.id == key || kept.contains($0) }
     }
 
+    /// The list with the history of the mix under `oldKey` carried over to
+    /// `picks`, as when a pinned mix's picks are edited: merged into the
+    /// one already there with those picks, or moved onto them, so the old
+    /// picks don't linger as a mix of their own.
+    public static func moving(_ oldKey: String, to picks: [MixPick], in list: [RecentMix]) -> [RecentMix] {
+        let newKey = RecentMix.key(for: picks)
+        guard oldKey != newKey, let old = list.first(where: { $0.id == oldKey }) else { return list }
+        var list = list.filter { $0.id != oldKey }
+        if let index = list.firstIndex(where: { $0.id == newKey }) {
+            list[index].plays = Array((list[index].plays + old.plays).sorted().suffix(playLimit))
+            list[index].playCount += old.playCount
+        } else {
+            list.append(RecentMix(picks: picks, style: old.style, plays: old.plays, playCount: old.playCount))
+        }
+        return list
+    }
+
     /// The last one played first, so a mix lands at the front as it
     /// starts; the rest most played first, recent plays counting most.
     public static func ranked(_ list: [RecentMix], at now: Date) -> [RecentMix] {

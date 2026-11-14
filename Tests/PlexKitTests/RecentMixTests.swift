@@ -66,6 +66,23 @@ struct RecentMixTests {
         #expect(list[0].playCount == RecentMixes.playLimit + 5)
     }
 
+    @Test("an edited mix takes its history to the new picks, merging with one already there")
+    func moving() {
+        var list = RecentMixes.recording([Self.artist], style: .shuffle, at: Self.now, in: [])
+        list = RecentMixes.recording([Self.artist], style: .shuffle, at: Self.now + 60, in: list)
+        let oldKey = RecentMix.key(for: [Self.artist])
+        let moved = RecentMixes.moving(oldKey, to: [Self.artist, Self.album], in: list)
+        #expect(moved.count == 1)
+        #expect(moved[0].id == RecentMix.key(for: [Self.album, Self.artist]))
+        #expect(moved[0].playCount == 2)
+
+        let other = RecentMixes.recording([Self.album, Self.artist], style: .mixAlbums, at: Self.now + 30, in: list)
+        let merged = RecentMixes.moving(oldKey, to: [Self.artist, Self.album], in: other)
+        #expect(merged.count == 1)
+        #expect(merged[0].playCount == 3)
+        #expect(merged[0].plays == [Self.now, Self.now + 30, Self.now + 60])
+    }
+
     @Test("round-trips through JSON")
     func codable() throws {
         let list = RecentMixes.recording([Self.album, .favorites], style: .mixAlbums, at: Self.now, in: [])

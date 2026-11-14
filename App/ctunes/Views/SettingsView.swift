@@ -204,7 +204,7 @@ struct SettingsSheet: View {
                 }
             }
         } footer: {
-            Text("Mixes saved from Quick Mix, shown on the Music screen.")
+            Text("Mixes pinned to the Music screen.")
         }
     }
 

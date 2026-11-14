@@ -15,7 +15,7 @@ final class LibraryCatalog {
     var artists: [PlexArtist] = []
     var rotation: Rotation = .none
     /// Every hearted track, fetched with the albums so the favorites
-    /// shortcut and the playlists page can say how many; nil until the
+    /// shortcut and the Favorites tile can say how many; nil until the
     /// request lands.
     var favorites: [PlexTrack]?
     var loaded = false

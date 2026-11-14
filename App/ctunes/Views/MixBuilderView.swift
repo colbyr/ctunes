@@ -1,8 +1,8 @@
 import PlexKit
 import SwiftUI
 
-/// Pushed onto the navigation path to open Quick Mix: on a saved
-/// mix's picks, or on the last selection with no id.
+/// Pushed onto the navigation path to open Quick Mix: in its edit mode
+/// on a pinned mix's picks, or on the last selection with no id.
 struct MixRoute: Hashable {
     var mixID: SavedMix.ID? = nil
 }
@@ -13,8 +13,10 @@ struct MixRoute: Hashable {
 /// time, switched from the layout menu; a tap checks an item in place and
 /// the picks of every kind gather in the mix bar, which takes the mini
 /// player's slot (`MixDraft`, `MixBar`). The pool never offers what a
-/// listening rider vetoed. What was played lands in the Recent row at the
-/// top, from which a mix plays again or is pinned to the Music screen.
+/// listening rider vetoed. What was played lands in the Music screen's
+/// row of mixes, from which it plays again or is pinned. Opened on a
+/// pinned mix, the page is that mix's editor: Cancel and Save in place of
+/// back, the bar showing its picks with no play buttons.
 struct MixBuilderView: View {
     let model: AppModel
     let section: PlexSection
@@ -38,8 +40,7 @@ struct MixBuilderView: View {
     /// The route's saved mix has been put in the bar; coming back from a
     /// page pushed over the builder shouldn't put it there again.
     @State private var routeApplied = false
-    /// A Recent card being pinned, or a pinned one being renamed.
-    @State private var pinning: PinRequest?
+    @Environment(\.dismiss) private var dismiss
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     /// The pool's width, for the tile floor.
     @State private var width: CGFloat = 0
@@ -54,13 +55,6 @@ struct MixBuilderView: View {
     @AppStorage("mixView.playlist") private var playlistSort: AlbumView = .artist
     @AppStorage("mixLayout") private var layout: BrowseLayout = .grid
     @AppStorage("mixDownloadedOnly.album") private var downloadedOnly = false
-
-    private struct PinRequest: Identifiable {
-        let picks: [MixPick]
-        let style: PlayStyle
-        let editing: SavedMix.ID?
-        var id: String { RecentMix.key(for: picks) }
-    }
 
     /// Debug-only preselection from `CTUNES_DEV_MIX=<kind>:<key>,<key>`,
     /// the keys taken as that kind once the pool loads. Nil without a
@@ -195,15 +189,6 @@ struct MixBuilderView: View {
         }
     }
 
-    /// What a tap picks under the current subject, for the hint.
-    private var poolNoun: String {
-        switch kind {
-        case .artist: "artists"
-        case .album: "albums"
-        case .playlist, .favorites: "playlists"
-        }
-    }
-
     private var hiddenCount: HiddenCount {
         switch kind {
         case .artist: HiddenCount(artists: artists.filter { hidden.artists.contains($0.ratingKey) }.count)
@@ -221,32 +206,16 @@ struct MixBuilderView: View {
     }
 
     var body: some View {
-        let recents = RecentMixItem.all(model)
+        let editing = draft.editing.flatMap { model.shortcut($0) }
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if !recents.isEmpty {
-                        recentRow(recents)
-                            .padding(.bottom, 16)
-                    }
-                    Rectangle()
-                        .fill(Color.divider)
-                        .frame(height: 1)
-                        .padding(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
                     AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: sort, layout: $layout,
                                          scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
-                        .padding(.top, 16)
+                        .padding(.top, 8)
                         .id(Self.poolAnchor)
-                    HStack(spacing: 0) {
-                        HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
-                        if draft.picks.isEmpty {
-                            Text(" · tap \(poolNoun) to start a mix")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .lineLimit(1)
-                    .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                    HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
+                        .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     // In the stack rather than an overlay, so it sits under
                     // the picks and the controls instead of over them.
                     if loaded, rest.isEmpty, !needle.isEmpty {
@@ -290,41 +259,68 @@ struct MixBuilderView: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         // Room for the floating pills, the mix bar's two rows, and the
         // keyboard under them.
-        .contentMargins(.bottom, (draft.isBarShown ? 150 : 84) + (keyboard.isUp ? keyboard.height : 0), for: .scrollContent)
+        .contentMargins(.bottom, (editing == nil ? 150 : 100) + (keyboard.isUp ? keyboard.height : 0), for: .scrollContent)
         .overlay {
             if !loaded {
                 ProgressView()
             }
         }
-        .navigationTitle(draft.editing.flatMap { model.shortcut($0)?.name } ?? "Quick Mix")
+        .navigationTitle(editing.map { "Edit \($0.name)" } ?? "Mixer")
+        .navigationSubtitle(editing == nil ? "" : "Tap to add or remove")
         .navigationBarTitleDisplayMode(.inline)
+        // Editing is a mode with its own way out: back would leave it
+        // unclear whether the change was kept.
+        .navigationBarBackButtonHidden(editing != nil)
+        .toolbar {
+            if editing != nil {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", systemImage: "xmark") { draft.endEditing() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", systemImage: "checkmark") { draft.saveEdit(model) }
+                        .disabled(!draft.canSave(model))
+                        .tint(Color.mix)
+                }
+            }
+        }
         .toolbar { SearchBarItem() }
         // Handed the environment explicitly: a Mac window crossing the
         // compact/regular line re-hosts an open sheet without it.
         .sheet(isPresented: Bindable(draft).reviewing) {
-            MixReviewSheet(model: model)
+            Group {
+                if draft.editing != nil {
+                    MixEditSheet(model: model)
+                } else {
+                    MixReviewSheet(model: model)
+                }
+            }
                 .environment(draft)
                 .environment(player)
                 .environment(nowPlaying)
                 .environment(navigator)
         }
-        .sheet(item: $pinning) { request in
-            SaveMixSheet(model: model, picks: request.picks, editing: request.editing, style: request.style)
-        }
         .onAppear {
             draft.building = true
             query = ""
-            // A saved mix opens on its picks; otherwise the last picks are
-            // waiting.
+            // A pinned mix opens its editor; otherwise the last picks are
+            // waiting. An editor left some other way than its buttons (the
+            // stack reset under it) is given up here.
             if !routeApplied, let id = route.mixID, let mix = model.shortcut(id) {
-                draft.picks = mix.picks
-                draft.editing = id
-            } else if draft.picks.isEmpty, Self.developmentSelection == nil {
+                draft.beginEditing(mix)
+            } else if route.mixID == nil, draft.editing != nil {
+                draft.endEditing()
+            }
+            if draft.editing == nil, !routeApplied, draft.picks.isEmpty, Self.developmentSelection == nil {
                 draft.picks = MixDraft.saved(model)
             }
             routeApplied = true
         }
         .onDisappear { draft.building = false }
+        // The editor's Save or Cancel, from the toolbar or the sheet: back
+        // to where it was opened from.
+        .onChange(of: draft.editing) { old, new in
+            if route.mixID != nil, old != nil, new == nil { dismiss() }
+        }
         .onChange(of: draft.picks) { draft.save(model) }
         .task(id: model.libraryRevision) {
             await load()
@@ -363,67 +359,6 @@ struct MixBuilderView: View {
     }
     #endif
 
-    /// The mixes played here, then the pinned ones not played yet, as
-    /// cards that play on a tap in the style they last played in.
-    private func recentRow(_ recents: [RecentMixItem]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            AlbumGroupHeader(name: "Recent")
-                .padding(.horizontal, Self.margin)
-            ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    ForEach(recents) { item in
-                        Button {
-                            draft.play(item.picks, style: item.style, actions: actions)
-                        } label: {
-                            RecentMixCard(model: model, item: item,
-                                          playing: draft.isPlaying(item.id, player: player),
-                                          loading: draft.loadingKey == item.id)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu { recentMenu(item) }
-                    }
-                }
-                .padding(.horizontal, Self.margin)
-                // Room for the cards' shadow; see `cardShadow`.
-                .padding(.vertical, 14)
-            }
-            .scrollIndicators(.hidden)
-            .padding(.vertical, -14)
-        }
-        .padding(.top, 8)
-    }
-
-    @ViewBuilder private func recentMenu(_ item: RecentMixItem) -> some View {
-        ForEach(PlayStyle.cases(for: item.picks)) { style in
-            Button(style.verb, systemImage: style.symbol) {
-                draft.play(item.picks, style: style, actions: actions)
-            }
-        }
-        Button("Edit Picks", systemImage: "slider.horizontal.3") {
-            draft.picks = item.picks
-            draft.editing = item.pinned?.id
-            draft.reviewing = true
-        }
-        if let pinned = item.pinned {
-            Button("Rename or Restyle…", systemImage: "pencil") {
-                pinning = PinRequest(picks: pinned.picks, style: pinned.style, editing: pinned.id)
-            }
-            Button("Unpin from Music Screen", systemImage: "pin.slash") {
-                model.removeShortcut(pinned.id)
-                if draft.editing == pinned.id { draft.editing = nil }
-            }
-        } else {
-            Button("Pin to Music Screen…", systemImage: "pin") {
-                pinning = PinRequest(picks: item.picks, style: item.style, editing: nil)
-            }
-        }
-        if let recent = item.recent {
-            Button("Remove from Recent", systemImage: "xmark", role: .destructive) {
-                model.forgetRecentMix(recent.id)
-            }
-        }
-    }
-
     /// The fetch: on appear, on a library swap, and on pull to refresh.
     /// Both lists every time, since picks of either kind can be waiting.
     private func load() async {
@@ -461,7 +396,7 @@ struct MixBuilderView: View {
                     // A pick's check, or the plus that adds one.
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "plus.circle")
                         .font(.title3)
-                        .foregroundStyle(isSelected ? AnyShapeStyle(Color.pill) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(isSelected ? AnyShapeStyle(Color.mix) : AnyShapeStyle(.secondary))
                 } menu: {
                     menu(for: item)
                 }
@@ -495,14 +430,14 @@ struct MixBuilderView: View {
     @ViewBuilder private func menu(for item: Item) -> some View {
         switch item.kind {
         case .artist:
-            ArtistMenu(model: model, ratingKey: item.key, title: item.title)
+            ArtistMenu(model: model, ratingKey: item.key, title: item.title, showMixer: false)
         case .album:
             if let album = albums.first(where: { $0.ratingKey == item.key }) {
-                AlbumMenu(model: model, album: album)
+                AlbumMenu(model: model, album: album, showMixer: false)
             }
         case .playlist:
             if let playlist = model.playlists.first(where: { $0.ratingKey == item.key }) {
-                PlaylistMenu(model: model, playlist: playlist)
+                PlaylistMenu(model: model, playlist: playlist, showMixer: false)
             }
         case .favorites:
             Button { navigator.open(.favorites) } label: {
@@ -528,7 +463,7 @@ struct MixBuilderView: View {
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(Color.pillInk)
                                 .frame(width: 24, height: 24)
-                                .background(Color.pill, in: .circle)
+                                .background(Color.mix, in: .circle)
                                 .overlay(Circle().stroke(Color.parchmentTop, lineWidth: 2))
                                 .padding(round ? 2 : 6)
                                 .transition(.scale.combined(with: .opacity))
@@ -551,7 +486,7 @@ struct MixBuilderView: View {
             .contentShape(.rect)
         }
 
-        private var ring: Color { .pill }
+        private var ring: Color { .mix }
 
         @ViewBuilder private var art: some View {
             if round {

@@ -164,6 +164,12 @@ struct LibraryView: View {
                 VerticalBarProbe(navigator: navigator)
             }
         }
+        // A mix played from Quick Mix's bar goes home, where its card is.
+        .onChange(of: mixDraft.landed) { _, key in
+            guard key != nil, !path.isEmpty else { return }
+            path = NavigationPath()
+            searchDepth = nil
+        }
         .onChange(of: navigator.requested) { _, route in
             guard let route else { return }
             switch route {
@@ -171,6 +177,15 @@ struct LibraryView: View {
             case .album(let album): path.append(album)
             case .playlist(let playlist): path.append(playlist)
             case .mix(let route): path.append(route)
+            case .mixer(let picks):
+                // After the menu has closed: pushed while it closed, the
+                // mixer opened and the stack fell straight back.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(450))
+                    mixDraft.endEditing()
+                    mixDraft.picks = picks
+                    path.append(MixRoute())
+                }
             case .favorites: path.append(FavoritesRoute())
             }
             navigator.requested = nil
@@ -328,6 +343,10 @@ struct LibraryView: View {
                 let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
                 path.append(ArtistRoute(ratingKey: parts[0], title: parts.count > 1 ? parts[1] : "Artist"))
             }
+            // `edit` opens the first pinned mix's editor.
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"] == "edit", let mix = model.shortcuts.first {
+                path.append(MixRoute(mixID: mix.id))
+            }
             // `artist` or `album` opens the builder on that pool.
             if let raw = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX"],
                let kind = MixPickKind(rawValue: String(raw.prefix { $0 != ":" })) {
@@ -387,9 +406,6 @@ struct LibraryView: View {
                 if let section = model.selectedSection {
                     MixBuilderView(model: model, section: section, route: route, query: $query)
                 }
-            }
-            .navigationDestination(for: PlaylistsRoute.self) { _ in
-                PlaylistsView(model: model, catalog: catalog, path: $path)
             }
             .navigationDestination(for: FavoritesRoute.self) { _ in
                 if let section = model.selectedSection {
