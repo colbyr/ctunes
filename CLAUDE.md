@@ -437,10 +437,11 @@ the favorites, never a node in the pin tree.
 
 **Shortcuts** (`SavedMixes.swift` in PlexKit, `ShortcutsView.swift`,
 `MixBar.swift`) are the row of mix cards at the top of the browse root
-(`MixesRow`): a small Mixer button (the only way into the builder from
+(`MixesRow`, read from the right): a small Mixer button at its right edge (the only way into the builder from
 the root; the builder is "Mixer" on screen, Quick Mix in the code), the
-pinned mixes in their order, then the recents. Its accent is the amber,
-not `Color.mix`, and the favorites are drawn as the square
+pinned mixes in their order, then the recents, newest nearest the
+button. The mixer's accent is `Color.mix` (the picks' ring and check
+too), and the favorites are drawn as the square
 `FavoritesArt` everywhere. A `SavedMix` (a pin) is a set of picks
 (`[MixPick]`: the favorites, a playlist, an artist or an album, each
 with its title and thumb saved beside the key, identity being the kind
