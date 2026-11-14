@@ -390,8 +390,9 @@ struct MixReviewSheet: View {
     /// "Pinned as Sunday Laura · played 6 times", or "Played 3 times"
     /// for one only this device remembers.
     private func knownLine(_ picks: [MixPick]) -> Label<Text, Image>? {
-        let plays = model.recentMix(for: picks)?.playCount ?? 0
-        let times = "\(plays) time\(plays == 1 ? "" : "s")"
+        let plays = model.recentMix(for: picks)?.plays.count ?? 0
+        // Only the last plays are kept, so the cap reads as "50+".
+        let times = plays >= RecentMixes.playLimit ? "\(plays)+ times" : "\(plays) time\(plays == 1 ? "" : "s")"
         if let pinned = model.pinnedMix(for: picks) {
             let played = plays > 0 ? " · played \(times)" : ""
             return Label { Text("Pinned as **\(pinned.name)**\(played)") } icon: { Image(systemName: "pin") }

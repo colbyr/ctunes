@@ -16,7 +16,7 @@ struct RecentMixTests {
         list = RecentMixes.recording([Self.album, Self.artist], style: .shuffle, at: Self.now + 60, in: list)
         #expect(list.count == 1)
         #expect(list[0].style == .shuffle)
-        #expect(list[0].playCount == 2)
+        #expect(list[0].plays.count == 2)
         #expect(list[0].picks == [Self.album, Self.artist])
     }
 
@@ -56,14 +56,14 @@ struct RecentMixTests {
         #expect(!list.contains { $0.picks.first?.ratingKey == "\(RecentMixes.limit - 1)" })
     }
 
-    @Test("only the last plays are kept for the score, the count keeps going")
+    @Test("only the last plays are kept")
     func playLimit() {
         var list: [RecentMix] = []
         for index in 0..<(RecentMixes.playLimit + 5) {
             list = RecentMixes.recording([Self.artist], style: .shuffle, at: Self.now + Double(index), in: list)
         }
         #expect(list[0].plays.count == RecentMixes.playLimit)
-        #expect(list[0].playCount == RecentMixes.playLimit + 5)
+        #expect(list[0].plays.first == Self.now + 5)
     }
 
     @Test("an edited mix takes its history to the new picks, merging with one already there")
@@ -74,13 +74,62 @@ struct RecentMixTests {
         let moved = RecentMixes.moving(oldKey, to: [Self.artist, Self.album], in: list)
         #expect(moved.count == 1)
         #expect(moved[0].id == RecentMix.key(for: [Self.album, Self.artist]))
-        #expect(moved[0].playCount == 2)
+        #expect(moved[0].plays.count == 2)
 
         let other = RecentMixes.recording([Self.album, Self.artist], style: .mixAlbums, at: Self.now + 30, in: list)
         let merged = RecentMixes.moving(oldKey, to: [Self.artist, Self.album], in: other)
         #expect(merged.count == 1)
-        #expect(merged[0].playCount == 3)
         #expect(merged[0].plays == [Self.now, Self.now + 30, Self.now + 60])
+    }
+
+    @Test("two devices' plays merge without losing either's, in either order")
+    func mergePlays() {
+        let phone = RecentMixes.recording([Self.artist], style: .shuffle, at: Self.now, in: RecentMixHistory())
+        var pad = RecentMixes.recording([Self.artist], style: .mixAlbums, at: Self.now + 60, in: RecentMixHistory())
+        pad = RecentMixes.recording([Self.album], style: .play, at: Self.now + 90, in: pad)
+        let merged = RecentMixes.merged(phone, pad, at: Self.now + 120)
+        #expect(merged == RecentMixes.merged(pad, phone, at: Self.now + 120))
+        #expect(merged.mixes.count == 2)
+        let artist = merged.mixes.first { $0.id == RecentMix.key(for: [Self.artist]) }
+        #expect(artist?.plays == [Self.now, Self.now + 60])
+        // The style it was played in last, on whichever device.
+        #expect(artist?.style == .mixAlbums)
+        // Merging again changes nothing.
+        #expect(RecentMixes.merged(merged, pad, at: Self.now + 120) == merged)
+    }
+
+    @Test("a removal on one device removes it everywhere, until it is played again")
+    func mergeRemoval() {
+        let phone = RecentMixes.recording([Self.artist], style: .shuffle, at: Self.now, in: RecentMixHistory())
+        let pad = RecentMixes.forgetting(RecentMix.key(for: [Self.artist]), at: Self.now + 60, in: phone)
+        #expect(RecentMixes.merged(phone, pad, at: Self.now + 90).mixes.isEmpty)
+        let playedAgain = RecentMixes.recording([Self.artist], style: .shuffle, at: Self.now + 120, in: phone)
+        let merged = RecentMixes.merged(playedAgain, pad, at: Self.now + 150)
+        #expect(merged.mixes.first?.plays == [Self.now + 120])
+    }
+
+    @Test("an edit's old picks don't come back from another device")
+    func mergeMove() {
+        let phone = RecentMixes.recording([Self.artist], style: .shuffle, at: Self.now, in: RecentMixHistory())
+        let pad = RecentMixes.moving(RecentMix.key(for: [Self.artist]), to: [Self.artist, Self.album], at: Self.now + 60, in: phone)
+        let merged = RecentMixes.merged(phone, pad, at: Self.now + 90)
+        #expect(merged.mixes.map(\.id) == [RecentMix.key(for: [Self.artist, Self.album])])
+        #expect(merged.mixes.first?.plays == [Self.now])
+    }
+
+    @Test("an old removal is forgotten")
+    func removalLife() {
+        let history = RecentMixHistory(removed: ["x": Self.now])
+        let later = Self.now + RecentMixes.removalLife + 1
+        #expect(RecentMixes.merged(history, RecentMixHistory(), at: later).removed.isEmpty)
+    }
+
+    @Test("the list kept before recents synced still reads")
+    func legacy() throws {
+        let list = RecentMixes.recording([Self.album], style: .play, at: Self.now, in: [])
+        let history = RecentMixHistory.decode(try JSONEncoder().encode(list))
+        #expect(history?.mixes == list)
+        #expect(history?.removed.isEmpty == true)
     }
 
     @Test("round-trips through JSON")

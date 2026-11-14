@@ -462,8 +462,15 @@ tap) is recorded as a `RecentMix` through `AppModel.recordMix`, which
 also notes the queue entry it started so the card reads Playing while
 that queue lasts (`RecentMixes.swift`): identity is the *set* of picks,
 ranked last played first and then by frecency (30-day half-life), 20
-kept, stored per account and library in `UserDefaults` only
-(`recentMixes.<account>…`; play counts don't sync). A card's tap plays
+kept. **Recents sync, merged rather than last writer wins**
+(`RecentMixHistory` under `recentMixes.<account>.<server>.<section>` in
+iCloud, a copy in `UserDefaults`): the union of every device's play
+dates (the last 50, whose count is the "played N times", "50+" at the
+cap), picks and style from the copy played last, and a removal (Remove,
+or an edit moving a pin's picks) kept as a date that drops every play
+up to it, for 90 days. Every save merges iCloud's copy in first, and a
+pull pushes the merge back when iCloud lacks part of it. The Playing
+mark and the row order stay on the device. A card's tap plays
 it in place. **The row never re-sorts while the app runs**
 (`MixDraft.rowOrder`): a card jumping on play, a pin, or on the way
 back to the screen, carried it out of view. A pin's row id is the pin's,

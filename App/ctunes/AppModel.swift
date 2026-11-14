@@ -124,11 +124,13 @@ final class AppModel {
     /// waits. Empty until a library is open. A library's first open
     /// starts with Shuffle Favorites; an emptied list stays empty.
     private(set) var shortcuts: [SavedMix] = []
-    /// What Quick Mix played lately, per account and library like the
-    /// shortcuts but kept on this device only (`recentMixes.<account>…`
-    /// in `UserDefaults`): play counts from two devices would only
-    /// overwrite each other.
-    private(set) var recentMixes: [RecentMix] = []
+    /// What was played lately, per account and library like the
+    /// shortcuts and synced the same way (`recentMixes.<account>…` in
+    /// iCloud, a copy in `UserDefaults`), but merged rather than last
+    /// writer wins: every device's plays are kept, and a removal travels
+    /// as a date (`RecentMixes.merged`).
+    private(set) var recentHistory = RecentMixHistory()
+    var recentMixes: [RecentMix] { recentHistory.mixes }
 
     /// Per account and server: `selected-section-key.<account>.<server>`.
     /// Section keys are small numbers that every server reuses.
@@ -912,7 +914,7 @@ final class AppModel {
     /// One more play of these picks, which `player` has just started:
     /// any whole collection played anywhere, or a mix of them.
     func recordMix(_ picks: [MixPick], style: PlayStyle, player: AudioPlayer) {
-        recentMixes = RecentMixes.recording(picks, style: style, at: .now, in: recentMixes)
+        recentHistory = RecentMixes.recording(picks, style: style, at: .now, in: recentHistory)
         saveRecentMixes()
         playingMix = player.queue.entries.first.map { (RecentMix.key(for: picks), $0.id) }
     }
@@ -925,12 +927,12 @@ final class AppModel {
 
     /// A pin's picks edited: its history goes with them.
     func moveRecentMix(_ oldKey: String, to picks: [MixPick]) {
-        recentMixes = RecentMixes.moving(oldKey, to: picks, in: recentMixes)
+        recentHistory = RecentMixes.moving(oldKey, to: picks, at: .now, in: recentHistory)
         saveRecentMixes()
     }
 
     func forgetRecentMix(_ id: RecentMix.ID) {
-        recentMixes.removeAll { $0.id == id }
+        recentHistory = RecentMixes.forgetting(id, at: .now, in: recentHistory)
         saveRecentMixes()
     }
 
@@ -946,21 +948,43 @@ final class AppModel {
         return shortcuts.first { $0.pickKey == key }
     }
 
+    /// This device's copy merged with iCloud's, the result written to
+    /// both: a device that kept recents before they synced uploads them.
     private func loadRecentMixes() {
-        guard let key = storageKey(Self.recentMixesKey),
-              let data = UserDefaults.standard.data(forKey: key),
-              let saved = try? JSONDecoder().decode([RecentMix].self, from: data)
-        else {
-            recentMixes = []
+        guard let key = storageKey(Self.recentMixesKey) else {
+            recentHistory = RecentMixHistory()
             return
         }
-        recentMixes = saved
+        recentHistory = UserDefaults.standard.data(forKey: key).flatMap(RecentMixHistory.decode) ?? RecentMixHistory()
+        saveRecentMixes()
     }
 
+    /// Merged with iCloud's before it is written, so a play another
+    /// device made since the last pull is never overwritten.
     private func saveRecentMixes() {
+        guard let key = storageKey(Self.recentMixesKey) else { return }
+        if let cloud = NSUbiquitousKeyValueStore.default.data(forKey: key).flatMap(RecentMixHistory.decode) {
+            recentHistory = RecentMixes.merged(recentHistory, cloud, at: .now)
+        }
+        if let data = try? JSONEncoder().encode(recentHistory) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+        Self.push(recentHistory, toCloudKey: key)
+    }
+
+    /// Another device's plays: merged in, and the merge sent back up when
+    /// it holds something iCloud's copy doesn't.
+    private func pullRecentMixes() {
         guard let key = storageKey(Self.recentMixesKey),
-              let data = try? JSONEncoder().encode(recentMixes) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+              let cloud = NSUbiquitousKeyValueStore.default.data(forKey: key).flatMap(RecentMixHistory.decode)
+        else { return }
+        let merged = RecentMixes.merged(recentHistory, cloud, at: .now)
+        guard merged != recentHistory || merged != cloud else { return }
+        recentHistory = merged
+        if let data = try? JSONEncoder().encode(merged) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+        Self.push(merged, toCloudKey: key)
     }
 
     // MARK: Cloud sync
@@ -1005,6 +1029,7 @@ final class AppModel {
                 UserDefaults.standard.set(data, forKey: key)
             }
         }
+        pullRecentMixes()
     }
 
     /// Only the listeners go up, with every library's vetoes; the active
