@@ -14,7 +14,7 @@ struct ListenerChips<Trailing: View>: View {
     /// The Downloaded filter, on the screens that have one.
     var downloadedOnly: Binding<Bool>? = nil
     @ViewBuilder let trailing: Trailing
-    @State private var showingListeners = false
+    @State private var sheet: ListenersSheetTarget?
 
     private var pinned: Bool { Trailing.self != EmptyView.self }
 
@@ -44,10 +44,11 @@ struct ListenerChips<Trailing: View>: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
+                        .contextMenu { ListenerChipMenu(model: model, listener: listener) { sheet = $0 } }
                     }
                     if model.roster.listeners.count <= 1 {
                         Button {
-                            showingListeners = true
+                            sheet = .list
                         } label: {
                             Image(systemName: "plus")
                                 .font(.subheadline.weight(.bold))
@@ -71,8 +72,8 @@ struct ListenerChips<Trailing: View>: View {
             }
         }
         .padding(.vertical, 4)
-        .sheet(isPresented: $showingListeners) {
-            ListenersSheet(model: model, artists: artists)
+        .sheet(item: $sheet) { target in
+            ListenersSheet(model: model, artists: artists, opening: target.listener)
         }
     }
 }
@@ -84,7 +85,7 @@ struct ListenerBarChips: View {
     let artists: [AlbumGroup]
     /// The Downloaded filter, at the head as in the inline row.
     var downloadedOnly: Binding<Bool>? = nil
-    @State private var showingListeners = false
+    @State private var sheet: ListenersSheetTarget?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -110,9 +111,10 @@ struct ListenerBarChips: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(active ? "\(listener.name) is listening" : "\(listener.name) is not listening")
+                .contextMenu { ListenerChipMenu(model: model, listener: listener) { sheet = $0 } }
             }
             if model.roster.listeners.count <= 1 {
-                Button { showingListeners = true } label: {
+                Button { sheet = .list } label: {
                     Image(systemName: "plus")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.secondary)
@@ -126,8 +128,54 @@ struct ListenerBarChips: View {
         }
         // The bar would squeeze the names out of the chips.
         .fixedSize()
-        .sheet(isPresented: $showingListeners) {
-            ListenersSheet(model: model, artists: artists)
+        .sheet(item: $sheet) { target in
+            ListenersSheet(model: model, artists: artists, opening: target.listener)
+        }
+    }
+}
+
+/// Which page of the Listeners sheet a chip opens.
+enum ListenersSheetTarget: Identifiable {
+    case list
+    case listener(Listener.ID)
+
+    var id: String {
+        switch self {
+        case .list: "list"
+        case .listener(let id): id.uuidString
+        }
+    }
+
+    var listener: Listener.ID? {
+        if case .listener(let id) = self { return id }
+        return nil
+    }
+}
+
+/// A listener chip's long press: just them, everyone, their page, or the
+/// whole list (where one is added).
+struct ListenerChipMenu: View {
+    let model: AppModel
+    let listener: Listener
+    let open: (ListenersSheetTarget) -> Void
+
+    var body: some View {
+        let roster = model.roster
+        Section {
+            if roster.listeners.count > 1, roster.activeIDs != [listener.id] {
+                Button("Only \(listener.name)", systemImage: "person") {
+                    withAnimation(.snappy) { model.listenAlone(listener.id) }
+                }
+            }
+            if roster.listeners.count > 1, roster.active.count < roster.listeners.count {
+                Button("Everyone", systemImage: "person.3") {
+                    withAnimation(.snappy) { model.listenAll() }
+                }
+            }
+        }
+        Section {
+            Button("Edit \(listener.name)…", systemImage: "pencil") { open(.listener(listener.id)) }
+            Button("Manage Listeners…", systemImage: "person.2") { open(.list) }
         }
     }
 }

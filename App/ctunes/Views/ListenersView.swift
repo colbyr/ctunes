@@ -8,6 +8,8 @@ struct ListenersSheet: View {
     let model: AppModel
     /// Every artist in the library, so a veto list can be edited in one place.
     let artists: [AlbumGroup]
+    /// Opened on this listener's page: Edit from a chip's menu.
+    var opening: Listener.ID? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var path: [Listener.ID] = []
 
@@ -23,6 +25,7 @@ struct ListenersSheet: View {
                 }
         }
         .task {
+            if let opening { path = [opening] }
             #if DEBUG
             // `detail` lands on the page of the first listener with a veto
             // (the seeded one), or the owner's, for simulator checks.

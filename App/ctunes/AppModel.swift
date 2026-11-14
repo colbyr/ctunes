@@ -804,6 +804,16 @@ final class AppModel {
         saveRoster()
     }
 
+    func listenAlone(_ id: Listener.ID) {
+        roster.listenAlone(id)
+        saveRoster()
+    }
+
+    func listenAll() {
+        roster.listenAll()
+        saveRoster()
+    }
+
     func toggleVeto(_ veto: Veto, for id: Listener.ID) {
         roster.toggleVeto(veto, for: id)
         saveRoster()

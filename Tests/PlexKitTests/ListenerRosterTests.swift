@@ -52,6 +52,18 @@ struct ListenerRosterTests {
         #expect(roster.hidden.artists == ["bd", "bj"])
     }
 
+    @Test("one listener alone, then everyone")
+    func alone() {
+        var (roster, laura, kids) = roster()
+        roster.toggleActive(kids.id)
+        roster.listenAlone(laura.id)
+        #expect(roster.activeNames == ["Laura"])
+        roster.listenAll()
+        #expect(Set(roster.activeNames) == Set(roster.listeners.map(\.name)))
+        roster.listenAlone(UUID())
+        #expect(Set(roster.activeNames) == Set(roster.listeners.map(\.name)))
+    }
+
     @Test("an album or track is hidden by its own veto or any wider one")
     func widerVetoes() {
         var (roster, laura, _) = roster()

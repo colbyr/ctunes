@@ -345,6 +345,17 @@ public struct ListenerRoster: Codable, Sendable, Equatable {
         activeIDs.remove(id)
     }
 
+    /// Just this one listening, everyone else off.
+    public mutating func listenAlone(_ id: UUID) {
+        guard listener(id) != nil else { return }
+        activeIDs = [id]
+    }
+
+    /// Every listener listening.
+    public mutating func listenAll() {
+        activeIDs = Set(allListeners.map(\.id))
+    }
+
     public mutating func toggleActive(_ id: UUID) {
         guard listener(id) != nil else { return }
         if activeIDs.contains(id) { activeIDs.remove(id) } else { activeIDs.insert(id) }
