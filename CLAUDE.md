@@ -595,9 +595,10 @@ playing a collection skips only what is hidden *inside* it
 (`hides(track, within: .album)` counts the track's veto alone, `.artist`
 the track's and its album's), because the collection itself was opened on
 purpose. Vetoes never absorb each other: un-vetoing an artist leaves
-their album vetoes in place. The artist page's avatars toggle the artist,
-the album page's the album, and `HiddenRightNowLabel` explains when a
-wider veto is what hides the page. Every artist, album and track menu has
+their album vetoes in place. The album and artist pages have no avatar
+row of their own (their `···` menu's Listeners submenu sets the veto);
+`HiddenRightNowLabel` under the art says when the page is hidden for
+who is listening, and when a wider veto is what hides it. Every artist, album and track menu has
 the Listeners submenu (`ListenersMenu`, fed a `VetoScope`), which disables
 a listener's toggle when a wider veto already covers the item. The
 listener's page lists every veto in one list, artists first, a caption

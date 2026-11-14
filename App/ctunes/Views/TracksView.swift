@@ -131,7 +131,7 @@ struct TracksView: View {
         }
         .artworkBackground(artworkURL)
         .scrollPosition($scrollPosition)
-        // Past the cover, the avatars and the cards.
+        // Past the cover and the cards.
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top > 320
         } action: { _, scrolledPast in
@@ -303,7 +303,6 @@ struct TracksView: View {
                 }
                 .contextMenu { AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false) }
                 .padding(.bottom, 8)
-            ListenerVetoes(model: model, scope: scope)
             HiddenRightNowLabel(model: model, scope: scope)
             // Under a vertical bar the strip has these from the start.
             if !navigator.hasVerticalBar {
@@ -428,35 +427,10 @@ struct TracksView: View {
     }
 }
 
-/// One avatar per listener under the art. Tapping
-/// strikes the listener out: "not for Laura". The veto is the page's own
-/// item, the artist on the artist page and the album on the album page;
-/// a wider veto that also hides the page is the label's below to
-/// explain, not the avatar's to show. Shared by the album and artist pages.
-struct ListenerVetoes: View {
-    let model: AppModel
-    let scope: VetoScope
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(model.roster.listeners) { listener in
-                let vetoed = listener.vetoes(scope.veto.target)
-                Button {
-                    withAnimation(.snappy) { model.toggleVeto(scope.veto, for: listener.id) }
-                } label: {
-                    ListenerAvatar(listener: listener, size: 28, struck: vetoed)
-                        .opacity(vetoed ? 0.35 : 1)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(vetoed ? "Not for \(listener.name), tap to allow" : "\(listener.name) listens, tap to hide")
-            }
-        }
-    }
-}
-
-/// "Hidden right now — Laura is listening" under the vetoes, only while a
+/// "Hidden right now — Laura is listening" under the art, only while a
 /// listening rider hides the page's item; "all of Radiohead is hidden for
-/// Laura" when it is a wider veto doing it, which the avatars don't show.
+/// Laura" when it is a wider veto doing it. The vetoes themselves are set
+/// from the page's `···` menu (the Listeners submenu).
 /// Nothing otherwise, so the header doesn't reserve a line for it.
 struct HiddenRightNowLabel: View {
     let model: AppModel

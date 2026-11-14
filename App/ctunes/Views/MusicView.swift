@@ -275,6 +275,16 @@ struct MusicView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
+                // The title is the page's, not the bar's: a large title
+                // collapses into the bar as it scrolls away, and this one
+                // should simply go.
+                Text("Infinite Disc Changer")
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.init(top: 16, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 if let mode = bannerMode {
                     OfflineBanner(mode: mode) {
                         Task { await model.reconnect(force: true) }
@@ -292,11 +302,16 @@ struct MusicView: View {
                     .fill(Color.divider)
                     .frame(height: 1)
                     .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                AlbumBrowserControls(model: model, artists: artists, view: $view, layout: $layout,
-                                     scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
-                    .padding(.top, 16)
-                HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
-                    .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                // The listeners and the download filter are in the top bar;
+                // what they leave is said here, beside the arrange chips.
+                HStack {
+                    HiddenLine(model: model, count: hiddenCount, downloadedOnly: downloadedOnly)
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    ArrangeChip(view: $view, layout: $layout, scope: subject.scope, subject: $subject,
+                                subjects: BrowseSubject.allCases)
+                }
+                .padding(.init(top: 16, leading: Self.margin, bottom: 6, trailing: Self.margin))
                 // In the stack rather than an overlay, so it sits under the
                 // cards and the controls instead of over them.
                 if loaded, albums.isEmpty {
@@ -339,12 +354,19 @@ struct MusicView: View {
         .overlay {
             if !loaded { LoadingPlaceholder(model: model) }
         }
+        // Named for the back button's menu and accessibility; drawn by
+        // the page (above), never in the bar.
         .navigationTitle("Infinite Disc Changer")
-        // Beside the Now Playing column the bar's large title sits flush
-        // on the divider with no margin; the inline title is centred.
-        .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(removing: .title)
         .toolbar { SearchBarItem() }
         .toolbar {
+            // Who is listening decides the mixes as well as the grid, so
+            // the chips sit over both, bare rather than in a glass pill.
+            ToolbarItem(placement: .topBarLeading) {
+                ListenerBarChips(model: model, artists: artists, downloadedOnly: $downloadedOnly)
+            }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }

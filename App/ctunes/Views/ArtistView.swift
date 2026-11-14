@@ -115,7 +115,7 @@ struct ArtistView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .scrollPosition($scrollPosition)
         .scrollEdgeEffectStyle(.soft, for: .top)
-        // Past the portrait, the avatars and the cards.
+        // Past the portrait and the cards.
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top > 280
         } action: { _, scrolledPast in
@@ -241,7 +241,6 @@ struct ArtistView: View {
                 }
                 .contextMenu { ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false) }
                 .padding(.bottom, 8)
-            ListenerVetoes(model: model, scope: scope)
             HiddenRightNowLabel(model: model, scope: scope)
             // Under a vertical bar the strip has these from the start.
             if !navigator.hasVerticalBar {
