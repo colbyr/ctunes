@@ -246,7 +246,7 @@ struct ArtistMenu: View {
             }
             if showMixer {
                 Button { actions.open(.mixer([.artist(ratingKey, title: title)])) } label: {
-                    Label("Open in Mixer", systemImage: "square.stack.3d.up")
+                    Label("Open in Mixer", systemImage: "square.stack")
                 }
             }
         }
@@ -309,7 +309,7 @@ struct AlbumMenu: View {
         Section {
             if showAlbum {
                 Button { actions.open(.album(album)) } label: {
-                    Label("Go to Album", systemImage: "square.stack")
+                    Label("Go to Album", systemImage: "square")
                 }
             }
             if showArtist, let key = album.parentRatingKey, let artist = album.parentTitle {
@@ -319,7 +319,7 @@ struct AlbumMenu: View {
             }
             if showMixer {
                 Button { actions.open(.mixer([MixPick(album: album)])) } label: {
-                    Label("Open in Mixer", systemImage: "square.stack.3d.up")
+                    Label("Open in Mixer", systemImage: "square.stack")
                 }
             }
         }
@@ -402,7 +402,7 @@ struct PlaylistMenu: View {
             }
             if showMixer {
                 Button { actions.open(.mixer([MixPick(playlist: playlist)])) } label: {
-                    Label("Open in Mixer", systemImage: "square.stack.3d.up")
+                    Label("Open in Mixer", systemImage: "square.stack")
                 }
             }
         }
@@ -538,7 +538,7 @@ struct TrackMenu: View {
             }
             if showAlbum, let album = track.album {
                 Button { actions.open(.album(album)) } label: {
-                    Label("Go to Album", systemImage: "square.stack")
+                    Label("Go to Album", systemImage: "square")
                 }
             }
         }

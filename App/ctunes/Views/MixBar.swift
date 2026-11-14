@@ -506,16 +506,34 @@ struct MixesRow: View {
         LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
     }
 
-    /// The Mixer button's id: the front of the row.
+    /// The row's width, so a short row can sit at its right edge.
+    @State private var rowWidth: CGFloat = 0
+
+    /// The Mixer button's id: the front of the row, at its right end.
     private static let front = "mixer"
 
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView(.horizontal) {
             HStack(spacing: 12) {
+                // Read from the right: the newest cards beside the button,
+                // older ones running off to the left.
+                ForEach(shown.reversed(), id: \.slot) { slot, item in
+                    Button {
+                        draft.play(item.picks, style: item.style, actions: actions)
+                    } label: {
+                        RecentMixCard(model: model, item: item,
+                                      playing: model.isPlaying(mix: item.key, player: player),
+                                      loading: draft.loadingKey == item.key)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { menu(item) }
+                    .id(slot)
+                }
                 // The way in to the mixer, now that the screen has no
-                // tile for it: always first, there even with no mixes.
-                // A plain button, not a card, so it doesn't read as a mix.
+                // tile for it: always last, at the right edge, there even
+                // with no mixes. A plain button, not a card, so it doesn't
+                // read as a mix.
                 Button { navigator.open(.mix(MixRoute())) } label: {
                     VStack(spacing: 6) {
                         Image(systemName: "square.stack")
@@ -535,26 +553,19 @@ struct MixesRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open the mixer")
                 .id(Self.front)
-                ForEach(shown, id: \.slot) { slot, item in
-                    Button {
-                        draft.play(item.picks, style: item.style, actions: actions)
-                    } label: {
-                        RecentMixCard(model: model, item: item,
-                                      playing: model.isPlaying(mix: item.key, player: player),
-                                      loading: draft.loadingKey == item.key)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu { menu(item) }
-                    .id(slot)
-                }
             }
             // The button as tall as the cards.
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, margin)
+            // A short row hugs the right edge, where the button is.
+            .frame(minWidth: rowWidth, alignment: .trailing)
             // Room for the cards' shadow; see `cardShadow`.
             .padding(.vertical, 14)
         }
         .scrollIndicators(.hidden)
+        // Opens at the right end, the newest in view.
+        .defaultScrollAnchor(.trailing)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         .padding(.vertical, -14)
         .animation(.snappy, value: shown.map(\.slot))
         .onChange(of: items.map(\.id), initial: true) { settle() }
