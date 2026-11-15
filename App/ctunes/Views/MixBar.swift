@@ -676,12 +676,15 @@ struct RecentMixCard: View {
     let playing: Bool
     let loading: Bool
 
-    /// Three of the picks, a different three each launch and the same
-    /// three while it runs: ordered by hash, whose seed Swift draws anew
-    /// for every process.
+    /// The most art a card shows; the last stands for the rest too.
+    static let maxShown = 4
+
+    /// Up to four of the picks, a different four each launch and the
+    /// same four while it runs: ordered by hash, whose seed Swift draws
+    /// anew for every process.
     static func shown(_ picks: [MixPick]) -> [MixPick] {
-        guard picks.count > 3 else { return picks }
-        return Array(picks.sorted { $0.id.hashValue < $1.id.hashValue }.prefix(3))
+        guard picks.count > maxShown else { return picks }
+        return Array(picks.sorted { $0.id.hashValue < $1.id.hashValue }.prefix(maxShown))
     }
 
     /// The width of `count` art tiles in a row.
@@ -696,11 +699,11 @@ struct RecentMixCard: View {
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, pick in
                     PickArt(model: model, pick: pick, size: 44)
                         .overlay {
-                            // The third stands for the rest too.
-                            if index == 2, item.picks.count > 3 {
+                            // The last stands for the rest too.
+                            if index == Self.maxShown - 1, item.picks.count > Self.maxShown {
                                 pick.artShape
                                     .fill(.black.opacity(0.45))
-                                    .overlay(Text("+\(item.picks.count - 2)")
+                                    .overlay(Text("+\(item.picks.count - (Self.maxShown - 1))")
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.white))
                             }
@@ -734,10 +737,11 @@ struct RecentMixCard: View {
                 .lineLimit(1)
             }
         }
-        // As wide as the name wants, between two art slots (or as many
-        // as the art shows) and four, so a name only truncates past four.
-        .frame(minWidth: Self.slots(max(2, min(item.picks.count, 3))),
-               maxWidth: Self.slots(4), alignment: .leading)
+        // As wide as the art, or as the name wants up to four art slots,
+        // whichever is wider; never under two slots. A name only
+        // truncates past four.
+        .frame(minWidth: Self.slots(max(2, min(item.picks.count, Self.maxShown))),
+               maxWidth: Self.slots(Self.maxShown), alignment: .leading)
         .padding(12)
         .glassCard(cornerRadius: 18)
         .overlay {
