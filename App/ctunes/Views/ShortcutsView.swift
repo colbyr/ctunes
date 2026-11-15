@@ -436,7 +436,7 @@ private struct ShortcutDetail: View {
                     close()
                     navigator.open(.mix(MixRoute(mixID: id)))
                 } label: {
-                    Label("Edit in Mixer", systemImage: "slider.horizontal.3")
+                    Label("Edit in Mix", systemImage: "slider.horizontal.3")
                 }
             } header: {
                 Text(mix.picks.count == 1 ? "Plays" : "Mixes")

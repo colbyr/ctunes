@@ -36,7 +36,7 @@ enum LibraryRoute: Hashable {
     /// The mixer, on a saved mix's picks or the last selection.
     case mix(MixRoute)
     /// The mixer with these picks in the bar in place of what was there:
-    /// "Open in Mixer" on a card or an item's menu.
+    /// "Open in Mix" on a card or an item's menu.
     case mixer([MixPick])
     case favorites
 }
@@ -246,7 +246,7 @@ struct ArtistMenu: View {
             }
             if showMixer {
                 Button { actions.open(.mixer([.artist(ratingKey, title: title)])) } label: {
-                    Label("Open in Mixer", systemImage: "square.stack")
+                    Label("Open in Mix", systemImage: "square.stack")
                 }
             }
         }
@@ -319,7 +319,7 @@ struct AlbumMenu: View {
             }
             if showMixer {
                 Button { actions.open(.mixer([MixPick(album: album)])) } label: {
-                    Label("Open in Mixer", systemImage: "square.stack")
+                    Label("Open in Mix", systemImage: "square.stack")
                 }
             }
         }
@@ -402,7 +402,7 @@ struct PlaylistMenu: View {
             }
             if showMixer {
                 Button { actions.open(.mixer([MixPick(playlist: playlist)])) } label: {
-                    Label("Open in Mixer", systemImage: "square.stack")
+                    Label("Open in Mix", systemImage: "square.stack")
                 }
             }
         }

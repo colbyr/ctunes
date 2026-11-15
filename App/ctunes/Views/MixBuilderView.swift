@@ -266,7 +266,7 @@ struct MixBuilderView: View {
                 ProgressView()
             }
         }
-        .navigationTitle(editing.map { "Edit \($0.name)" } ?? "Mixer")
+        .navigationTitle(editing.map { "Edit \($0.name)" } ?? "Mix")
         .navigationSubtitle(editing == nil ? "" : "Tap to add or remove")
         .navigationBarTitleDisplayMode(.inline)
         // Editing is a mode with its own way out: back would leave it

@@ -292,14 +292,15 @@ struct MusicView: View {
                 // The mixes: the mixer's button, the pinned ones, then
                 // what was played here, a row that scrolls.
                 let mixes = RecentMixItem.all(model, pinned: visibleShortcuts).filter { $0.picks.isEmpty || !$0.picks.allSatisfy(isHidden) }
+                // On a band the width of the screen, so the white cards
+                // stand off the ground and the browser starts below it.
                 MixesRow(model: model, items: mixes, margin: Self.margin, open: open)
-                    .padding(.init(top: 8, leading: 0, bottom: 16, trailing: 0))
-                // The browser starts here: a rule, then the chips with the
-                // arrange button, then the hidden-artist line when any are.
-                Rectangle()
-                    .fill(Color.divider)
-                    .frame(height: 1)
-                    .padding(.init(top: 8, leading: Self.margin, bottom: 0, trailing: Self.margin))
+                    .padding(.vertical, 18)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.band)
+                    .padding(.top, 8)
+                // The browser starts here: the chips with the arrange
+                // button, then the hidden-artist line when any are.
                 // The listeners and the download filter are in the top bar;
                 // what they leave is said here, beside the arrange chips.
                 HStack {

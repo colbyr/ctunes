@@ -53,6 +53,13 @@ extension Color {
             ? UIColor(red: 0xF5 / 255, green: 0xEA / 255, blue: 0xD6 / 255, alpha: 0.10)
             : UIColor(red: 0x2B / 255, green: 0x21 / 255, blue: 0x1B / 255, alpha: 0.12)
     })
+    /// The band behind the Music screen's row of mixes: the ground a
+    /// shade deeper, so the white cards stand off it.
+    static let band = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0, alpha: 0.22)
+            : UIColor(red: 0x2B / 255, green: 0x21 / 255, blue: 0x1B / 255, alpha: 0.06)
+    })
     /// The Now Playing pause/play disc: ink by day, amber by night.
     static let bigButton = dynamic(light: 0x2B211B, dark: 0xF2B33D)
 

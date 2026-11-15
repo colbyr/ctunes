@@ -532,14 +532,14 @@ struct MixesRow: View {
                 }
                 // The way in to the mixer, now that the screen has no
                 // tile for it: always last, at the right edge, there even
-                // with no mixes. A flat tinted card, not a raised one, so
-                // it doesn't read as a mix.
+                // with no mixes. Outlined, not a raised card, so it doesn't
+                // read as a mix.
                 Button { navigator.open(.mix(MixRoute())) } label: {
                     VStack(alignment: .leading) {
                         Image(systemName: "square.stack")
                             .font(.title2.weight(.semibold))
                         Spacer(minLength: 12)
-                        Text("Mixer")
+                        Text("Mix")
                             .font(.headline)
                             .lineLimit(1)
                     }
@@ -549,11 +549,16 @@ struct MixesRow: View {
                     // circles 8 apart), so the edges line up.
                     .frame(width: 76, alignment: .leading)
                     .frame(maxHeight: .infinity)
-                    .background(Color.mix.opacity(0.14), in: .rect(cornerRadius: 18))
+                    // A dashed outline on the band, not a card: a slot to
+                    // make a mix in rather than one to play.
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .strokeBorder(Color.mix.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    }
                     .contentShape(.rect(cornerRadius: 18))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open the mixer")
+                .accessibilityLabel("Open Mix")
                 .id(Self.front)
             }
             // The button as tall as the cards.
@@ -636,7 +641,7 @@ struct MixesRow: View {
                     afterMenu { open(item.picks[0]) }
                 }
             }
-            Button("Open in Mixer", systemImage: "square.stack") {
+            Button("Open in Mix", systemImage: "square.stack") {
                 navigator.open(.mixer(item.picks))
             }
             if let pinned = item.pinned {
