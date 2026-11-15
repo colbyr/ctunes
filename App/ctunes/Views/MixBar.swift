@@ -641,15 +641,15 @@ struct MixesRow: View {
         }
         Section {
             if item.picks.count == 1 {
-                Button("Go to \(item.picks[0].kind.label)", systemImage: "arrow.right") {
+                Button("Go to \(item.picks[0].kind.label)", systemImage: item.picks[0].kind.symbol) {
                     afterMenu { open(item.picks[0]) }
                 }
             }
-            Button("Create a mix", systemImage: "square.stack") {
+            Button("Create Mix", systemImage: MenuSymbol.createMix) {
                 navigator.open(.mixer(item.picks))
             }
             if let pinned = item.pinned {
-                Button("Edit pinned mix", systemImage: "pin") {
+                Button("Edit Mix", systemImage: "pencil") {
                     afterMenu { navigator.open(.mix(MixRoute(mixID: pinned.id))) }
                 }
             } else {
@@ -663,7 +663,7 @@ struct MixesRow: View {
                 model.removeShortcut(pinned.id)
             }
         } else if let recent = item.recent {
-            Button("Remove", systemImage: "xmark", role: .destructive) {
+            Button("Remove from Recents", systemImage: MenuSymbol.removeFromList, role: .destructive) {
                 model.forgetRecentMix(recent.id)
             }
         }

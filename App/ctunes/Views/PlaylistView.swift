@@ -385,7 +385,7 @@ struct PlaylistView: View {
                 Button(role: .destructive) {
                     remove([row.item])
                 } label: {
-                    Label("Remove", systemImage: "trash")
+                    Label("Remove", systemImage: MenuSymbol.removeFromList)
                 }
             }
         }

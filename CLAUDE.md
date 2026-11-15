@@ -479,12 +479,12 @@ so an edit keeps its slot; a recent pinned or a pin removed changes id
 but keeps its slot (`rowKeys` matches it by picks); only a mix never
 shown leads. An edit carries the pin's play history to its new picks
 (`RecentMixes.moving`), so the old picks don't linger as a recent. Its
-long press offers both styles, the pick's page, Create a mix, and:
+long press offers both styles, the pick's page, Create Mix, and:
 - for a recent: Pin… (`SaveMixSheet`, name prefilled by
-  `suggestedName`), Remove;
+  `suggestedName`), Remove from Recents;
 - for a pin: Edit Mix, Remove Pin.
 
-Every artist, album and playlist menu also has Create a mix
+Every artist, album and playlist menu also has Create Mix
 (`LibraryRoute.mixer`, off in the builder's own pool), which replaces
 the bar's picks. **A push from a context menu waits ~450ms for the menu
 to close** (`MixesRow.afterMenu`, the `.mixer` route): pushed at once,
@@ -519,8 +519,16 @@ Listeners) reorders, removes, renames and restyles, and opens the
 builder for a new mix or to edit picks. The root's Playlists subject
 leads with a Favorites tile so the page is reachable without a pin.
 
-**Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu` and
-`TrackMenu` are the one place an artist, album or track's actions live.
+**Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu`,
+`PlaylistMenu`, `FavoritesMenu` and `TrackMenu` are the one place an
+item's actions live. **Every menu keeps one order, in Title Case**:
+playback (Play, Shuffle, Play Next, Add to Queue), then Go to (narrowest
+first) and Create Mix, Favorite, Add to Playlist, Rename, Download,
+Listeners, and anything destructive last. Glyphs come from
+`MixPickKind.symbol` (an album is `opticaldisc`) and `MenuSymbol`:
+Create Mix is `slider.horizontal.3`, taking an item out of a list
+(queue, playlist, recents) is `minus.circle`, and the trash is only
+for deleting a playlist itself.
 Every tile, row, cover and name gets one as a long-press `.contextMenu`,
 a track row also opens it from the `···` (`MoreButton`) at its trailing
 edge, and the album and artist pages put theirs behind a `···` toolbar

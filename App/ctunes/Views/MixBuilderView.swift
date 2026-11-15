@@ -441,9 +441,7 @@ struct MixBuilderView: View {
                 PlaylistMenu(model: model, playlist: playlist, showMixer: false)
             }
         case .favorites:
-            Button { navigator.open(.favorites) } label: {
-                Label("Go to Favorites", systemImage: "heart")
-            }
+            FavoritesMenu(model: model, showMixer: false)
         }
     }
 

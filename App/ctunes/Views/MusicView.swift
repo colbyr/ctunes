@@ -180,6 +180,7 @@ struct MusicView: View {
                         FavoritesTile(count: favorites?.count, download: model.downloads.favoritesState)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { FavoritesMenu(model: model) }
                 }
                 ForEach(playlists) { playlist in
                     Button { path.append(playlist) } label: {
@@ -202,6 +203,7 @@ struct MusicView: View {
                 }
                 if showsFavorites {
                     FavoritesRow(count: favorites?.count, download: model.downloads.favoritesState) { path.append(FavoritesRoute()) }
+                        .rowContextMenu { FavoritesMenu(model: model) }
                     Rectangle()
                         .fill(Color.divider)
                         .frame(height: 1)

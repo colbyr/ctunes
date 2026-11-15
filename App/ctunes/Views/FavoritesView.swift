@@ -175,29 +175,14 @@ struct FavoritesView: View {
         .toolbar { SearchBarItem() }
         .toolbar {
             // The page's own menu, like the album and artist pages: the
-            // offline pin lives here. Read-only offline, so nothing then.
+            // queue items, the way in to the mixer and the offline pin.
             // Declared first so it sits leftmost, ahead of the icons.
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if !offline {
-                        if model.isFavoritesPinned {
-                            Button(role: .destructive) {
-                                navigator.removing = DownloadRemoval { Task { await model.setFavoritesPinned(false) } }
-                            } label: {
-                                Label("Remove Download", systemImage: "xmark.circle")
-                            }
-                        } else {
-                            Button {
-                                Task { await model.setFavoritesPinned(true) }
-                            } label: {
-                                Label("Download", systemImage: "arrow.down.circle")
-                            }
-                        }
-                    }
+                    FavoritesMenu(model: model, tracks: rows, showFavorites: false)
                 } label: {
                     Label("More", systemImage: "ellipsis")
                 }
-                .disabled(offline)
             }
             // The cards' actions follow you down the list as icons.
             if iconsInBar {

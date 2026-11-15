@@ -246,7 +246,7 @@ struct NowPlayingView: View {
                 .rowContextMenu { TrackMenu(model: model, track: entry.item, placement: .queued(entry)) }
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) { player.remove(entry) } label: {
-                        Label("Remove", systemImage: "trash")
+                        Label("Remove", systemImage: MenuSymbol.removeFromList)
                     }
                 }
             }

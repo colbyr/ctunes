@@ -226,9 +226,10 @@ struct ArtistMenu: View {
     let model: AppModel
     let ratingKey: String
     let title: String
-    /// Both off on the artist's own page, where the page has the link
-    /// and the hero cards.
+    /// Off on the artist's own page, which has the link.
     var showArtist = true
+    /// Off on the artist's own page, which has Mix Albums and Shuffle as
+    /// cards; the queue items stay.
     var showPlayback = true
     /// Off in the mixer's own pool.
     var showMixer = true
@@ -239,19 +240,7 @@ struct ArtistMenu: View {
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
         Section {
-            if showArtist {
-                Button { actions.open(.artist(ArtistRoute(ratingKey: ratingKey, title: title))) } label: {
-                    Label("Go to Artist", systemImage: "music.microphone")
-                }
-            }
-            if showMixer {
-                Button { actions.open(.mixer([.artist(ratingKey, title: title)])) } label: {
-                    Label("Create a mix", systemImage: "square.stack")
-                }
-            }
-        }
-        if showPlayback {
-            Section {
+            if showPlayback {
                 Button {
                     Task {
                         let played = actions.mixAlbums(await model.tracks(ofArtist: ratingKey), within: .artist)
@@ -267,6 +256,28 @@ struct ArtistMenu: View {
                     }
                 } label: {
                     Label("Shuffle", systemImage: "shuffle")
+                }
+            }
+            Button {
+                Task { actions.enqueue(await model.tracks(ofArtist: ratingKey), within: .artist, next: true) }
+            } label: {
+                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+            Button {
+                Task { actions.enqueue(await model.tracks(ofArtist: ratingKey), within: .artist, next: false) }
+            } label: {
+                Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+            }
+        }
+        Section {
+            if showArtist {
+                Button { actions.open(.artist(ArtistRoute(ratingKey: ratingKey, title: title))) } label: {
+                    Label("Go to Artist", systemImage: MixPickKind.artist.symbol)
+                }
+            }
+            if showMixer {
+                Button { actions.open(.mixer([.artist(ratingKey, title: title)])) } label: {
+                    Label("Create Mix", systemImage: MenuSymbol.createMix)
                 }
             }
         }
@@ -306,23 +317,6 @@ struct AlbumMenu: View {
 
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
-        Section {
-            if showAlbum {
-                Button { actions.open(.album(album)) } label: {
-                    Label("Go to Album", systemImage: "square")
-                }
-            }
-            if showArtist, let key = album.parentRatingKey, let artist = album.parentTitle {
-                Button { actions.open(.artist(ArtistRoute(ratingKey: key, title: artist))) } label: {
-                    Label("Go to Artist", systemImage: "music.microphone")
-                }
-            }
-            if showMixer {
-                Button { actions.open(.mixer([MixPick(album: album)])) } label: {
-                    Label("Create a mix", systemImage: "square.stack")
-                }
-            }
-        }
         if playable {
             Section {
                 if showAlbum {
@@ -352,6 +346,23 @@ struct AlbumMenu: View {
                     Task { actions.enqueue(await model.tracks(of: album, known: tracks), within: .album, next: false) }
                 } label: {
                     Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+                }
+            }
+        }
+        Section {
+            if showAlbum {
+                Button { actions.open(.album(album)) } label: {
+                    Label("Go to Album", systemImage: MixPickKind.album.symbol)
+                }
+            }
+            if showArtist, let key = album.parentRatingKey, let artist = album.parentTitle {
+                Button { actions.open(.artist(ArtistRoute(ratingKey: key, title: artist))) } label: {
+                    Label("Go to Artist", systemImage: MixPickKind.artist.symbol)
+                }
+            }
+            if showMixer {
+                Button { actions.open(.mixer([MixPick(album: album)])) } label: {
+                    Label("Create Mix", systemImage: MenuSymbol.createMix)
                 }
             }
         }
@@ -390,22 +401,13 @@ struct PlaylistMenu: View {
     private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
     /// Offline, a playlist with no file has nothing to queue.
     private var playable: Bool { !offline || model.downloads.hasDownloads(playlist) }
+    /// A smart playlist is a saved filter: the server names and fills
+    /// it, so no edits here. Every write is refused offline.
+    private var editable: Bool { !offline && !playlist.smart }
 
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
         let tracks: () async -> [PlexTrack] = { await model.items(of: playlist, known: items).map(\.track) }
-        Section {
-            if showPlaylist {
-                Button { actions.open(.playlist(playlist)) } label: {
-                    Label("Go to Playlist", systemImage: "music.note.list")
-                }
-            }
-            if showMixer {
-                Button { actions.open(.mixer([MixPick(playlist: playlist)])) } label: {
-                    Label("Create a mix", systemImage: "square.stack")
-                }
-            }
-        }
         if playable {
             Section {
                 if showPlaylist {
@@ -436,15 +438,22 @@ struct PlaylistMenu: View {
                 }
             }
         }
-        // A smart playlist is a saved filter: the server names and fills
-        // it, so no edits here. Every write is refused offline.
-        if !offline, !playlist.smart {
+        Section {
+            if showPlaylist {
+                Button { actions.open(.playlist(playlist)) } label: {
+                    Label("Go to Playlist", systemImage: MixPickKind.playlist.symbol)
+                }
+            }
+            if showMixer {
+                Button { actions.open(.mixer([MixPick(playlist: playlist)])) } label: {
+                    Label("Create Mix", systemImage: MenuSymbol.createMix)
+                }
+            }
+        }
+        if editable {
             Section {
                 Button { navigator.renaming = playlist } label: {
                     Label("Rename…", systemImage: "pencil")
-                }
-                Button(role: .destructive) { navigator.deleting = playlist } label: {
-                    Label("Delete Playlist…", systemImage: "trash")
                 }
             }
         }
@@ -454,6 +463,108 @@ struct PlaylistMenu: View {
             download: { Task { await model.setPlaylistPinned(playlist, true) } },
             remove: { model.downloads.unpin(playlist) }
         )
+        // Destructive last, the way every menu ends.
+        if editable {
+            Section {
+                Button(role: .destructive) { navigator.deleting = playlist } label: {
+                    Label("Delete Playlist", systemImage: "trash")
+                }
+            }
+        }
+    }
+}
+
+/// Long-press menu for the favorites: their tile and row on the Music
+/// screen and in the mixer's pool, and the `···` on the Favorites page,
+/// which hands in its rows. Plays under every veto, like a playlist.
+struct FavoritesMenu: View {
+    let model: AppModel
+    /// The page's rows when it has them; nil fetches on demand.
+    var tracks: [PlexTrack]? = nil
+    /// Off on the Favorites page, which has the link and the Play and
+    /// Shuffle cards; the queue items stay.
+    var showFavorites = true
+    /// Off in the mixer's own pool.
+    var showMixer = true
+    @Environment(AudioPlayer.self) private var player
+    @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
+
+    private var offline: Bool { model.library.map { !$0.isConnected } ?? false }
+    /// Offline, only pinned favorites are on disk to queue.
+    private var playable: Bool { !offline || model.isFavoritesPinned }
+
+    var body: some View {
+        let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
+        let fetch: () async -> [PlexTrack] = {
+            if let tracks { return tracks }
+            return await model.tracks(of: MixPick.favorites)
+        }
+        if playable {
+            Section {
+                if showFavorites {
+                    Button {
+                        Task { actions.remember(.favorites, as: .play, if: actions.play(await fetch(), within: nil)) }
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                    }
+                    Button {
+                        Task { actions.remember(.favorites, as: .shuffle, if: actions.shuffle(await fetch(), within: nil)) }
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                    }
+                }
+                Button {
+                    Task { actions.enqueue(await fetch(), within: nil, next: true) }
+                } label: {
+                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                Button {
+                    Task { actions.enqueue(await fetch(), within: nil, next: false) }
+                } label: {
+                    Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+                }
+            }
+        }
+        Section {
+            if showFavorites {
+                Button { actions.open(.favorites) } label: {
+                    Label("Go to Favorites", systemImage: MixPickKind.favorites.symbol)
+                }
+            }
+            if showMixer {
+                Button { actions.open(.mixer([.favorites])) } label: {
+                    Label("Create Mix", systemImage: MenuSymbol.createMix)
+                }
+            }
+        }
+        actions.downloadItems(
+            pinned: model.isFavoritesPinned,
+            state: model.downloads.favoritesState,
+            download: { Task { await model.setFavoritesPinned(true) } },
+            remove: { Task { await model.setFavoritesPinned(false) } }
+        )
+    }
+}
+
+/// The glyphs the menus share beyond the kinds' own.
+enum MenuSymbol {
+    /// Create Mix, and editing a mix's picks.
+    static let createMix = "slider.horizontal.3"
+    /// Taking something out of a list: the queue, a playlist, recents.
+    /// The trash is kept for deleting a thing itself.
+    static let removeFromList = "minus.circle"
+}
+
+extension MixPickKind {
+    /// The kind's glyph wherever one is named: Go to, and the mixer.
+    var symbol: String {
+        switch self {
+        case .favorites: "heart"
+        case .playlist: "music.note.list"
+        case .artist: "music.microphone"
+        case .album: "opticaldisc"
+        }
     }
 }
 
@@ -530,18 +641,6 @@ struct TrackMenu: View {
     var body: some View {
         let actions = LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
         let favorite = model.isFavorite(track)
-        Section {
-            if let key = track.grandparentRatingKey, let artist = track.grandparentTitle {
-                Button { actions.open(.artist(ArtistRoute(ratingKey: key, title: artist))) } label: {
-                    Label("Go to Artist", systemImage: "music.microphone")
-                }
-            }
-            if showAlbum, let album = track.album {
-                Button { actions.open(.album(album)) } label: {
-                    Label("Go to Album", systemImage: "square")
-                }
-            }
-        }
         switch placement {
         case .list(let siblings), .playlistItem(_, _, let siblings):
             // The siblings are the album's tracks or an already-filtered
@@ -575,9 +674,19 @@ struct TrackMenu: View {
         case .playing:
             EmptyView()
         }
-        // Hearts are read-only offline, and so are downloads. A track
-        // under an album or artist pin reads as downloaded; removing it
-        // narrows that pin to the rest.
+        Section {
+            if showAlbum, let album = track.album {
+                Button { actions.open(.album(album)) } label: {
+                    Label("Go to Album", systemImage: MixPickKind.album.symbol)
+                }
+            }
+            if let key = track.grandparentRatingKey, let artist = track.grandparentTitle {
+                Button { actions.open(.artist(ArtistRoute(ratingKey: key, title: artist))) } label: {
+                    Label("Go to Artist", systemImage: MixPickKind.artist.symbol)
+                }
+            }
+        }
+        // Hearts are read-only offline.
         if !offline {
             Section {
                 Button {
@@ -585,12 +694,6 @@ struct TrackMenu: View {
                 } label: {
                     Label(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.slash" : "heart")
                 }
-                actions.downloadItems(
-                    pinned: model.downloads.isPinned(track),
-                    state: model.downloads.state(track),
-                    download: { actions.download(track) },
-                    remove: { model.downloads.unpin(track) }
-                )
             }
         }
         // The playlist a row already sits in is left out of the list.
@@ -599,12 +702,20 @@ struct TrackMenu: View {
         } else {
             AddToPlaylistMenu(model: model) { [track] }
         }
+        // A track under an album or artist pin reads as downloaded;
+        // removing it narrows that pin to the rest.
+        actions.downloadItems(
+            pinned: model.downloads.isPinned(track),
+            state: model.downloads.state(track),
+            download: { actions.download(track) },
+            remove: { model.downloads.unpin(track) }
+        )
         ListenersMenu(model: model, scope: VetoScope(track: track))
         switch placement {
         case .queued(let entry):
             Section {
                 Button(role: .destructive) { player.remove(entry) } label: {
-                    Label("Remove from Queue", systemImage: "trash")
+                    Label("Remove from Queue", systemImage: MenuSymbol.removeFromList)
                 }
             }
         case .playlistItem(let item, let playlist, _):
@@ -616,7 +727,7 @@ struct TrackMenu: View {
                     Button(role: .destructive) {
                         Task { await model.remove(item, from: playlist) }
                     } label: {
-                        Label("Remove from Playlist", systemImage: "text.badge.minus")
+                        Label("Remove from Playlist", systemImage: MenuSymbol.removeFromList)
                     }
                 }
             }
