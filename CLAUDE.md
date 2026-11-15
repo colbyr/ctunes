@@ -479,12 +479,12 @@ so an edit keeps its slot; a recent pinned or a pin removed changes id
 but keeps its slot (`rowKeys` matches it by picks); only a mix never
 shown leads. An edit carries the pin's play history to its new picks
 (`RecentMixes.moving`), so the old picks don't linger as a recent. Its
-long press offers both styles, the pick's page, Open in Mix, and:
+long press offers both styles, the pick's page, Create a mix, and:
 - for a recent: Pin… (`SaveMixSheet`, name prefilled by
   `suggestedName`), Remove;
 - for a pin: Edit Mix, Remove Pin.
 
-Every artist, album and playlist menu also has Open in Mix
+Every artist, album and playlist menu also has Create a mix
 (`LibraryRoute.mixer`, off in the builder's own pool), which replaces
 the bar's picks. **A push from a context menu waits ~450ms for the menu
 to close** (`MixesRow.afterMenu`, the `.mixer` route): pushed at once,

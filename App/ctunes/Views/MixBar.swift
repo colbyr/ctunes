@@ -547,8 +547,11 @@ struct MixesRow: View {
                     .padding(12)
                     // As wide as the view and sort chips under it (two 34pt
                     // circles 8 apart), so the edges line up.
-                    .frame(width: 76, alignment: .leading)
+                    .frame(width: 72, alignment: .leading)
                     .frame(maxHeight: .infinity)
+                    // 2pt in on every side of the 76pt slot: the dashed
+                    // border reads bigger than a shadowed card's edge.
+                    .padding(.vertical, 2)
                     // A dashed outline on the band, not a card: a slot to
                     // make a mix in rather than one to play.
                     .overlay {
@@ -559,6 +562,7 @@ struct MixesRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open Mix")
+                .frame(width: 76)
                 .id(Self.front)
             }
             // The button as tall as the cards.
@@ -641,11 +645,11 @@ struct MixesRow: View {
                     afterMenu { open(item.picks[0]) }
                 }
             }
-            Button("Open in Mix", systemImage: "square.stack") {
+            Button("Create a mix", systemImage: "square.stack") {
                 navigator.open(.mixer(item.picks))
             }
             if let pinned = item.pinned {
-                Button("Edit Pinned Mix", systemImage: "pin") {
+                Button("Edit pinned mix", systemImage: "pin") {
                     afterMenu { navigator.open(.mix(MixRoute(mixID: pinned.id))) }
                 }
             } else {
@@ -680,6 +684,11 @@ struct RecentMixCard: View {
         return Array(picks.sorted { $0.id.hashValue < $1.id.hashValue }.prefix(3))
     }
 
+    /// The width of `count` art tiles in a row.
+    static func slots(_ count: Int) -> CGFloat {
+        CGFloat(count) * 44 + CGFloat(count - 1) * 6
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
@@ -704,29 +713,32 @@ struct RecentMixCard: View {
             }
             .frame(height: 44)
             VStack(alignment: .leading, spacing: 2) {
+                Text(item.name).font(.subheadline.weight(.semibold)).lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(item.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Spacer(minLength: 0)
+                    Group {
+                        if loading {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: playing ? "waveform" : item.style.symbol)
+                        }
+                        Text(playing ? "Playing" : item.style.verb)
+                    }
+                    .font(.caption.weight(playing ? .semibold : .regular))
+                    .foregroundStyle(playing ? AnyShapeStyle(Color.mix) : AnyShapeStyle(.secondary))
+                    Spacer(minLength: 4)
                     if item.pinned != nil {
                         Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary)
                             .accessibilityLabel("Pinned")
                     }
                 }
-                HStack(spacing: 4) {
-                    if loading {
-                        ProgressView().controlSize(.mini)
-                    } else {
-                        Image(systemName: playing ? "waveform" : item.style.symbol)
-                    }
-                    Text(playing ? "Playing" : item.style.verb)
-                }
-                .font(.caption.weight(playing ? .semibold : .regular))
-                .foregroundStyle(playing ? AnyShapeStyle(Color.mix) : AnyShapeStyle(.secondary))
                 .lineLimit(1)
             }
         }
+        // As wide as the name wants, between two art slots (or as many
+        // as the art shows) and four, so a name only truncates past four.
+        .frame(minWidth: Self.slots(max(2, min(item.picks.count, 3))),
+               maxWidth: Self.slots(4), alignment: .leading)
         .padding(12)
-        .frame(width: 168, alignment: .leading)
         .glassCard(cornerRadius: 18)
         .overlay {
             if playing {
