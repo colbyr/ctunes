@@ -437,8 +437,8 @@ the favorites, never a node in the pin tree.
 
 **Shortcuts** (`SavedMixes.swift` in PlexKit, `ShortcutsView.swift`,
 `MixBar.swift`) are the row of mix cards at the top of the browse root
-(`MixesRow`, read from the right): a small Mixer button at its right edge (the only way into the builder from
-the root; the builder is "Mixer" on screen, Quick Mix in the code), the
+(`MixesRow`, read from the right): on a full-width band, a small dashed Mix button at its right edge (the only way into the builder from
+the root; the builder is "Mix" on screen, Quick Mix in the code), the
 pinned mixes in their order, then the recents, newest nearest the
 button. The mixer's accent is `Color.mix` (the picks' ring and check
 too), and the favorites are drawn as the square
@@ -479,12 +479,12 @@ so an edit keeps its slot; a recent pinned or a pin removed changes id
 but keeps its slot (`rowKeys` matches it by picks); only a mix never
 shown leads. An edit carries the pin's play history to its new picks
 (`RecentMixes.moving`), so the old picks don't linger as a recent. Its
-long press offers both styles, the pick's page, Open in Mixer, and:
+long press offers both styles, the pick's page, Open in Mix, and:
 - for a recent: Pin… (`SaveMixSheet`, name prefilled by
   `suggestedName`), Remove;
 - for a pin: Edit Mix, Remove Pin.
 
-Every artist, album and playlist menu also has Open in Mixer
+Every artist, album and playlist menu also has Open in Mix
 (`LibraryRoute.mixer`, off in the builder's own pool), which replaces
 the bar's picks. **A push from a context menu waits ~450ms for the menu
 to close** (`MixesRow.afterMenu`, the `.mixer` route): pushed at once,
