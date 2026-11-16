@@ -18,7 +18,7 @@ Mockup, distilled:
   "Play Mix" or "Build a mix"; subtitle = selected names joined with ", " or "Tap artists below to
   build a mix"; trailing shuffle glyph in the accent color). Then the **selected grid**
   (3 columns, accent ring + black ⨉ badge, tap removes), a divider, the **hidden line**
-  ("N artists hidden for Laura", eye.slash) when vetoes apply, then the **pool grid** (tap adds).
+  ("N artists hidden", eye.slash) when vetoes apply, then the **pool grid** (tap adds).
   Artists are circles with a name; albums are squares with title + artist line. Search is the
   existing bottom-right pill and filters the pool.
 

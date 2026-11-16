@@ -52,8 +52,9 @@ storage details).
    on its own stays as a dimmed row with "Hidden for Laura"; on the artist
    page a hidden album is a dimmed tile. Library-wide lists (browse,
    favorites, mix pools, CarPlay) drop hidden items and say so in the
-   `HiddenLine` ("2 artists & 1 album hidden for Laura"), counted at the
-   widest level by `HiddenCount`.
+   `HiddenLine` ("11 albums hidden"), counted by `HiddenCount` in the
+   list's own unit (albums, artists or tracks) with no names, since the
+   chips above already say who is listening.
 7. **Adding.** Artists from the listener's page (the whole library is
    one list); albums and tracks from their menus or the avatars on their
    page, which is where they can be found. The page's footer says so.
