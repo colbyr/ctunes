@@ -490,8 +490,8 @@ the bar's picks. **A push from a context menu waits ~450ms for the menu
 to close** (`MixesRow.afterMenu`, the `.mixer` route): pushed at once,
 the builder opened and the stack fell straight back.
 
-**Editing a pin is a mode** (`MixRoute(mixID:)`, from Edit Mix or
-Settings) and its one editor: the page is titled "Edit {name}", Cancel
+**Editing a pin is a mode** (`MixRoute(mixID:)`, from Edit Mix on the
+card's menu) and its one editor: the page is titled "Edit {name}", Cancel
 and Save replace back, and the sheet opens at once as `MixEditSheet`:
 the Pin Mix sheet's own form (`MixForm`: name, plays as, the picks),
 the picks removable there and added behind it.
@@ -514,9 +514,10 @@ plays through the same fetch.
 off the screen**: an artist or album by its veto or a wider one, an
 artist with every album vetoed, the favorites or a playlist once their
 tracks are known and none survive, which is why the root fetches the
-items of every playlist a pin names. Settings (Shortcuts, beside
-Listeners) reorders, removes, renames and restyles, and opens the
-builder for a new mix or to edit picks. The root's Playlists subject
+items of every playlist a pin names. **Pins are managed from their
+cards alone** (Edit Mix, Remove Pin; there is no Settings page and no
+reordering): they keep the order they were pinned in, which the
+Shortcuts widget follows too. The root's Playlists subject
 leads with a Favorites tile so the page is reachable without a pin.
 
 **Item menus** (`ItemMenus.swift`): `ArtistMenu`, `AlbumMenu`,
@@ -812,7 +813,7 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
 | `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura, as does `album:<ratingKey>` or `track:<ratingKey>`, comma-separated for several (seeded with no title, so the listener page reads "Unknown track"; filed under the first library opened) |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the page of the first listener with a veto, else the first listener's |
-| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page; `shortcuts` on the Shortcuts page |
+| `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
 | `CTUNES_DEV_OFFLINE` | `1` skips discovery and opens the saved library with the connection unreachable; "Try again" and the retry timer connect for real |
 | `CTUNES_DEV_PIN` | `1` pins the `CTUNES_DEV_ALBUM` album once its tracks load; `artist` pins its artist; `track` pins its first track; `playlist` pins the `CTUNES_DEV_PLAYLIST` playlist once its items load |

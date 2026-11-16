@@ -17,7 +17,6 @@ struct SettingsSheet: View {
 
     private enum Page: Hashable {
         case listeners
-        case shortcuts
         case storage
     }
 
@@ -30,7 +29,6 @@ struct SettingsSheet: View {
                 playbackSection
                 downloadsSection
                 listenersSection
-                shortcutsSection
                 storageSection
                 accountSection
             }
@@ -47,8 +45,6 @@ struct SettingsSheet: View {
                 case .listeners:
                     ListenersList(model: model, artists: artists)
                         .navigationTitle("Listeners")
-                case .shortcuts:
-                    ShortcutsList(model: model) { dismiss() }
                 case .storage:
                     StorageList(model: model)
                 }
@@ -65,7 +61,6 @@ struct SettingsSheet: View {
             // `storage` lands on the Storage page, for simulator checks.
             switch ProcessInfo.processInfo.environment["CTUNES_DEV_SETTINGS"] {
             case "storage": path.append(Page.storage)
-            case "shortcuts": path.append(Page.shortcuts)
             default: break
             }
             #endif
@@ -187,31 +182,6 @@ struct SettingsSheet: View {
     private var listenersSummary: String {
         let names = model.roster.listeners.map(\.name)
         return names.isEmpty ? "No listeners" : ListenerRoster.joinNames(names)
-    }
-
-    @ViewBuilder private var shortcutsSection: some View {
-        Section {
-            NavigationLink(value: Page.shortcuts) {
-                HStack(spacing: 12) {
-                    Image(systemName: "play.square.stack")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Shortcuts")
-                        Text(shortcutsSummary)
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        } footer: {
-            Text("Mixes pinned to the Music screen.")
-        }
-    }
-
-    /// "Shuffle Favorites, Play Road Trip" under the Shortcuts row.
-    private var shortcutsSummary: String {
-        let titles = model.shortcuts.map(\.title)
-        return titles.isEmpty ? "No shortcuts" : titles.joined(separator: ", ")
     }
 
     @ViewBuilder private var storageSection: some View {

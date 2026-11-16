@@ -872,11 +872,6 @@ final class AppModel {
         saveShortcuts()
     }
 
-    func moveShortcuts(from source: IndexSet, to destination: Int) {
-        shortcuts.move(fromOffsets: source, toOffset: destination)
-        saveShortcuts()
-    }
-
     /// Any of a saved mix's parts: its name, its picks (re-saved from the
     /// builder), how it plays.
     func updateShortcut(_ id: SavedMix.ID, _ change: (inout SavedMix) -> Void) {

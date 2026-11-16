@@ -95,7 +95,7 @@ controls rather than line by line.
 - Pick artists, albums, playlists or Favorites; nothing picked is the whole library
 - Styles: Play, Shuffle, Mix Albums
 - Save a mix as a named Shortcut card
-- Settings → Shortcuts: reorder, rename, restyle, delete, New Mix…
+- Edit Mix and Remove Pin on a card's menu; pins keep the order they were pinned in
 - A card is hidden when everything in it is hidden for the current listeners
 - Synced through iCloud per library
 
