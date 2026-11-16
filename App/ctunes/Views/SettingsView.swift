@@ -139,6 +139,7 @@ struct SettingsSheet: View {
             }
             .pickerStyle(.navigationLink)
             Toggle("Download on Cellular", isOn: $downloads.allowsCellular)
+                .tint(Color.amber)
         } header: {
             Text("Downloads")
         } footer: {
