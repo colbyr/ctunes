@@ -111,7 +111,7 @@ controls rather than line by line.
 - Streaming Quality and Download Quality: Original (default), 320, 192 or 128 kbps
 - Download on Cellular, on by default
 - Keep Favorites Downloaded
-- Storage: a usage bar, downloads by artist, album and track (swipe to remove), Remove All Downloads, Retry stalled downloads
+- Storage: a usage bar, downloads by artist, album and track (swipe to remove), Remove All Downloads, Retry Downloads
 - Max Cache Size: 500 MB, 1, 2 (default), 5 or 10 GB, and Remove Cached Tracks
 
 ## CarPlay
