@@ -651,7 +651,8 @@ square inside a ring that fills clockwise while downloading (tap stops),
 a dotted ring around the arrow while waiting (the server away or every
 fetch in backoff; tap asks then cancels, the menu also offers Retry), the arrow
 inside the ring at how far it got for partial (tap downloads the rest),
-a check mark for complete (tap asks, then removes). Remove Download is
+the arrow inside the whole ring for complete (tap asks, then removes;
+never a check mark, which is the mixer's selection). Remove Download is
 `xmark.circle` everywhere and, like Cancel, always confirms: a menu posts a
 `DownloadRemoval` to `LibraryNavigator.removing`, which `LibraryView`
 hosts as the one dialog; the Storage page hosts its own. The manager is the Storage page

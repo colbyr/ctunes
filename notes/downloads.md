@@ -71,12 +71,12 @@ holds up on white art): a bare arrow with nothing down; a stop square inside a r
 fills clockwise (done over total) while downloading; a dotted ring around the arrow while
 waiting, which is stalled (every missing file in the backoff) or offline (`Downloads`
 maps in-flight to waiting while the server is away); the arrow inside the ring at how far
-it got for partial; a check mark inside the whole ring for complete. `DownloadBadge`
+it got for partial; the arrow inside the whole ring for complete. `DownloadBadge`
 puts it on every album tile, the artist portrait and both mix pools, nothing at all with
 nothing down; `DownloadOverlay` on the cover and portrait makes it the button, and a tap
 does what the mark shows: arrow downloads (partial too), stop stops, dotted asks then cancels, check
 asks then removes. Track rows carry the SF Symbol counterparts (`TrackDownloadGlyph`):
-`arrow.down.circle`, `.dotted`, `checkmark.circle.fill`.
+`arrow.down.circle`, `.dotted`, `arrow.down.circle.fill`.
 
 ## Menus and the manager
 

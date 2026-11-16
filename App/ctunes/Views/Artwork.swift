@@ -60,7 +60,8 @@ struct Artwork: View {
 ///   around the arrow, `arrow.down.circle.dotted`'s shape
 /// - partial, nothing on its way: the arrow inside the ring at how far
 ///   it got
-/// - complete: a check mark inside the whole ring
+/// - complete: the arrow inside the whole ring (not a check mark,
+///   which reads as selected: the mixer's picks use one)
 struct DownloadMark: View {
     let state: DownloadState
     let size: CGFloat
@@ -84,7 +85,7 @@ struct DownloadMark: View {
                 glyph("arrow.down")
             case .complete:
                 ring(line: line)
-                glyph("checkmark")
+                glyph("arrow.down")
             }
         }
         .foregroundStyle(.white)
@@ -210,7 +211,7 @@ struct TrackDownloadGlyph: View {
         case .none, .partial: "arrow.down.circle"
         case .downloading(_, _, true): "arrow.down.circle.dotted"
         case .downloading(_, _, false): "arrow.down.circle"
-        case .complete: "checkmark.circle.fill"
+        case .complete: "arrow.down.circle.fill"
         }
     }
 }
