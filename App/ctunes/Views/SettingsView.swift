@@ -128,7 +128,9 @@ struct SettingsSheet: View {
         } header: {
             Text("Playback")
         } footer: {
-            Text("Below Original, the server transcodes to AAC. Downloads play as stored. Applies from the next track.")
+            Text(offline
+                ? "Offline. Change this when the server is back."
+                : "Lower quality uses less data, for streaming and for the next few tracks fetched ahead. Downloads play at their own quality. Applies from the next track.")
         }
     }
 
@@ -154,9 +156,11 @@ struct SettingsSheet: View {
 
     private var downloadsFooter: String {
         var lines = ["Below Original, tracks download as MP3 at up to that bitrate. Existing downloads keep their quality."]
-        lines.append(model.downloads.allowsCellular
-            ? "Downloads can use cellular data."
-            : "Downloads wait for Wi-Fi.")
+        if !model.downloads.allowsCellular {
+            // Off parks the play cache too, which is the part nobody
+            // would guess from the switch's name.
+            lines.append("On cellular, downloads and the next few tracks wait for Wi-Fi, so everything streams.")
+        }
         return lines.joined(separator: " ")
     }
 
@@ -175,7 +179,7 @@ struct SettingsSheet: View {
                 }
             }
         } footer: {
-            Text("Each listener can hide artists, albums and tracks.")
+            Text("Hide artists, albums and tracks for whoever is listening.")
         }
     }
 
@@ -199,18 +203,20 @@ struct SettingsSheet: View {
                 }
             }
         } footer: {
-            Text("Downloads and the play cache.")
+            Text("Downloads and cached tracks.")
         }
     }
 
-    /// "1.2 GB downloaded · 2 artists, 5 albums" under the Storage row.
+    /// "1.2 GB downloaded · 2 artists, 5 albums, Favorites" under the
+    /// Storage row.
     private var storageSummary: String {
         let inventory = model.downloads.inventory
         var parts: [String] = []
         if !inventory.artists.isEmpty { parts.append(DownloadText.count(inventory.artists.count, "artist")) }
         if !inventory.albums.isEmpty { parts.append(DownloadText.count(inventory.albums.count, "album")) }
+        if !inventory.playlists.isEmpty { parts.append(DownloadText.count(inventory.playlists.count, "playlist")) }
         if !inventory.tracks.isEmpty { parts.append(DownloadText.count(inventory.tracks.count, "track")) }
-        if inventory.favoritesPinned { parts.append("favorites") }
+        if inventory.favoritesPinned { parts.append("Favorites") }
         let size = "\(DownloadText.bytes(model.downloads.usage)) downloaded"
         return parts.isEmpty ? size : "\(size) · \(parts.joined(separator: ", "))"
     }

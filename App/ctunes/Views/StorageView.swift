@@ -82,9 +82,9 @@ struct StorageList: View {
             .padding(.vertical, 6)
         } footer: {
             if offline {
-                Text("Offline. Downloads resume when the server answers.")
+                Text("Offline. Downloads resume when the server is back.")
             } else if stalled {
-                Button("Retry stalled downloads") {
+                Button("Retry Downloads") {
                     downloads.retry { await model.resumeDownloads() }
                 }
             }
@@ -141,7 +141,7 @@ struct StorageList: View {
 
     private var cacheSection: some View {
         Section {
-            LabeledContent("Cached Tracks", value: DownloadText.bytes(cacheUsage ?? 0))
+            LabeledContent("Cached", value: DownloadText.bytes(cacheUsage ?? 0))
             Picker("Max Cache Size", selection: Binding(
                 get: { player.cacheLimit },
                 set: { player.cacheLimit = $0 }
@@ -151,7 +151,9 @@ struct StorageList: View {
                 }
             }
         } header: {
-            SectionHeading("Cache", detail: "Recent and upcoming tracks, so they don't stream twice.")
+            Text("Cache")
+        } footer: {
+            Text("Recent and upcoming tracks, so they don't stream twice. When full, the oldest are removed first.")
         }
     }
 
@@ -281,7 +283,11 @@ struct StorageList: View {
                 LabeledContent("Favorites", value: "\(usage.files) of \(DownloadText.count(inventory.favorites.count, "track")) · \(DownloadText.bytes(usage.bytes))")
             }
         } header: {
-            SectionHeading("Downloads", detail: "Playable offline.")
+            Text("Downloads")
+        } footer: {
+            Text(model.isFavoritesPinned
+                ? "Downloads play offline. New favorites download as you heart them."
+                : "Downloads play offline.")
         }
     }
 
@@ -391,7 +397,7 @@ struct DownloadedAlbumPage: View {
                 }
             } footer: {
                 if case .complete(let count) = state, count > 0 {
-                    Text("\(DownloadText.count(count, "track")) can't be downloaded.")
+                    Text("\(DownloadText.count(count, "track")) can't be downloaded: the server lists \(count == 1 ? "it" : "them") with no file.")
                 } else if downloads.isPinned(album) {
                     Text("Swipe a track away to keep the rest of the album.")
                 }
@@ -490,30 +496,6 @@ private struct DownloadedTrackRow: View {
             Image(systemName: "nosign")
         } else {
             Text("—")
-        }
-    }
-}
-
-/// A section header with a line of explanation under it, the way iPhone
-/// Storage captions its groups. The heading keeps the list's own header
-/// styling; the detail is plain footnote text.
-private struct SectionHeading: View {
-    let title: String
-    let detail: String
-
-    init(_ title: String, detail: String) {
-        self.title = title
-        self.detail = detail
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-            Text(detail)
-                .font(.footnote)
-                .fontWeight(.regular)
-                .foregroundStyle(.secondary)
-                .textCase(nil)
         }
     }
 }

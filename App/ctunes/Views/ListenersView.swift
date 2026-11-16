@@ -179,7 +179,7 @@ private struct ListenerDetail: View {
             let vetoes = VetoKind.allCases.flatMap { listener.vetoes(of: $0) }
             Section {
                 if vetoes.isEmpty {
-                    Text("Nothing vetoed — \(listener.name) hears everything.")
+                    Text("Nothing hidden. \(listener.name) hears everything.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.center)
@@ -190,7 +190,7 @@ private struct ListenerDetail: View {
                 }
             } header: {
                 HStack {
-                    Text("Doesn't listen to")
+                    Text("Hidden")
                     Spacer()
                     if !vetoes.isEmpty {
                         Text(Self.count(listener).description)
@@ -199,7 +199,7 @@ private struct ListenerDetail: View {
             } footer: {
                 Text(Self.howToHide)
             }
-            Section("Exclude an artist") {
+            Section("Hide an Artist") {
                 ForEach(available) { artist in
                     row(artist, symbol: "plus.circle.fill", tint: .green)
                 }
@@ -217,7 +217,7 @@ private struct ListenerDetail: View {
         .onAppear { editingName = listener.name == ListenersList.newName }
     }
 
-    private static let howToHide = "Hide an album or track from its menu or the avatars on its page."
+    private static let howToHide = "Hide an album or track from its menu, under Listeners."
 
     /// The listener's vetoes by kind, for the row summary and the header.
     static func count(_ listener: Listener) -> HiddenCount {
