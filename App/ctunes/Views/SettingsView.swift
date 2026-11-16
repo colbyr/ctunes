@@ -93,10 +93,6 @@ struct SettingsSheet: View {
             }
         } header: {
             Text("Library")
-        } footer: {
-            if offline {
-                Text("Offline. Playing downloads until the server is back.")
-            }
         }
     }
 
@@ -127,10 +123,6 @@ struct SettingsSheet: View {
             .disabled(offline)
         } header: {
             Text("Playback")
-        } footer: {
-            Text(offline
-                ? "Offline. Change this when the server is back."
-                : "Lower quality uses less data, for streaming and for the next few tracks fetched ahead. Downloads play at their own quality. Applies from the next track.")
         }
     }
 
@@ -155,7 +147,7 @@ struct SettingsSheet: View {
     }
 
     private var downloadsFooter: String {
-        var lines = ["Below Original, tracks download as MP3 at up to that bitrate. Existing downloads keep their quality."]
+        var lines = ["Existing downloads keep their quality."]
         if !model.downloads.allowsCellular {
             // Off parks the play cache too, which is the part nobody
             // would guess from the switch's name.
@@ -178,8 +170,6 @@ struct SettingsSheet: View {
                     }
                 }
             }
-        } footer: {
-            Text("Hide artists, albums and tracks for whoever is listening.")
         }
     }
 
@@ -202,8 +192,6 @@ struct SettingsSheet: View {
                     }
                 }
             }
-        } footer: {
-            Text("Downloads and cached tracks.")
         }
     }
 

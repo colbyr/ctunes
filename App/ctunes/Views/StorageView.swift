@@ -153,7 +153,7 @@ struct StorageList: View {
         } header: {
             Text("Cache")
         } footer: {
-            Text("Recent and upcoming tracks, so they don't stream twice. When full, the oldest are removed first.")
+            Text("Recent and upcoming tracks, so they don't stream twice.")
         }
     }
 
@@ -284,10 +284,6 @@ struct StorageList: View {
             }
         } header: {
             Text("Downloads")
-        } footer: {
-            Text(model.isFavoritesPinned
-                ? "Downloads play offline. New favorites download as you heart them."
-                : "Downloads play offline.")
         }
     }
 
