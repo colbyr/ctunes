@@ -518,8 +518,10 @@ struct MixesRow: View {
 
     /// The Mixer button's id: the front of the row, at its left end.
     private static let front = "mixer"
-    /// The narrowest a card gets: two art slots and its padding.
-    private static let buttonWidth = RecentMixCard.slots(2) + 24
+    /// The narrowest card (two art slots and its padding) over the golden
+    /// ratio, ~73pt: as wide as a card, the cards ended flush with the
+    /// screen's edge and the row gave no sign it scrolled.
+    private static let buttonWidth = ((RecentMixCard.slots(2) + 24) / 1.618).rounded()
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -540,7 +542,7 @@ struct MixesRow: View {
                     }
                     .foregroundStyle(Color.mix)
                     .padding(12)
-                    // As wide as the narrowest card, 2pt in.
+                    // 2pt in from its slot.
                     .frame(width: Self.buttonWidth - 4, alignment: .leading)
                     .frame(maxHeight: .infinity)
                     // 2pt in on every side of its slot: the dashed
