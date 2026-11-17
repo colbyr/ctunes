@@ -256,6 +256,7 @@ struct MixBuilderView: View {
             }
         }
         .parchment()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .scrollDismissesKeyboard(.immediately)
         .scrollEdgeEffectStyle(.soft, for: .top)
         // Room for the floating pills, the mix bar's two rows, and the
@@ -279,15 +280,26 @@ struct MixBuilderView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", systemImage: "checkmark") { draft.saveEdit(model) }
-                        .disabled(!draft.canSave(model))
+                        .disabled(draft.picks.isEmpty)
                         .tint(Color.mix)
                 }
             }
         }
         .toolbar { SearchBarItem() }
-        // Handed the environment explicitly: a Mac window crossing the
-        // compact/regular line re-hosts an open sheet without it.
-        .sheet(isPresented: Bindable(draft).reviewing) {
+        // On a wide pool the picks dock beside the grid, covering none of
+        // it; the page's own Cancel and Save stand for the sheet's. An
+        // overlay with the pool's margin rather than a safe-area inset,
+        // which reached the host and took the Now Playing column away.
+        .contentMargins(.trailing, docked && draft.reviewing ? Self.panelWidth : 0, for: .scrollContent)
+        .overlay(alignment: .trailing) {
+            if docked, draft.reviewing {
+                panel
+            }
+        }
+        // Otherwise a sheet. Handed the environment explicitly: a Mac
+        // window crossing the compact/regular line re-hosts an open sheet
+        // without it.
+        .sheet(isPresented: sheetShown) {
             Group {
                 if draft.editing != nil {
                     MixEditSheet(model: model)
@@ -345,6 +357,34 @@ struct MixBuilderView: View {
         LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
     }
 
+    /// Wide enough to keep the picks beside the pool rather than in a
+    /// sheet over it: an iPad or a Mac window.
+    private var docked: Bool { width >= 700 }
+    private static let panelWidth: CGFloat = 360
+
+    private var sheetShown: Binding<Bool> {
+        Binding { draft.reviewing && !docked } set: { draft.reviewing = $0 }
+    }
+
+    /// The sheet's content as a column: the editor's form, or the picks
+    /// with their play buttons.
+    private var panel: some View {
+        @Bindable var draft = draft
+        return Group {
+            if draft.editing != nil {
+                MixForm(model: model, picks: draft.picks, name: $draft.editName, style: $draft.editStyle) { pick in
+                    draft.toggle(pick)
+                }
+            } else {
+                MixReviewSheet(model: model)
+                    .parchment()
+            }
+        }
+        .frame(width: Self.panelWidth)
+        .frame(maxHeight: .infinity)
+        .overlay(alignment: .leading) { Divider().ignoresSafeArea() }
+    }
+
     #if DEBUG
     /// A `kind:key` from the dev hook as a pick from the loaded pool.
     private func developmentPick(_ id: String) -> MixPick? {
@@ -376,7 +416,7 @@ struct MixBuilderView: View {
     @ViewBuilder private func items(_ items: [Item]) -> some View {
         switch layout {
         case .grid:
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                 ForEach(items) { item in
                     let isSelected = draft.contains(item.id)
                     self.item(item, selected: isSelected) {
@@ -454,7 +494,8 @@ struct MixBuilderView: View {
         private var favorites: Bool { item.kind == .favorites }
 
         var body: some View {
-            VStack(alignment: round ? .center : .leading, spacing: 8) {
+            // The browse root's spacing: 6 under a cover, 8 under a portrait.
+            VStack(alignment: round ? .center : .leading, spacing: round ? 8 : 6) {
                 art
                     .overlay(alignment: .bottomTrailing) {
                         if selected {

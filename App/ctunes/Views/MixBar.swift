@@ -78,9 +78,12 @@ final class MixDraft {
     }
 
     /// The pin takes the edit (a style the picks still offer, a name or
-    /// the suggested one), and the bar its picks from before.
+    /// the suggested one), and the bar its picks from before. Nothing
+    /// changed, it just ends the edit: a Save that did nothing read as
+    /// broken.
     func saveEdit(_ model: AppModel) {
         guard let id = editing, let mix = model.shortcut(id), !picks.isEmpty else { return }
+        guard canSave(model) else { return endEditing() }
         let picks = picks
         model.moveRecentMix(mix.pickKey, to: picks)
         let styles = PlayStyle.cases(for: picks)
@@ -186,7 +189,9 @@ struct MixBar: View {
         let picks = draft.picks
         let editing = draft.editing.flatMap { model.shortcut($0) }
         VStack(spacing: 10) {
-            Button { draft.reviewing = !picks.isEmpty || editing != nil } label: {
+            // A toggle: beside the pool on a wide window the sheet is a
+            // column, which the bar stays clear of.
+            Button { draft.reviewing = !draft.reviewing && (!picks.isEmpty || editing != nil) } label: {
                 HStack(spacing: 12) {
                     if picks.isEmpty {
                         RoundedRectangle(cornerRadius: 6)
@@ -377,6 +382,9 @@ struct MixReviewSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // The pool behind stays live, so a pick is added without closing
+        // the sheet; on a Mac there is no swipe to close it by.
+        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         // Again once a server answers: before then only what is on disk
         // counts, and a saved copy landing can change the lists.
         .task(id: "\(key)|\(model.isConnected)|\(model.libraryRevision)") {
@@ -427,12 +435,14 @@ struct MixEditSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { draft.saveEdit(model) }
-                        .disabled(!draft.canSave(model))
+                        .disabled(draft.picks.isEmpty)
                         .tint(Color.mix)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        // Its footer says to tap the pool behind it: that has to work.
+        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
     }
 }
 

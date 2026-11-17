@@ -244,7 +244,7 @@ struct MixForm: View {
                 Text(picks.count == 1 ? "Plays" : "Mixes")
             } footer: {
                 if remove != nil {
-                    Text("Tap albums, artists or playlists behind this sheet to add them.")
+                    Text("Tap albums, artists or playlists in the mixer to add them.")
                 }
             }
         }
