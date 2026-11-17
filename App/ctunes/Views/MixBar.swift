@@ -720,18 +720,22 @@ struct RecentMixCard: View {
             .frame(height: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                HStack(spacing: 4) {
+                // The style by its glyph alone, the pin beside it; only
+                // Playing is spelled out.
+                HStack(spacing: 6) {
                     Group {
                         if loading {
                             ProgressView().controlSize(.mini)
                         } else {
                             Image(systemName: playing ? "waveform" : item.style.symbol)
+                                .accessibilityLabel(playing ? "Playing" : item.style.verb)
                         }
-                        Text(playing ? "Playing" : item.style.verb)
+                        if playing {
+                            Text("Playing")
+                        }
                     }
                     .font(.caption.weight(playing ? .semibold : .regular))
                     .foregroundStyle(playing ? AnyShapeStyle(Color.mix) : AnyShapeStyle(.secondary))
-                    Spacer(minLength: 4)
                     if item.pinned != nil {
                         Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary)
                             .accessibilityLabel("Pinned")
