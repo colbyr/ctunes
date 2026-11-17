@@ -506,32 +506,17 @@ struct MixesRow: View {
         LibraryActions(model: model, player: player, nowPlaying: nowPlaying, navigator: navigator)
     }
 
-    /// The row's width, so a short row can sit at its right edge.
-    @State private var rowWidth: CGFloat = 0
-
-    /// The Mixer button's id: the front of the row, at its right end.
+    /// The Mixer button's id: the front of the row, at its left end.
     private static let front = "mixer"
+    /// The narrowest a card gets: two art slots and its padding.
+    private static let buttonWidth = RecentMixCard.slots(2) + 24
 
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView(.horizontal) {
             HStack(spacing: 12) {
-                // Read from the right: the newest cards beside the button,
-                // older ones running off to the left.
-                ForEach(shown.reversed(), id: \.slot) { slot, item in
-                    Button {
-                        draft.play(item.picks, style: item.style, actions: actions)
-                    } label: {
-                        RecentMixCard(model: model, item: item,
-                                      playing: model.isPlaying(mix: item.key, player: player),
-                                      loading: draft.loadingKey == item.key)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu { menu(item) }
-                    .id(slot)
-                }
                 // The way in to the mixer, now that the screen has no
-                // tile for it: always last, at the right edge, there even
+                // tile for it: always first, at the left edge, there even
                 // with no mixes. Outlined, not a raised card, so it doesn't
                 // read as a mix.
                 Button { navigator.open(.mix(MixRoute())) } label: {
@@ -545,11 +530,10 @@ struct MixesRow: View {
                     }
                     .foregroundStyle(Color.mix)
                     .padding(12)
-                    // As wide as the view and sort chips under it (two 34pt
-                    // circles 8 apart), so the edges line up.
-                    .frame(width: 72, alignment: .leading)
+                    // As wide as the narrowest card, 2pt in.
+                    .frame(width: Self.buttonWidth - 4, alignment: .leading)
                     .frame(maxHeight: .infinity)
-                    // 2pt in on every side of the 76pt slot: the dashed
+                    // 2pt in on every side of its slot: the dashed
                     // border reads bigger than a shadowed card's edge.
                     .padding(.vertical, 2)
                     // A dashed outline on the band, not a card: a slot to
@@ -562,21 +546,30 @@ struct MixesRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open Mix")
-                .frame(width: 76)
+                .frame(width: Self.buttonWidth)
                 .id(Self.front)
+                // Read from the left: the newest cards beside the button,
+                // older ones running off to the right.
+                ForEach(shown, id: \.slot) { slot, item in
+                    Button {
+                        draft.play(item.picks, style: item.style, actions: actions)
+                    } label: {
+                        RecentMixCard(model: model, item: item,
+                                      playing: model.isPlaying(mix: item.key, player: player),
+                                      loading: draft.loadingKey == item.key)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { menu(item) }
+                    .id(slot)
+                }
             }
             // The button as tall as the cards.
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, margin)
-            // A short row hugs the right edge, where the button is.
-            .frame(minWidth: rowWidth, alignment: .trailing)
             // Room for the cards' shadow; see `cardShadow`.
             .padding(.vertical, 14)
         }
         .scrollIndicators(.hidden)
-        // Opens at the right end, the newest in view.
-        .defaultScrollAnchor(.trailing)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         .padding(.vertical, -14)
         .animation(.snappy, value: shown.map(\.slot))
         .onChange(of: items.map(\.id), initial: true) { settle() }

@@ -437,7 +437,7 @@ the favorites, never a node in the pin tree.
 
 **Shortcuts** (`SavedMixes.swift` in PlexKit, `ShortcutsView.swift`,
 `MixBar.swift`) are the row of mix cards at the top of the browse root
-(`MixesRow`, read from the right): on a full-width band, a small dashed Mix button at its right edge (the only way into the builder from
+(`MixesRow`, read from the left): on a full-width band, a small dashed Mix button at its left edge (the only way into the builder from
 the root; the builder is "Mix" on screen, Quick Mix in the code), the
 pinned mixes in their order, then the recents, newest nearest the
 button. The mixer's accent is `Color.mix` (the picks' ring and check
