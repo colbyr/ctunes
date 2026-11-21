@@ -417,7 +417,10 @@ struct NowPlayingView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal)
-        .padding(.top, namesBesideArt ? 0 : 12)
+        // Beside the art, 28pt from the art's foot to the scrubber, the
+        // art pane's 12 and this: under the scrubber's 12 the art all but
+        // sat on it, against 24 from the times to the transport.
+        .padding(.top, namesBesideArt ? 16 : 12)
         .padding(.bottom, 8)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -507,7 +510,9 @@ struct NowPlayingView: View {
 
     /// The scrubber and the transport.
     private var controls: some View {
-        VStack(alignment: .leading, spacing: headerSpacing) {
+        // Tighter beside the art, so the times read with the transport
+        // rather than floating between it and the art.
+        VStack(alignment: .leading, spacing: namesBesideArt ? 20 : headerSpacing) {
             scrubber
             transport
         }

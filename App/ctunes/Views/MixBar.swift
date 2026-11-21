@@ -747,6 +747,10 @@ struct RecentMixCard: View {
                                 Image(systemName: "pause.fill")
                                     .opacity(paused ? 1 : 0)
                             }
+                            // An exact box: the variable-color effect
+                            // re-measures the symbol on every frame, and a
+                            // box sized to it shook the card with it.
+                            .frame(width: 16, height: 14, alignment: .leading)
                             .animation(.easeInOut(duration: 0.2), value: paused)
                             .accessibilityElement()
                             .accessibilityLabel(paused ? "Paused" : "Playing")
