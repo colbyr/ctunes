@@ -176,6 +176,17 @@ final class AudioPlayer {
     /// True while `connectionLost` is out, so a second failure waits.
     private var recovering = false
     private var commandsConfigured = false
+    /// SPIKE (COL-117): the second engine, for `am:` entries.
+    @ObservationIgnored let appleMusic = AppleMusicEngine()
+    /// SPIKE: whether we write now-playing info while MusicKit plays, or
+    /// leave the lock screen to MusicKit. Toggled from the spike page.
+    static var writesNowPlayingForAppleMusic: Bool {
+        get { UserDefaults.standard.object(forKey: "amSpike.writeNowPlaying") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "amSpike.writeNowPlaying") }
+    }
+    private var leavesNowPlayingToMusicKit: Bool {
+        appleMusic.isActive && !Self.writesNowPlayingForAppleMusic
+    }
 
     /// One id per `play` call, so the server groups a listening session's
     /// timeline reports together.
@@ -202,6 +213,7 @@ final class AudioPlayer {
         observeTimeControl()
         observeItemEnd()
         observeInterruptions()
+        wireAppleMusic()
     }
 
     /// The session the track cache downloads through. One connection: the
@@ -292,6 +304,13 @@ final class AudioPlayer {
             return
         }
         activateSession()
+        if appleMusic.isActive {
+            appleMusic.play()
+            pausedAt = nil
+            isPlaying = true
+            updateNowPlayingPlaybackState()
+            return
+        }
         // Emptied while waiting for a server: try the entry again.
         guard player.currentItem != nil else {
             loadCurrentItem(autoPlay: true, startAt: currentTime)
@@ -312,6 +331,7 @@ final class AudioPlayer {
         resumeAfterInterruption = false
         resumeOnReconnect = false
         player.pause()
+        if appleMusic.isActive { appleMusic.pause() }
         if isPlaying { pausedAt = Date() }
         isPlaying = false
         updateNowPlayingPlaybackState()
@@ -352,6 +372,7 @@ final class AudioPlayer {
     /// so. The head stays at the end rather than rewinding.
     private func finish() {
         player.pause()
+        if appleMusic.isActive { appleMusic.pause() }
         isPlaying = false
         updateNowPlayingPlaybackState()
         hasEnded = true
@@ -369,7 +390,7 @@ final class AudioPlayer {
         itemEndHandled = true
         guard repeatMode != .one else {
             seek(to: 0)
-            player.play()
+            if appleMusic.isActive { appleMusic.play() } else { player.play() }
             reportTimeline(.playing)
             return
         }
@@ -416,6 +437,13 @@ final class AudioPlayer {
         // Moving the head is a fresh run at the end of the item.
         itemEndHandled = false
         log.info("seek to \(seconds, format: .fixed(precision: 1))s")
+        if appleMusic.isActive {
+            appleMusic.seek(to: seconds)
+            currentTime = seconds
+            updateNowPlayingPlaybackState()
+            landed?()
+            return
+        }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         player.seek(to: time) { [weak self] _ in
             Task { @MainActor in
@@ -453,6 +481,7 @@ final class AudioPlayer {
             return
         }
         guard queue.current != nil else {
+            appleMusic.stop()
             player.replaceCurrentItem(with: nil)
             pause()
             hasEnded = false
@@ -604,6 +633,7 @@ final class AudioPlayer {
         queueKey = nil
         isRestored = false
         restoredSavedAt = nil
+        appleMusic.stop()
         player.replaceCurrentItem(with: nil)
         isPlaying = false
         hasEnded = false
@@ -637,6 +667,10 @@ final class AudioPlayer {
         let asked = queue.currentIndex
         var playable: (track: PlexTrack, part: PlexPart, local: URL?, url: URL)?
         while let track = currentTrack {
+            if AppleMusicEngine.isAppleMusic(track) {
+                loadAppleMusic(track, autoPlay: autoPlay, startAt: startAt)
+                return
+            }
             // The library's one answer: a file on disk as good as the
             // streaming quality asks (a pinned one as it is, and anything
             // on disk with no server), else the stream, else nothing.
@@ -662,6 +696,10 @@ final class AudioPlayer {
             }
         }
         guard let (track, part, local, url) = playable else { return }
+        if appleMusic.isActive {
+            appleMusic.log.info("handoff MusicKit → AVPlayer")
+            appleMusic.stop()
+        }
         currentItemIsLocal = local != nil
         currentItemIsTranscode = local == nil && streamQuality.bitrate != nil
         if currentItemIsLocal {
@@ -903,7 +941,7 @@ final class AudioPlayer {
     /// Fire and forget: a slow server must never stall playback, and a lost
     /// report just means the next one carries the update.
     private func reportTimeline(_ state: PlaybackState) {
-        guard let track = currentTrack, let library else { return }
+        guard let track = currentTrack, let library, !AppleMusicEngine.isAppleMusic(track) else { return }
         lastReportedProgress = currentTime
         let time = currentTime
         let session = sessionIdentifier
@@ -1002,6 +1040,9 @@ final class AudioPlayer {
             let reason = player.reasonForWaitingToPlay?.rawValue ?? "-"
             self.log.info("timeControlStatus \(status.label, privacy: .public) waiting=\(reason, privacy: .public)")
             Task { @MainActor in
+                // SPIKE: AVPlayer was emptied for MusicKit; its pause on the
+                // handoff says nothing about whether audio is running.
+                guard !self.appleMusic.isActive else { return }
                 self.playerIsRunning = status == .playing
                 self.updateNowPlayingPlaybackState()
                 self.watchForStall(status)
@@ -1233,6 +1274,12 @@ final class AudioPlayer {
     }
 
     private func handleInterruptionBegan() {
+        if appleMusic.isActive {
+            // SPIKE: does MusicKit starting take our session away? Logged,
+            // and ignored so its playback isn't marked paused.
+            appleMusic.log.notice("our audio session went inactive while MusicKit plays (isPlaying=\(self.isPlaying))")
+            return
+        }
         guard isPlaying else { return }
         // The player is already stopped; reflect it without touching it.
         resumeAfterInterruption = true
@@ -1263,6 +1310,66 @@ final class AudioPlayer {
         pause()
     }
 
+    // MARK: - Apple Music (SPIKE, COL-117)
+
+    /// Hands the audio to MusicKit: AVPlayer empties so its own watchers
+    /// (stall, silent pause, end of item) have nothing to look at.
+    private func loadAppleMusic(_ track: PlexTrack, autoPlay: Bool, startAt: Double) {
+        appleMusic.log.info("handoff → MusicKit (from \(self.player.currentItem == nil ? "nothing" : "AVPlayer", privacy: .public))")
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        stallWatchdog?.cancel()
+        silentPauseCheck?.cancel()
+        currentItemIsLocal = false
+        currentItemIsTranscode = false
+        itemLoadRetries = 0
+        stallRebuilds = 0
+        resumeOnReconnect = false
+        itemBaseURL = nil
+        currentTime = startAt
+        duration = track.durationSeconds ?? 0
+        hasEnded = false
+        itemEndHandled = false
+        playerIsRunning = false
+        pausedAt = autoPlay ? nil : Date()
+        if autoPlay { isPlaying = true }
+        appleMusic.load(track, autoPlay: autoPlay, startAt: startAt)
+        updateNowPlayingInfo(for: track)
+        prefetch()
+    }
+
+    private func wireAppleMusic() {
+        appleMusic.onTime = { [weak self] seconds in
+            self?.currentTime = seconds
+        }
+        appleMusic.onEvent = { [weak self] event in
+            guard let self else { return }
+            switch event {
+            case .running(let running):
+                playerIsRunning = running
+                updateNowPlayingPlaybackState()
+            case .ended:
+                appleMusic.log.info("ended, advancing the queue")
+                currentItemEnded()
+            case .pausedExternally:
+                pausedAt = Date()
+                isPlaying = false
+                updateNowPlayingPlaybackState()
+            case .resumedExternally:
+                pausedAt = nil
+                isPlaying = true
+                updateNowPlayingPlaybackState()
+            case .failed(let error):
+                appleMusic.log.error("entry failed (\(error, privacy: .public)), skipping")
+                advance(wrapping: false)
+            }
+        }
+    }
+
+    private func remote(_ name: String) {
+        appleMusic.log.info("remote command \(name, privacy: .public) (MusicKit active=\(self.appleMusic.isActive))")
+    }
+
     // MARK: - Lock screen
 
     private func configureRemoteCommands() {
@@ -1271,35 +1378,35 @@ final class AudioPlayer {
 
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.resume() }
+            Task { @MainActor in self?.remote("play"); self?.resume() }
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.pause() }
+            Task { @MainActor in self?.remote("pause"); self?.pause() }
             return .success
         }
         // Some head units and AirPlay receivers send stop, not pause.
         center.stopCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.pause() }
+            Task { @MainActor in self?.remote("pause"); self?.pause() }
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.togglePlayPause() }
+            Task { @MainActor in self?.remote("toggle"); self?.togglePlayPause() }
             return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.next() }
+            Task { @MainActor in self?.remote("next"); self?.next() }
             return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.previous() }
+            Task { @MainActor in self?.remote("previous"); self?.previous() }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
-            Task { @MainActor in self?.seek(to: event.positionTime) }
+            Task { @MainActor in self?.remote("seek"); self?.seek(to: event.positionTime) }
             return .success
         }
         center.changeShuffleModeCommand.addTarget { [weak self] event in
@@ -1358,6 +1465,7 @@ final class AudioPlayer {
     }
 
     private func updateNowPlayingInfo(for track: PlexTrack) {
+        guard !leavesNowPlayingToMusicKit else { return }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.grandparentTitle ?? "",
@@ -1375,7 +1483,10 @@ final class AudioPlayer {
     }
 
     private func loadArtwork(for track: PlexTrack) {
-        guard let library, let url = library.artworkURL(track.thumb, size: 900) else { return }
+        let artURL = AppleMusicEngine.isAppleMusic(track)
+            ? appleMusic.artworkURL(for: track)
+            : library?.artworkURL(track.thumb, size: 900)
+        guard let url = artURL else { return }
         let ratingKey = track.ratingKey
 
         Task {
@@ -1404,8 +1515,9 @@ final class AudioPlayer {
     /// track change), never on the clock tick. The player's own time rather
     /// than `currentTime`, which can be most of a tick behind.
     private func updateNowPlayingPlaybackState() {
+        guard !leavesNowPlayingToMusicKit else { return }
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-        let playerTime = player.currentTime().seconds
+        let playerTime = appleMusic.isActive ? appleMusic.currentTime : player.currentTime().seconds
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = playerTime.isFinite ? playerTime : currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = playerIsRunning ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info

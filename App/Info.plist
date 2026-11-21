@@ -24,6 +24,8 @@
 			<string>Disc Changer</string>
 		</dict>
 	</array>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Disc Changer plays songs from Apple Music alongside your Plex library.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

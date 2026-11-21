@@ -31,6 +31,11 @@ struct SettingsSheet: View {
                 listenersSection
                 storageSection
                 accountSection
+                #if DEBUG
+                Section("Spikes") {
+                    NavigationLink("Apple Music") { AppleMusicSpikeView(model: model) }
+                }
+                #endif
             }
             .settingsBackground()
             .navigationTitle("Settings")
