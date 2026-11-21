@@ -739,6 +739,10 @@ struct RecentMixCard: View {
                                 .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing,
                                               options: .repeat(.continuous), isActive: !paused)
                                 .contentTransition(.symbolEffect(.replace))
+                                // One width for both glyphs, the waveform's,
+                                // so the pin beside them doesn't shift and
+                                // the card doesn't resize on play and pause.
+                                .frame(width: 16, alignment: .leading)
                                 .accessibilityLabel(paused ? "Paused" : "Playing")
                         } else {
                             Image(systemName: item.style.symbol)
