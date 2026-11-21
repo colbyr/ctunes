@@ -35,6 +35,15 @@ struct MixBuilderView: View {
     /// Scored once when the plays land; `.none` before then or when the
     /// request fails, which leaves On Rotation on the server's play counts.
     @State private var rotation: Rotation = .none
+    /// Bumped when the albums, artists or rotation land: what the pool's
+    /// sorts are memoized on.
+    @State private var revision = 0
+    /// The albums by artist, for the controls' listeners sheet.
+    @State private var byArtist: [AlbumGroup] = []
+    /// The pool's sorts and grouping, kept across redraws: the builder
+    /// redraws on every tap of a pick, and sorting the library again each
+    /// time held up the check mark.
+    @State private var memo = ViewMemo()
     @State private var loaded = false
     @State private var hooked = false
     /// The route's saved mix has been put in the bar; coming back from a
@@ -154,7 +163,24 @@ struct MixBuilderView: View {
     /// The album pool sectioned the way the main screen is. Search shows
     /// the flat ranked `rest` instead.
     private var poolGroups: [AlbumGroup] {
-        AlbumBrowse.groups(browsable, view: albumSort, hiding: hidden, rotation: rotation)
+        memo("groups", key: poolInputs(albumSort)) {
+            AlbumBrowse.groups(browsable, view: albumSort, hiding: hidden, rotation: rotation)
+        }
+    }
+
+    /// What a pool's sort is made from. Read on every pass, so a redraw
+    /// served from the memo still comes when any input changes.
+    private func poolInputs(_ sort: AlbumView) -> BrowseInputs {
+        BrowseInputs(catalog: revision, view: sort, hidden: hidden,
+                     downloads: downloadedOnly ? model.downloads.generation : nil)
+    }
+
+    private var sortedAlbums: [PlexAlbum] {
+        memo("albums", key: poolInputs(albumSort)) { albumSort.sorted(browsable, rotation: rotation) }
+    }
+
+    private var sortedArtists: [PlexArtist] {
+        memo("artists", key: poolInputs(artistSort)) { artistSort.sorted(browsableArtists, rotation: rotation) }
     }
 
     /// The playlist pool under the Downloaded only filter: the ones with a
@@ -168,9 +194,9 @@ struct MixBuilderView: View {
     private var pool: [Item] {
         switch kind {
         case .artist:
-            artistSort.sorted(browsableArtists, rotation: rotation).map { item(artist: $0) }.filter { !$0.vetoed }
+            sortedArtists.map { item(artist: $0) }.filter { !$0.vetoed }
         case .album:
-            albumSort.sorted(browsable, rotation: rotation).map { item(album: $0, showArtist: albumSort != .artist) }.filter { !$0.vetoed }
+            sortedAlbums.map { item(album: $0, showArtist: albumSort != .artist) }.filter { !$0.vetoed }
         case .playlist, .favorites:
             (downloadedOnly && !model.isFavoritesPinned ? [] : [favoritesItem])
                 + playlistSort.sorted(browsablePlaylists).map { item(playlist: $0) }
@@ -178,7 +204,7 @@ struct MixBuilderView: View {
     }
 
     /// The pool narrowed by the search pill; picks stay in place, checked.
-    private var rest: [Item] {
+    private func rest(_ pool: [Item]) -> [Item] {
         guard !needle.isEmpty else { return pool }
         switch kind {
         case .artist, .playlist, .favorites:
@@ -208,10 +234,12 @@ struct MixBuilderView: View {
 
     var body: some View {
         let editing = draft.editing.flatMap { model.shortcut($0) }
+        let poolItems = pool
+        let shown = rest(poolItems)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    AlbumBrowserControls(model: model, artists: AlbumBrowse.groups(albums, view: .artist), view: sort, layout: $layout,
+                    AlbumBrowserControls(model: model, artists: byArtist, view: sort, layout: $layout,
                                          scope: subject.scope, subject: $subject, downloadedOnly: $downloadedOnly)
                         .padding(.top, 8)
                         .id(Self.poolAnchor)
@@ -219,11 +247,11 @@ struct MixBuilderView: View {
                         .padding(.init(top: 6, leading: Self.margin, bottom: 6, trailing: Self.margin))
                     // In the stack rather than an overlay, so it sits under
                     // the picks and the controls instead of over them.
-                    if loaded, rest.isEmpty, !needle.isEmpty {
+                    if loaded, shown.isEmpty, !needle.isEmpty {
                         ContentUnavailableView.search(text: needle)
                             .frame(maxWidth: .infinity)
                             .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
-                    } else if loaded, pool.isEmpty {
+                    } else if loaded, poolItems.isEmpty {
                         ContentUnavailableView("Nothing to mix", systemImage: subject.systemImage)
                             .frame(maxWidth: .infinity)
                             .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
@@ -242,7 +270,7 @@ struct MixBuilderView: View {
                             }
                         }
                     } else {
-                        items(rest)
+                        items(shown)
                             .padding(.init(top: 14, leading: Self.margin, bottom: 10, trailing: Self.margin))
                     }
                 }
@@ -406,10 +434,13 @@ struct MixBuilderView: View {
         async let plays = library.playHistory(inSection: section.key, since: .now - Rotation.window)
         async let artistList = library.artists(inSection: section.key)
         albums = (try? await library.albums(inSection: section.key)) ?? []
+        byArtist = AlbumBrowse.groups(albums, view: .artist)
         artists = (try? await artistList) ?? []
+        revision += 1
         loaded = true
         let history = (try? await plays) ?? []
         rotation = Rotation(history: history, albums: albums)
+        revision += 1
     }
 
     @ViewBuilder private func items(_ items: [Item]) -> some View {

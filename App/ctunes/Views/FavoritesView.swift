@@ -58,6 +58,9 @@ struct FavoritesView: View {
     @State private var tracks: [PlexTrack] = []
     /// For the Listeners sheet's veto lists, which cover the whole library.
     @State private var albums: [PlexAlbum] = []
+    /// The albums by artist, for the listener chips' sheet: grouped when
+    /// the albums land, not on every redraw of the page.
+    @State private var byArtist: [AlbumGroup] = []
     @State private var loaded = false
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
@@ -112,7 +115,7 @@ struct FavoritesView: View {
                 .listRowInsets(.init(top: 0, leading: Self.margin, bottom: 0, trailing: Self.margin))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-            ListenerChips(model: model, artists: AlbumBrowse.groups(albums, view: .artist)) {
+            ListenerChips(model: model, artists: byArtist) {
                 Menu {
                     Picker("Sort", selection: $sort) {
                         ForEach(FavoritesSort.allCases) { sort in
@@ -233,6 +236,7 @@ struct FavoritesView: View {
             tracks = fetched
         }
         albums = (try? await all) ?? []
+        byArtist = AlbumBrowse.groups(albums, view: .artist)
         loaded = true
         for thumb in Set(tracks.compactMap(\.thumb)) {
             ImageLoader.shared.prewarm(library.artworkURL(thumb))

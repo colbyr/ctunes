@@ -59,6 +59,9 @@ struct PlaylistView: View {
     @State private var items: [PlaylistItem] = []
     /// For the Listeners sheet's veto lists, which cover the whole library.
     @State private var albums: [PlexAlbum] = []
+    /// The albums by artist, for the listener chips' sheet: grouped when
+    /// the albums land, not on every redraw of the page.
+    @State private var byArtist: [AlbumGroup] = []
     @State private var loaded = false
     /// Keyed on the server and the playlist, so each remembers its own.
     @AppStorage private var sort: PlaylistSort
@@ -277,7 +280,7 @@ struct PlaylistView: View {
             .listRowBackground(Color.clear)
             .moveDisabled(true)
             .deleteDisabled(true)
-        ListenerChips(model: model, artists: AlbumBrowse.groups(albums, view: .artist)) {
+        ListenerChips(model: model, artists: byArtist) {
             Menu {
                 Picker("Sort", selection: $sort) {
                     ForEach(PlaylistSort.allCases) { sort in
@@ -319,6 +322,7 @@ struct PlaylistView: View {
             items = fetched
         }
         albums = (try? await all) ?? []
+        byArtist = AlbumBrowse.groups(albums, view: .artist)
         loaded = true
         if items.isEmpty { editMode = .inactive }
         for thumb in Set(items.compactMap(\.track.thumb)) {
