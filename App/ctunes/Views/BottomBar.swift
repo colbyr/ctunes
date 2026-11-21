@@ -33,9 +33,10 @@ struct BottomBar: View {
     /// The window's side insets, for running the pills under a vertical
     /// strip, whose foot holds no item now that search sits higher.
     @State private var sideInsets = EdgeInsets()
-    /// The strip's inset on the side it runs down, nil without one.
+    /// The strip's inset on the side it runs down, nil without one. Kept
+    /// with the keyboard up too, so the field and its × take the width.
     private var stripInset: (edge: HorizontalEdge, width: CGFloat)? {
-        guard navigator.hasVerticalBar, !keyboardUp, let edge = navigator.verticalBarEdge else { return nil }
+        guard navigator.hasVerticalBar, let edge = navigator.verticalBarEdge else { return nil }
         return (edge, edge == .leading ? sideInsets.leading : sideInsets.trailing)
     }
     /// The margin on either side of the pills. On the strip's side the

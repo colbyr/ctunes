@@ -114,7 +114,8 @@ had none of those, so this note is about the layout.
   from the top of the scroll content (`maxY` less the top safe area,
   so it holds whichever way the proxy sits under the bars), and
   `fillsToCrease(above:below:)` gives the header that minimum height,
-  centred. Home, album, artist, playlist and Favorites.
+  centred. Album, artist, playlist and Favorites; Home tried it and
+  read jumpy under the band of mixes, so it was taken off.
 - **The upright inner display gets four tiles across**: 136pt floor
   from 560 to 720.
 - **The portrait cover puts the transport in the art pane**, so the

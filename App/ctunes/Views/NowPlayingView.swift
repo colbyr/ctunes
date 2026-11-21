@@ -248,8 +248,9 @@ struct NowPlayingView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             // The transport above is the gap; the list's own top inset
-            // cost a row in a 669pt column.
-            .contentMargins(.top, 0, for: .scrollContent)
+            // cost a row in a 669pt column. Under the stacked split's
+            // pane edge Up Next gets a little air.
+            .contentMargins(.top, namesBesideArt ? 16 : 0, for: .scrollContent)
     }
 
     /// Up Next. No header once the queue has ended: there is nothing next.

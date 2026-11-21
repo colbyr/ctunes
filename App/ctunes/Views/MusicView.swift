@@ -283,8 +283,6 @@ struct MusicView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 // Who is listening, and the download filter, under the
                 // title: they decide the mixes as well as the grid.
-                // Half folded like a laptop, these fill the top half and
-                // the browser starts under the crease.
                 VStack(alignment: .leading, spacing: 0) {
                     ListenerChips(model: model, artists: artists, downloadedOnly: $downloadedOnly)
                         .padding(.bottom, 8)
@@ -305,7 +303,6 @@ struct MusicView: View {
                         .background(Color.band)
                         .padding(.top, 8)
                 }
-                .fillsToCrease()
                 // The browser starts here: the chips with the arrange
                 // button, then the hidden-artist line when any are.
                 // The listeners and the download filter are in the top bar;
@@ -347,7 +344,6 @@ struct MusicView: View {
                 sections
             }
         }
-        .readsCrease()
         .parchment()
         .scrollPosition($scrollPosition)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
