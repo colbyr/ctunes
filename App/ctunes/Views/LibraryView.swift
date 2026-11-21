@@ -126,7 +126,12 @@ struct LibraryView: View {
                     }
                 }
         }
-        .animation(.snappy, value: columnWidth)
+        // The Duo moving between book and flat moves the column's edge
+        // from the crease to 42%: that jump springs. A window resize, or a
+        // rotation the system animates itself, follows the size as it
+        // comes; keyed on the width, every frame of a live resize started
+        // a spring that laid out the column and the whole stack again.
+        .animation(.snappy, value: folded)
         // Chrome is ink, not amber: the back chevron, the toolbar buttons.
         // Amber is reserved for what acts, and those set it by hand.
         .tint(Color.ink)
