@@ -56,8 +56,6 @@ struct NowPlayingView: View {
     @Environment(NowPlayingPresentation.self) private var presentation
     @Environment(LibraryNavigator.self) private var navigator
 
-    /// Held while dragging so the slider doesn't fight the time observer.
-    @State private var scrubbing: Double?
     /// Which way the arrangement split its panes, from the environment
     /// inside the art pane; nil before it reports, and on iOS 27.0.
     @State private var paneAxis: Axis?
@@ -660,7 +658,21 @@ struct NowPlayingView: View {
         .accessibilityLabel(label)
     }
 
-    private var scrubber: some View {
+    /// Its own view, so the clock it reads redraws the scrubber alone
+    /// rather than the whole of Now Playing twice a second.
+    private var scrubber: some View { NowPlayingScrubber() }
+}
+
+/// The scrubber and its times: the one part of Now Playing that reads the
+/// player's clock. A view of its own because Observation tracks what a
+/// body reads: inside `NowPlayingView` the clock redrew the art, the
+/// header and the whole of Up Next on every tick.
+struct NowPlayingScrubber: View {
+    @Environment(AudioPlayer.self) private var player
+    /// Held while dragging so the slider doesn't fight the time observer.
+    @State private var scrubbing: Double?
+
+    var body: some View {
         // Read unconditionally rather than behind `scrubbing ?? …`. Observation
         // registers only the properties actually touched while the body runs,
         // so a short-circuited read drops the dependency on currentTime and the
