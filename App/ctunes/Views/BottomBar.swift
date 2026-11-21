@@ -30,6 +30,24 @@ struct BottomBar: View {
     /// The home indicator inset under the bar. The stack ignores the
     /// keyboard's safe area, so this never includes it.
     @State private var bottomInset: CGFloat = 0
+    /// The window's side insets, for running the pills under a vertical
+    /// strip, whose foot holds no item now that search sits higher.
+    @State private var sideInsets = EdgeInsets()
+    /// The strip's inset on the side it runs down, nil without one.
+    private var stripInset: (edge: HorizontalEdge, width: CGFloat)? {
+        guard navigator.hasVerticalBar, !keyboardUp, let edge = navigator.verticalBarEdge else { return nil }
+        return (edge, edge == .leading ? sideInsets.leading : sideInsets.trailing)
+    }
+    /// The margin on either side of the pills. On the strip's side the
+    /// pills run under it, the close button (or the end of a pill)
+    /// centred in the strip's width as its items are.
+    private func margin(_ edge: HorizontalEdge) -> CGFloat {
+        if let strip = stripInset, strip.edge == edge {
+            // Centred on the strip's items, a 52pt button against their 47.
+            return StripSearch.edgeGap - (52 - StripSearch.itemWidth) / 2 - strip.width
+        }
+        return keyboardUp ? 12 : 20
+    }
     /// How much of the screen the keyboard covers, from its own
     /// notifications, so the bar tracks it whatever screen was on top.
     @Environment(KeyboardInset.self) private var keyboard
@@ -57,7 +75,7 @@ struct BottomBar: View {
                     .glassEffectID("player", in: glass)
                 }
                 // With a vertical bar the icon is a toolbar item there
-                // (`SearchBarItem`); the pill only comes back as the field.
+                // (`StripSearch`); the pill only comes back as the field.
                 if searching || !navigator.hasVerticalBar {
                     SearchPill(query: $query, searching: $searching)
                         .glassEffectID("search", in: glass)
@@ -83,11 +101,8 @@ struct BottomBar: View {
         }
         // Tighter to the edges while the keyboard is up: the field wants
         // the width, and the keyboard's own margins already frame it.
-        .padding(.leading, keyboardUp ? 12 : 20)
-        // Against a vertical strip's inset: the strip's search item sits
-        // 12pt inside it, so no padding leaves the pills' own gap between
-        // the mini player and the item, where 20 left 30pt.
-        .padding(.trailing, navigator.hasVerticalBar ? 0 : keyboardUp ? 12 : 20)
+        .padding(.leading, margin(.leading))
+        .padding(.trailing, margin(.trailing))
         // Pulled into the home-indicator inset so the gap below the pills is
         // a little more than the 20pt at their sides. With the keyboard up
         // the pills sit a fixed gap above its top edge instead. Beside a
@@ -96,9 +111,13 @@ struct BottomBar: View {
         .padding(.bottom, keyboardUp ? keyboard.height - bottomInset + 8 : (navigator.hasVerticalBar ? 25 : 26) - bottomInset)
         .background {
             GeometryReader { proxy in
-                Color.clear.onChange(of: proxy.safeAreaInsets.bottom, initial: true) { _, inset in
-                    bottomInset = inset
-                }
+                Color.clear
+                    .onChange(of: proxy.safeAreaInsets.bottom, initial: true) { _, inset in
+                        bottomInset = inset
+                    }
+                    .onChange(of: proxy.safeAreaInsets, initial: true) { _, insets in
+                        sideInsets = insets
+                    }
             }
         }
         .background { WindowReader { window = $0 } }
@@ -200,21 +219,67 @@ private struct MiniPlayerPill: View {
     }
 }
 
-/// Search as a toolbar item, for a window whose bars run down a vertical
-/// strip: the bottom pill hands its icon to the strip, beside the other
-/// icons, and comes back as the field once a search is open. Nothing
-/// where the bars are horizontal.
-struct SearchBarItem: ToolbarContent {
+/// Search in a vertical strip (an iPhone Duo closed, or open in
+/// landscape): the bottom pill hands its icon to the strip and comes back
+/// as the field once a search is open. On the browse root Settings rides
+/// with it, right below.
+///
+/// Drawn by hand in the strip's column rather than as a toolbar item:
+/// the strip stacks its items at the head (the top bar's) and the foot
+/// (the bottom bar's) and ignores `ToolbarSpacer`, fixed or flexible, and
+/// a clear item of fixed height, so a toolbar item could only sit by the
+/// clock or by the thumb. On the root it sits a little above the middle,
+/// below the row of mixes; on a pushed page lower, under the strip's own
+/// group (back, then ···, Play and Shuffle, whose foot is 386pt down the
+/// closed Duo). The foot is left to the mini
+/// player and the mix bar, which run under the strip to the window's
+/// edge. Matched to the strip's own glass: 47pt wide, 25pt in from the
+/// window's edge, about 50pt an item, measured off a 3x screenshot.
+struct StripSearch: View {
+    /// The browse root's Settings, right below search.
+    let settings: Bool
+    /// Nothing but back above it in the strip (the root, Quick Mix); a
+    /// page with ···, Play and Shuffle there takes it lower.
+    let high: Bool
     @Environment(LibraryNavigator.self) private var navigator
 
-    var body: some ToolbarContent {
-        if navigator.hasVerticalBar {
-            // The bottom bar's items land at the foot of the strip, so
-            // search stays where the pill was, by the thumb.
-            ToolbarItem(placement: .bottomBar) {
-                Button("Search", systemImage: "magnifyingglass") { navigator.searchRequested = true }
+    /// The strip's item width and its gap to the window's edge.
+    static let itemWidth: CGFloat = 47
+    static let edgeGap: CGFloat = 25
+    /// Where the group's top sits, as a share of the window's height: on
+    /// the closed Duo's 678pt the root's is 312, under the mixes' band
+    /// (288), and a pushed page's 414, under the strip's own group.
+    private var heightShare: CGFloat { high ? 0.46 : 0.61 }
+
+    var body: some View {
+        GeometryReader { proxy in
+            GlassEffectContainer {
+                VStack(spacing: 0) {
+                    item("Search", systemImage: "magnifyingglass") { navigator.searchRequested = true }
+                    if settings {
+                        item("Settings", systemImage: "gearshape") { navigator.settingsRequested = true }
+                    }
+                }
+                .glassEffect(.regular.interactive(), in: .capsule)
             }
+            .padding(navigator.verticalBarEdge == .leading ? .leading : .trailing, Self.edgeGap)
+            .padding(.top, (proxy.size.height * heightShare).rounded())
+            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: navigator.verticalBarEdge == .leading ? .topLeading : .topTrailing)
         }
+        .ignoresSafeArea()
+    }
+
+    private func item(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .foregroundStyle(.primary)
+                .frame(width: Self.itemWidth, height: 50)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -229,6 +294,7 @@ struct VerticalBarProbe: View {
         Color.clear
             .onChange(of: edge, initial: true) { _, edge in
                 navigator.hasVerticalBar = edge != nil
+                navigator.verticalBarEdge = edge
             }
             // The fold can't be driven from the terminal, so a debug
             // build logs it; `log stream` on the simulator shows the pose.

@@ -65,18 +65,27 @@ struct LibraryView: View {
     /// width stopped 50pt short of it, since the vertical bar's inset is
     /// all on the trailing side.
     @State private var foldX: CGFloat?
-    /// Up to the fold where there is one, so the player is the left page
-    /// and the browser the right; otherwise half the window, capped, so a
-    /// wider window keeps the browser the bigger side.
+    /// Whether that fold is bent: the book pose rather than flat.
+    @State private var folded = false
+    /// Up to the fold while the device is bent like a book, so the player
+    /// is the left page and the browser the right. Open flat it is one
+    /// screen, and the split sits off centre the way Mail's does, the
+    /// browser the wider side. Without a fold, half the window, capped,
+    /// so a wider window keeps the browser the bigger side.
     private var columnWidth: CGFloat {
-        if let foldX { return foldX - 0.5 }
+        if let foldX {
+            return folded ? foldX - 0.5 : (width * Self.flatColumnShare).rounded()
+        }
         return min(width / 2, 560)
     }
+    /// The column's share of a flat Duo's width: about 360 of 850.
+    private static let flatColumnShare: CGFloat = 0.42
 
     /// What the host measures: the window's usable size and the fold.
     private struct Geometry: Equatable {
         var size: CGSize
         var foldX: CGFloat?
+        var folded = false
     }
 
     /// The cover while the window is narrow.
@@ -102,13 +111,22 @@ struct LibraryView: View {
                 NowPlayingView(model: model, style: .column)
                     .frame(width: columnWidth)
                     .transition(.move(edge: .leading))
-                Rectangle()
-                    .fill(Color.divider)
-                    .frame(width: 1)
-                    .ignoresSafeArea()
             }
             stack
+                // The pages meet on a soft shadow from the column rather
+                // than a hairline, which read as a seam down the middle.
+                .overlay(alignment: .leading) {
+                    if nowPlaying.isColumn {
+                        LinearGradient(colors: [Color.columnEdge, Color.columnEdge.opacity(0)],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 18)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                }
         }
+        .animation(.snappy, value: columnWidth)
         // Chrome is ink, not amber: the back chevron, the toolbar buttons.
         // Amber is reserved for what acts, and those set it by hand.
         .tint(Color.ink)
@@ -273,19 +291,27 @@ struct LibraryView: View {
         .removeDownloadConfirmation(Bindable(navigator).removing)
         .onGeometryChange(for: Geometry.self) { proxy in
             var foldX: CGFloat?
+            var folded = false
             if #available(iOS 27.1, *) {
                 // The fold as a division region, inactive while flat but
                 // still placed; only one running top to bottom is a page
                 // boundary, the horizontal one of the laptop pose isn't.
                 let folds = proxy.reservedRegions(kind: .division, options: .includeInactive)
-                foldX = folds.first { $0.frame.height > $0.frame.width }?.frame.midX
+                let fold = folds.first { $0.frame.height > $0.frame.width }
+                foldX = fold?.frame.midX
+                // Without `includeInactive` a fold is listed only while
+                // the device is bent.
+                if let fold {
+                    folded = proxy.reservedRegions(kind: .division).contains { $0.id == fold.id }
+                }
             }
-            return Geometry(size: proxy.size, foldX: foldX)
+            return Geometry(size: proxy.size, foldX: foldX, folded: folded)
         } action: { geometry in
             let size = geometry.size
             width = size.width
             height = size.height
             foldX = geometry.foldX
+            folded = geometry.folded
             let column = NowPlayingPresentation.wantsColumn(size)
             guard column != nowPlaying.isColumn else { return }
             nowPlaying.isColumn = column
@@ -426,6 +452,16 @@ struct LibraryView: View {
         // mini player vanishes as soon as you navigate anywhere.
         .safeAreaInset(edge: .bottom) {
             BottomBar(model: model, query: $query, searching: $searching)
+        }
+        // Search (and on the root, Settings) in a vertical strip; the
+        // field itself is the bottom bar's once a search is open.
+        .overlay {
+            if navigator.hasVerticalBar, !searching, model.selectedSection != nil {
+                // Quick Mix's strip holds back alone, so search sits as
+                // high as on the root, without Settings.
+                StripSearch(settings: path.isEmpty, high: path.isEmpty || buildingMix)
+                    .transition(.opacity)
+            }
         }
         // The bar lifts itself from the keyboard's frame notification.
         // SwiftUI's own avoidance is applied to whichever screen is on top

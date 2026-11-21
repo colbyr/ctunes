@@ -80,6 +80,9 @@ struct ArtistView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 header
+                    // Half folded, the portrait and cards fill the top
+                    // half and the rule and controls start at the crease.
+                    .fillsToCrease(above: 8, below: 16)
                     .padding(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 Rectangle()
                     .fill(Color.divider)
@@ -111,6 +114,7 @@ struct ArtistView: View {
                 }
             }
         }
+        .readsCrease()
         .artworkBackground(artworkURL)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .scrollPosition($scrollPosition)
@@ -128,7 +132,6 @@ struct ArtistView: View {
         .navigationTitle(route.title)
         .navigationSubtitle(loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : "")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { SearchBarItem() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

@@ -53,6 +53,14 @@ extension Color {
             ? UIColor(red: 0xF5 / 255, green: 0xEA / 255, blue: 0xD6 / 255, alpha: 0.10)
             : UIColor(red: 0x2B / 255, green: 0x21 / 255, blue: 0x1B / 255, alpha: 0.12)
     })
+    /// Where the Now Playing column meets the browser: the head of a
+    /// shadow that fades out over the browser's edge, in place of a
+    /// hairline. Darker than one, since it is spread thin.
+    static let columnEdge = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0, alpha: 0.35)
+            : UIColor(red: 0x2B / 255, green: 0x21 / 255, blue: 0x1B / 255, alpha: 0.10)
+    })
     /// The band behind the Music screen's row of mixes: the ground a
     /// shade deeper, so the white cards stand off it.
     static let band = Color(uiColor: UIColor { traits in

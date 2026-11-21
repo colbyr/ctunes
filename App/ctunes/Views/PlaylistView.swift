@@ -121,7 +121,6 @@ struct PlaylistView: View {
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarItems }
-            .toolbar { SearchBarItem() }
             // Keyed on both generations: going offline, or coming back,
             // reloads from whichever library is current, and an add from
             // another screen's menu lands here too.
@@ -160,6 +159,7 @@ struct PlaylistView: View {
             .onDelete(perform: deleteHandler)
         }
         .listStyle(.plain)
+        .readsCrease()
         .environment(\.editMode, $editMode)
         .scrollPosition($scrollPosition)
         .environment(\.defaultMinListRowHeight, 1)
@@ -248,6 +248,7 @@ struct PlaylistView: View {
                 MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
                               enabled: !playable.isEmpty, loading: false, tint: nil, action: shuffle)
             }
+            .fillsToCrease(above: 8, below: 16)
             .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)

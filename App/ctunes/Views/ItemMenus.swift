@@ -23,8 +23,12 @@ final class LibraryNavigator {
     /// or open in landscape), where the search icon belongs with the
     /// other icons rather than in a pill at the bottom. Set by the host.
     var hasVerticalBar = false
+    /// Which side that strip runs down.
+    var verticalBarEdge: HorizontalEdge?
     /// The strip's search item was tapped; the host opens the pill.
     var searchRequested = false
+    /// The strip's Settings item was tapped; the browse root opens it.
+    var settingsRequested = false
 
     func open(_ route: LibraryRoute) { requested = route }
 }

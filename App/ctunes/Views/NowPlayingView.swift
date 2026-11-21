@@ -65,6 +65,8 @@ struct NowPlayingView: View {
     /// row's width recurses in a List during a live resize on the Mac, so
     /// the column's art is sized from a measurement instead.
     @State private var columnSize: CGSize = .zero
+    /// The hidden picker behind the strip's AirPlay button.
+    @State private var routePicker = RoutePickerHandle()
 
     /// Edge to edge of the column, as on the phone, less the header's and
     /// the art block's margins, but no taller than 40% of the column: a
@@ -87,6 +89,16 @@ struct NowPlayingView: View {
         return false
     }
 
+    /// The sheet on a screen whose bars run down a vertical strip (an
+    /// iPhone Duo closed): AirPlay, the heart, repeat and shuffle go to
+    /// the strip, and the art shrinks beside the names, so Up Next and
+    /// its first track are on screen under the transport.
+    private var controlsInStrip: Bool { style == .phone && navigator.hasVerticalBar }
+    /// The header's rhythm: tighter on the closed Duo's short screen.
+    private var headerSpacing: CGFloat { controlsInStrip ? 16 : 24 }
+    /// The art's edge in the closed Duo's sheet, beside the names.
+    private static let stripArtEdge: CGFloat = 150
+
     /// The art on show, at the size the header draws it; the background
     /// takes its color from the same file so it is never a second fetch.
     private var artworkURL: URL? {
@@ -96,8 +108,25 @@ struct NowPlayingView: View {
     var body: some View {
         switch style {
         case .phone:
-            scrollingList
-                .artworkBackground(artworkURL)
+            if controlsInStrip {
+                // A stack of its own, so the controls are toolbar items
+                // and the strip takes them; no title, the art says it.
+                NavigationStack {
+                    scrollingList
+                        .artworkBackground(artworkURL)
+                        .background {
+                            HiddenRoutePicker(handle: routePicker)
+                                .frame(width: 1, height: 1)
+                                .opacity(0.01)
+                                .accessibilityHidden(true)
+                        }
+                        .toolbar { stripItems }
+                        .navigationBarTitleDisplayMode(.inline)
+                }
+            } else {
+                scrollingList
+                    .artworkBackground(artworkURL)
+            }
         case .column:
             // The phone's screen beside the browser: the same hierarchy,
             // scrolling the same way, half the width, and no title: the
@@ -169,14 +198,20 @@ struct NowPlayingView: View {
                 // art of about 220 beside the names and two queue rows
                 // under the transport; a tall cover caps the art at 400
                 // anyway.
-                artPane
-                    .splitArrangementLayoutRatio(idealHorizontal: 0.5, idealVertical: 0.45)
-                    .background {
-                        SplitAxisProbe { paneAxis = $0 }
-                    }
+                // Stacked, the pane holds the track and its transport, a
+                // little under half the screen, and Up Next gets the rest;
+                // side by side the transport heads the queue's pane.
+                VStack(spacing: 0) {
+                    artPane
+                    if namesBesideArt { controlsPane }
+                }
+                .splitArrangementLayoutRatio(idealHorizontal: 0.5, idealVertical: 0.45)
+                .background {
+                    SplitAxisProbe { paneAxis = $0 }
+                }
             } secondary: {
                 VStack(spacing: 0) {
-                    controlsPane
+                    if !namesBesideArt { controlsPane }
                     queueList
                 }
             }
@@ -262,6 +297,12 @@ struct NowPlayingView: View {
         HStack(spacing: 4) {
             Text("Up Next")
             Spacer()
+            if !controlsInStrip { modeButtons }
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var modeButtons: some View {
             modeButton(
                 systemImage: player.repeatMode == .one ? "repeat.1" : "repeat",
                 active: player.repeatMode != .off,
@@ -272,8 +313,6 @@ struct NowPlayingView: View {
                 active: player.isShuffled,
                 label: player.isShuffled ? "Shuffle on" : "Shuffle off"
             ) { player.toggleShuffle() }
-        }
-        .buttonStyle(.plain)
     }
 
     private var endOfQueue: some View {
@@ -292,7 +331,7 @@ struct NowPlayingView: View {
     /// The phone's and the column's header row: the art block over the
     /// controls, scrolling away with the queue.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: headerSpacing) {
             artBlock
             titleRow
             controls
@@ -312,6 +351,7 @@ struct NowPlayingView: View {
                 // height, or what its width leaves after 180 for the
                 // names and title, whichever is less. A stack's priority
                 // sizing gave the art 140 of a 475 strip.
+                // The height is what the transport under it leaves.
                 GeometryReader { proxy in
                     let edge = max(0, min(proxy.size.height, proxy.size.width - 16 - 180, 400))
                     HStack(alignment: .top, spacing: 16) {
@@ -341,14 +381,15 @@ struct NowPlayingView: View {
     /// The controls at the head of the queue's pane, led by the title
     /// unless it sits beside the art.
     private var controlsPane: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: namesBesideArt ? 16 : 24) {
             if !namesBesideArt { titleRow }
             controls
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal)
-        .padding(.top, 12)
+        .padding(.top, namesBesideArt ? 0 : 12)
         .padding(.bottom, 8)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// The context first: whose record is on, and which, then the art.
@@ -358,7 +399,27 @@ struct NowPlayingView: View {
     /// In the column the artist line sits level with the inline title
     /// of the stack beside it: 26pt lower under a vertical bar, where
     /// the window has no status bar on top.
-    private var artBlock: some View {
+    @ViewBuilder private var artBlock: some View {
+        if controlsInStrip {
+            // Small and leading, the names beside it, so the queue shows.
+            HStack(alignment: .top, spacing: 16) {
+                art(edge: Self.stripArtEdge)
+                VStack(alignment: .leading, spacing: 4) {
+                    artistLine
+                        .font(.headline)
+                    albumLine
+                        .font(.subheadline)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 24)
+        } else {
+            stackedArtBlock
+        }
+    }
+
+    private var stackedArtBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 artistLine
@@ -411,9 +472,11 @@ struct NowPlayingView: View {
                 .font(.title3.bold())
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // The heart belongs to the track, so it sits beside the
-                // title, level with its first line.
-                HeartButton(model: model, track: player.currentTrack)
-                    .frame(width: 44, height: 26)
+                // title, level with its first line, unless the strip has it.
+                if !controlsInStrip {
+                    HeartButton(model: model, track: player.currentTrack)
+                        .frame(width: 44, height: 26)
+                }
         }
         .padding(.horizontal, 12)
     }
@@ -428,7 +491,7 @@ struct NowPlayingView: View {
 
     /// The scrubber and the transport.
     private var controls: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: headerSpacing) {
             scrubber
             transport
         }
@@ -513,10 +576,38 @@ struct NowPlayingView: View {
         // AirPlay is an output control, so it rides with the transport, as
         // an overlay rather than a fourth member so play stays centred.
         .overlay(alignment: .trailing) {
-            AirPlayButton()
-                .frame(width: 44, height: 44)
-                .padding(.trailing, 12)
-                .accessibilityLabel("AirPlay")
+            if !controlsInStrip {
+                AirPlayButton()
+                    .frame(width: 44, height: 44)
+                    .padding(.trailing, 12)
+                    .accessibilityLabel("AirPlay")
+            }
+        }
+    }
+
+    /// AirPlay, the heart, repeat and shuffle as the strip's items, for
+    /// the closed Duo's sheet.
+    @ToolbarContentBuilder private var stripItems: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            AirPlayStripButton(picker: routePicker)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            let track = player.currentTrack
+            let favorite = track.map { model.isFavorite($0) } ?? false
+            Button(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.fill" : "heart") {
+                guard let track else { return }
+                Task { await model.toggleFavorite(track) }
+            }
+            .tint(favorite ? Color.heart : nil)
+            .disabled(track == nil || model.library?.isConnected == false)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(repeatLabel, systemImage: player.repeatMode == .one ? "repeat.1" : "repeat") { player.cycleRepeat() }
+                .tint(player.repeatMode != .off ? Color.accentText : nil)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(player.isShuffled ? "Shuffle on" : "Shuffle off", systemImage: "shuffle") { player.toggleShuffle() }
+                .tint(player.isShuffled ? Color.accentText : nil)
         }
     }
 

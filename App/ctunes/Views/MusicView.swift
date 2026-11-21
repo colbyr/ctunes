@@ -283,24 +283,29 @@ struct MusicView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 // Who is listening, and the download filter, under the
                 // title: they decide the mixes as well as the grid.
-                ListenerChips(model: model, artists: artists, downloadedOnly: $downloadedOnly)
-                    .padding(.bottom, 8)
-                if let mode = bannerMode {
-                    OfflineBanner(mode: mode) {
-                        Task { await model.reconnect(force: true) }
+                // Half folded like a laptop, these fill the top half and
+                // the browser starts under the crease.
+                VStack(alignment: .leading, spacing: 0) {
+                    ListenerChips(model: model, artists: artists, downloadedOnly: $downloadedOnly)
+                        .padding(.bottom, 8)
+                    if let mode = bannerMode {
+                        OfflineBanner(mode: mode) {
+                            Task { await model.reconnect(force: true) }
+                        }
+                        .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
                     }
-                    .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
+                    // The mixes: the mixer's button, the pinned ones, then
+                    // what was played here, a row that scrolls.
+                    let mixes = RecentMixItem.all(model, pinned: visibleShortcuts).filter { $0.picks.isEmpty || !$0.picks.allSatisfy(isHidden) }
+                    // On a band the width of the screen, so the white cards
+                    // stand off the ground and the browser starts below it.
+                    MixesRow(model: model, items: mixes, margin: Self.margin, open: open)
+                        .padding(.vertical, 18)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.band)
+                        .padding(.top, 8)
                 }
-                // The mixes: the mixer's button, the pinned ones, then
-                // what was played here, a row that scrolls.
-                let mixes = RecentMixItem.all(model, pinned: visibleShortcuts).filter { $0.picks.isEmpty || !$0.picks.allSatisfy(isHidden) }
-                // On a band the width of the screen, so the white cards
-                // stand off the ground and the browser starts below it.
-                MixesRow(model: model, items: mixes, margin: Self.margin, open: open)
-                    .padding(.vertical, 18)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.band)
-                    .padding(.top, 8)
+                .fillsToCrease()
                 // The browser starts here: the chips with the arrange
                 // button, then the hidden-artist line when any are.
                 // The listeners and the download filter are in the top bar;
@@ -342,6 +347,7 @@ struct MusicView: View {
                 sections
             }
         }
+        .readsCrease()
         .parchment()
         .scrollPosition($scrollPosition)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -359,11 +365,19 @@ struct MusicView: View {
         // Beside the Now Playing column the bar's large title sits flush
         // on the divider with no margin; the inline title is centred.
         .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
-        .toolbar { SearchBarItem() }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Settings", systemImage: "gearshape") { showingSettings = true }
+            // Under a vertical strip Settings sits right below search
+            // (`StripSearch`).
+            if !navigator.hasVerticalBar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Settings", systemImage: "gearshape") { showingSettings = true }
+                }
             }
+        }
+        .onChange(of: navigator.settingsRequested) { _, wanted in
+            guard wanted else { return }
+            navigator.settingsRequested = false
+            showingSettings = true
         }
         // Keyed on the revision: a list landing from the server, or a
         // library switch, reads again from the saved copies.

@@ -101,6 +101,7 @@ struct FavoritesView: View {
                     MixActionCard(systemImage: "shuffle", title: "Shuffle", subtitle: nil,
                                   enabled: !playable.isEmpty, loading: false, tint: .heart, action: shuffle)
                 }
+                .fillsToCrease(above: 8, below: 16)
                 .listRowInsets(.init(top: 8, leading: Self.margin, bottom: 16, trailing: Self.margin))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -153,6 +154,7 @@ struct FavoritesView: View {
             }
         }
         .listStyle(.plain)
+        .readsCrease()
         .parchment()
         .scrollPosition($scrollPosition)
         .environment(\.defaultMinListRowHeight, 1)
@@ -172,7 +174,6 @@ struct FavoritesView: View {
         .navigationTitle("Favorites")
         .navigationSubtitle(subtitle)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { SearchBarItem() }
         .toolbar {
             // The page's own menu, like the album and artist pages: the
             // queue items, the way in to the mixer and the offline pin.

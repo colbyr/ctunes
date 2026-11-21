@@ -255,11 +255,18 @@ is a sheet on a compact width (the header scrolls with the
 queue and the system drag closes it) and a full-screen cover with a title
 bar on a regular one; a window 960pt or wider, or wider than tall and at
 least 800 (a Duo open in landscape is ~850 usable), gets a **leading
-column** beside the stack, half the width capped at 560, the left page
-of the fold. The cover lays the header out as an `ArrangementView`
-(iOS 27.1): the art as one pane, the transport over the queue as the
-other, so the laptop fold divides them; the art pane asks for 45% of a
-stacked split. **The column is the phone's screen with no title**: one
+column** beside the stack, half the width capped at 560; on a Duo it
+ends on the crease while the device is bent like a book and takes 42%
+of the width while it is flat (off centre like Mail), and it meets the
+browser on a soft gradient (`Color.columnEdge`), not a hairline. The
+cover lays the header out as an `ArrangementView` (iOS 27.1); stacked,
+the art, names and transport share the first pane (45%) and Up Next
+fills the other, side by side the transport heads the queue's pane.
+**Half folded like a laptop** a page's scroll view reads the active
+horizontal fold (`readsCrease`, `DuoLayout.swift`) and its header pads
+down to it (`fillsToCrease`) so the browser starts under the crease;
+it scrolls away as usual. Grids are four across from 560pt
+(`BrowseTile.minimum`), the Duo's 669pt upright. **The column is the phone's screen with no title**: one
 `List` scrolling the header away with the queue, the artist line level
 with the stack's inline title beside it, the art centred
 and sized from a measurement of the column (its width less the margins,
@@ -276,13 +283,21 @@ in the same pass that dropped the flag, one SwiftUI took as dismissed
 and nothing could close.
 **A vertical bar** (the Duo closed, or
 open in landscape) is read off `toolbarVerticalEdge` by
-`VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; every browse
-screen then adds `SearchBarItem` to its toolbar, the album, artist,
+`VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; the
+host overlays `StripSearch` in the strip's column, Search (and on the
+root, Settings) as a glass capsule drawn to match the strip's, since
+the strip ignores `ToolbarSpacer` and a toolbar item can only sit by
+the clock or the thumb: 46% down on the root and Quick Mix, 61% under
+a page's ··· / Play / Shuffle group. The album, artist,
 playlist, Favorites and Quick Mix pages keep their Play and Shuffle
 cards off the page and in the strip from the start (`iconsInBar`), and
-the bottom bar drops the search pill until a search is open and sets
-the mini player 48pt tall against the strip's inset, level with the
-search item at its foot. An artist tapped in Now Playing, or any route from an
+the bottom bar drops the search pill until a search is open; the mini
+player (48pt), the mix bar and the search field's × run under the
+strip to the window's edge. The closed Duo's Now Playing sheet has a
+stack of its own so AirPlay (`AirPlayStripButton`, a symbol tapping a
+hidden `AVRoutePickerView`; the picker itself would sit in a bar of its
+own), the heart, repeat and shuffle are strip items, and the art is
+150pt beside the names so Up Next shows. An artist tapped in Now Playing, or any route from an
 item menu, goes through `LibraryNavigator.open(_:)` in the environment,
 since the host owns the path. The host measures the window itself rather than
 reading the size class: a Mac window only turns compact a hair above its

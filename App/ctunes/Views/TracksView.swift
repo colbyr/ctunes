@@ -114,6 +114,9 @@ struct TracksView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 header
+                    // Half folded, the cover and cards fill the top half
+                    // and the tracks start under the crease.
+                    .fillsToCrease(above: 8, below: 4)
                     .padding(.init(top: 8, leading: Self.margin, bottom: 4, trailing: Self.margin))
                 ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
                     if discs.count > 1, let number = disc.number {
@@ -129,6 +132,7 @@ struct TracksView: View {
                 }
             }
         }
+        .readsCrease()
         .artworkBackground(artworkURL)
         .scrollPosition($scrollPosition)
         // Past the cover and the cards.
@@ -146,7 +150,6 @@ struct TracksView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { SearchBarItem() }
         .toolbar {
             // The title bar carries the artist under the title, and opens
             // their page: the native subtitle is plain text, so this is a

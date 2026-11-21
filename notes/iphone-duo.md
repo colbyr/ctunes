@@ -102,6 +102,40 @@ had none of those, so this note is about the layout.
   25pt up, with no trailing padding: 12pt of air, tops and feet within
   a point. Measured off a 3x screenshot of the closed outer display.
 
+## COL-113 refinements (2026-11-21)
+
+- **Flat landscape is off centre, the book pose on the crease.** The
+  vertical fold is listed by `reservedRegions(kind: .division)` only
+  while bent; with `includeInactive` it is listed flat too. Flat the
+  column is 42% of the width, bent it ends on the fold's midpoint.
+  The hairline is now an 18pt gradient from `Color.columnEdge`.
+- **The laptop pose pads headers to the crease.** `readsCrease()` on
+  a page's scroll view turns the active horizontal fold into an offset
+  from the top of the scroll content (`maxY` less the top safe area,
+  so it holds whichever way the proxy sits under the bars), and
+  `fillsToCrease(above:below:)` gives the header that minimum height,
+  centred. Home, album, artist, playlist and Favorites.
+- **The upright inner display gets four tiles across**: 136pt floor
+  from 560 to 720.
+- **The portrait cover puts the transport in the art pane**, so the
+  track and its controls take 45% and Up Next the rest.
+- **The strip ignores spacers.** `ToolbarSpacer(.flexible)` and
+  `.fixed`, in either the top or bottom bar placement, and a clear
+  item of fixed height, all left the items where they were: the top
+  group under the clock, the bottom group at the foot. A custom view
+  (`AVRoutePickerView`) is not stacked at all but gets a horizontal bar
+  of its own over the sheet. So Search is drawn by hand
+  (`StripSearch`), 47pt wide and 25pt from the edge like the strip's
+  glass; the closed Duo's top group (back, then ···, Play, Shuffle)
+  ends 386pt down, which is why a pushed page puts Search at 61%.
+- **Folded Now Playing**: AirPlay, heart, repeat and shuffle in the
+  strip; 150pt art beside the names, 16pt rhythm; three Up Next rows
+  show on the 678pt outer display.
+- Checked closed in the simulator: Home, an album playing, the Now
+  Playing sheet, search open, Quick Mix with a pick. **Not seen**: any
+  inner-display pose. `simctl io screenConfig power` does not move the
+  hinge (and toggling it crashed SpringBoard); fold in DeviceHub.
+
 ## Measured
 
 - With `.split.axes(.vertical)` a cover wider than tall showed the
