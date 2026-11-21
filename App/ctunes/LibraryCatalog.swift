@@ -11,9 +11,30 @@ import PlexKit
 /// would have.
 @MainActor @Observable
 final class LibraryCatalog {
-    var albums: [PlexAlbum] = []
-    var artists: [PlexArtist] = []
-    var rotation: Rotation = .none
+    var albums: [PlexAlbum] = [] {
+        didSet {
+            guard albums != oldValue else { return }
+            byArtist = AlbumBrowse.groups(albums, view: .artist)
+            albumsByArtistKey = Dictionary(grouping: albums, by: \.artistKey)
+            revision += 1
+        }
+    }
+    var artists: [PlexArtist] = [] {
+        didSet { if artists != oldValue { revision += 1 } }
+    }
+    var rotation: Rotation = .none {
+        didSet { if rotation != oldValue { revision += 1 } }
+    }
+    /// Bumped when the albums, the artists or the rotation change, not on
+    /// every load that hands back the same lists: what the browse root
+    /// keys its grouping on, so a redraw doesn't sort the library again.
+    private(set) var revision = 0
+    /// Every album grouped under its artist, A to Z: the listeners sheet's
+    /// and Settings' list. Worked out when the albums land rather than on
+    /// every redraw of the root, which passes it down.
+    private(set) var byArtist: [AlbumGroup] = []
+    /// Each artist's albums in the section, by the artist's ratingKey.
+    private(set) var albumsByArtistKey: [String: [PlexAlbum]] = [:]
     /// Every hearted track, fetched with the albums so the favorites
     /// shortcut and the Favorites tile can say how many; nil until the
     /// request lands.

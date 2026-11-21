@@ -56,8 +56,23 @@ struct MusicView: View {
     private var browsable: [PlexAlbum] {
         downloadedOnly ? albums.filter { model.downloads.hasDownloads($0) } : albums
     }
+    /// What the grids are made from. Reading it is what registers the
+    /// body's observation of each input, so a redraw served from `memo`
+    /// still comes when any of them changes; the download generation
+    /// counts only under Downloaded only, the one time it filters.
+    private var browseInputs: BrowseInputs {
+        BrowseInputs(catalog: catalog.revision, view: view, hidden: hidden,
+                     downloads: downloadedOnly ? model.downloads.generation : nil)
+    }
+    /// Sorted and grouped once per change of `browseInputs`, not on every
+    /// redraw: the root redraws on every frame of a window resize, every
+    /// connection flip and every mix played, and grouping a few thousand
+    /// albums is a frame or more each time.
+    @State private var memo = ViewMemo()
     private var groups: [AlbumGroup] {
-        AlbumBrowse.groups(browsable, view: view, hiding: hidden, rotation: rotation)
+        memo("albums", key: browseInputs) {
+            AlbumBrowse.groups(browsable, view: view, hiding: hidden, rotation: rotation)
+        }
     }
     /// The Artists subject's list. Under Downloaded only, the artists with
     /// a downloaded album, read off the album list rather than rolling up
@@ -68,17 +83,17 @@ struct MusicView: View {
         return libraryArtists.filter { downloaded.contains($0.ratingKey) }
     }
     private var artistGroups: [ArtistGroup] {
-        AlbumBrowse.groups(browsableArtists, view: view, hiding: hidden, rotation: rotation)
+        memo("artists", key: browseInputs) {
+            AlbumBrowse.groups(browsableArtists, view: view, hiding: hidden, rotation: rotation)
+        }
     }
-    /// How many albums each artist has in the section, for the line under
+    /// How many albums an artist has in the section, for the line under
     /// their name.
-    private var albumCounts: [String: Int] {
-        albums.reduce(into: [:]) { $0[$1.artistKey, default: 0] += 1 }
+    private func albumTotal(_ artistKey: String) -> Int? {
+        catalog.albumsByArtistKey[artistKey]?.count
     }
     /// Every artist in the library, for the listeners sheet.
-    private var artists: [AlbumGroup] {
-        AlbumBrowse.groups(albums, view: .artist)
-    }
+    private var artists: [AlbumGroup] { catalog.byArtist }
     /// The Playlists subject's list, the model's, in the view's order.
     /// Under Downloaded only, the playlists with a saved item on disk,
     /// which leaves out any never opened.
@@ -133,13 +148,12 @@ struct MusicView: View {
     }
 
     @ViewBuilder private func artistItems(_ artists: [PlexArtist]) -> some View {
-        let counts = albumCounts
         switch layout {
         case .grid:
             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                 ForEach(artists) { artist in
                     Button { path.append(ArtistRoute(ratingKey: artist.ratingKey, title: artist.title)) } label: {
-                        ArtistTile(model: model, artist: artist, subtitle: Self.albumCount(counts[artist.ratingKey]))
+                        ArtistTile(model: model, artist: artist, subtitle: Self.albumCount(albumTotal(artist.ratingKey)))
                     }
                     .buttonStyle(.plain)
                     .contextMenu { ArtistMenu(model: model, ratingKey: artist.ratingKey, title: artist.title) }
@@ -147,7 +161,7 @@ struct MusicView: View {
             }
         case .list:
             BrowseList(items: artists) { artist in
-                ArtistRow(model: model, artist: artist, subtitle: Self.albumCount(counts[artist.ratingKey])) {
+                ArtistRow(model: model, artist: artist, subtitle: Self.albumCount(albumTotal(artist.ratingKey))) {
                     path.append(ArtistRoute(ratingKey: artist.ratingKey, title: artist.title))
                 } menu: {
                     ArtistMenu(model: model, ratingKey: artist.ratingKey, title: artist.title)
@@ -526,7 +540,7 @@ struct MusicView: View {
             guard let tracks = playlistTracks[key], !tracks.isEmpty else { return false }
             return !tracks.contains { !hidden.hides($0) }
         case .artist(let key, _, _):
-            let theirs = albums.filter { $0.artistKey == key }
+            let theirs = catalog.albumsByArtistKey[key] ?? []
             return !theirs.isEmpty && !theirs.contains { !hidden.hides($0) }
         case .album:
             return false
@@ -557,7 +571,7 @@ struct MusicView: View {
                 count = nil
             }
         case .artist(let key, _, _):
-            count = loaded ? Self.albumCount(albums.filter { $0.artistKey == key && !hidden.hides($0) }.count) : nil
+            count = loaded ? Self.albumCount((catalog.albumsByArtistKey[key] ?? []).filter { !hidden.hides($0) }.count) : nil
         case .album(let key, _, _, let artist, _):
             let album = albums.first { $0.ratingKey == key }
             let line = [album?.parentTitle ?? artist, album?.year.map(String.init)].compactMap { $0 }
@@ -653,3 +667,10 @@ struct OfflineBanner: View {
     }
 }
 
+/// The inputs the browse root's grids are sorted and grouped from.
+struct BrowseInputs: Equatable {
+    let catalog: Int
+    let view: AlbumView
+    let hidden: VetoSet
+    let downloads: Int?
+}
