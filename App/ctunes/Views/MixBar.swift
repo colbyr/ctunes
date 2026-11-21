@@ -568,6 +568,7 @@ struct MixesRow: View {
                     } label: {
                         RecentMixCard(model: model, item: item,
                                       playing: model.isPlaying(mix: item.key, player: player),
+                                      paused: !player.isPlaying,
                                       loading: draft.loadingKey == item.key)
                     }
                     .buttonStyle(.plain)
@@ -678,7 +679,10 @@ struct MixesRow: View {
 struct RecentMixCard: View {
     let model: AppModel
     let item: RecentMixItem
+    /// The queue this mix started is the one on.
     let playing: Bool
+    /// The player is paused, so a playing card shows a pause glyph.
+    let paused: Bool
     let loading: Bool
 
     /// The most art a card shows; the last stands for the rest too.
@@ -722,18 +726,23 @@ struct RecentMixCard: View {
             .frame(height: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                // The style by its glyph alone, the pin beside it; only
-                // Playing is spelled out.
+                // The style by its glyph alone, the pin beside it. A
+                // playing mix shows a waveform that moves, the way the
+                // system marks what's playing, or a pause glyph while the
+                // player is paused; the ring around the card says which.
                 HStack(spacing: 6) {
                     Group {
                         if loading {
                             ProgressView().controlSize(.mini)
+                        } else if playing {
+                            Image(systemName: paused ? "pause.fill" : "waveform")
+                                .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing,
+                                              options: .repeat(.continuous), isActive: !paused)
+                                .contentTransition(.symbolEffect(.replace))
+                                .accessibilityLabel(paused ? "Paused" : "Playing")
                         } else {
-                            Image(systemName: playing ? "waveform" : item.style.symbol)
-                                .accessibilityLabel(playing ? "Playing" : item.style.verb)
-                        }
-                        if playing {
-                            Text("Playing")
+                            Image(systemName: item.style.symbol)
+                                .accessibilityLabel(item.style.verb)
                         }
                     }
                     .font(.caption.weight(playing ? .semibold : .regular))
