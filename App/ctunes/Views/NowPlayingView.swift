@@ -346,12 +346,14 @@ struct NowPlayingView: View {
         .listRowSeparator(.hidden)
     }
 
-    /// The phone's and the column's header row: the art block over the
-    /// controls, scrolling away with the queue.
+    /// The phone's and the column's header row: the art, the track under
+    /// it, then the controls, scrolling away with the queue.
     private var header: some View {
         VStack(alignment: .leading, spacing: headerSpacing) {
-            artBlock
-            titleRow
+            VStack(alignment: .leading, spacing: 16) {
+                artBlock
+                trackInfo
+            }
             controls
         }
         .frame(maxWidth: .infinity)
@@ -383,23 +385,17 @@ struct NowPlayingView: View {
             if namesBesideArt {
                 // The art's edge is measured, not negotiated: the pane's
                 // height, or what its width leaves after 180 for the
-                // names and title, whichever is less. A stack's priority
-                // sizing gave the art 140 of a 475 strip.
-                // The height is what the transport under it leaves.
+                // track, whichever is less. A stack's priority sizing
+                // gave the art 140 of a 475 strip. The height is what
+                // the transport under it leaves. The track sits level
+                // with the art's foot, the heart at the far edge.
                 GeometryReader { proxy in
                     let edge = max(0, min(proxy.size.height, proxy.size.width - 16 - 180, 400))
-                    HStack(alignment: .top, spacing: 16) {
+                    HStack(alignment: .bottom, spacing: 16) {
                         art(edge: edge)
-                        VStack(alignment: .leading, spacing: 4) {
-                            artistLine
-                                .font(.headline)
-                            albumLine
-                                .font(.subheadline)
-                            Spacer(minLength: 12)
-                            titleRow
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: edge, alignment: .leading)
+                        trackDetails
                     }
+                    .frame(height: edge, alignment: .bottom)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
@@ -416,7 +412,7 @@ struct NowPlayingView: View {
     /// unless it sits beside the art.
     private var controlsPane: some View {
         VStack(alignment: .leading, spacing: namesBesideArt ? 16 : 24) {
-            if !namesBesideArt { titleRow }
+            if !namesBesideArt { trackInfo }
             controls
         }
         .frame(maxWidth: .infinity)
@@ -426,30 +422,18 @@ struct NowPlayingView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The context first: whose record is on, and which, then the art.
-    /// Everything is leading-aligned on the art's left edge; a centred
-    /// title beside one 44pt well read as off-centre. On the phone the
-    /// sheet's drag indicator sits over the top, so the text clears it.
-    /// In the column the artist line sits level with the inline title
-    /// of the stack beside it: 26pt lower under a vertical bar, where
-    /// the window has no status bar on top.
+    /// The art at the head of the screen, the track under it. On the
+    /// phone the sheet's drag indicator sits over the top, so the art
+    /// clears it. In the column the art's top sits level with the inline
+    /// title of the stack beside it: 26pt lower under a vertical bar,
+    /// where the window has no status bar on top.
     private var artBlock: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                artistLine
-                    .font(.headline)
-                albumLine
-                    .font(.subheadline)
-            }
+        art(edge: style == .column ? columnArtEdge : controlsInStrip ? stripArtEdge : nil)
             .padding(.horizontal, 12)
             .padding(.top, style == .phone ? 28 : style == .column ? (navigator.hasVerticalBar ? 38 : 12) : 8)
-
-            art(edge: style == .column ? columnArtEdge : controlsInStrip ? stripArtEdge : nil)
-                .padding(.horizontal, 12)
-                // Centred in the column, where it no longer spans the
-                // width; the names and title keep the leading edge.
-                .frame(maxWidth: .infinity, alignment: style == .column ? .center : .leading)
-        }
+            // Centred in the column, where it no longer spans the width;
+            // the track keeps the leading edge.
+            .frame(maxWidth: .infinity, alignment: style == .column ? .center : .leading)
     }
 
     /// Edge to edge less a margin, so the art is as big as the screen
@@ -473,30 +457,48 @@ struct NowPlayingView: View {
             }
     }
 
-    /// The track itself, after the art, where the heart can sit beside
-    /// it.
-    private var titleRow: some View {
-        HStack(alignment: .top, spacing: 8) {
-                // Two lines are always held, so a title that wraps doesn't
-                // shove the transport down when the track changes.
-                ZStack(alignment: .topLeading) {
-                    Text(" \n ").hidden()
-                    titleText.lineLimit(3)
-                }
-                .font(.title3.bold())
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // The heart belongs to the track, so it sits beside the
-                // title, level with its first line, unless the strip has it.
-                if !controlsInStrip {
-                    HeartButton(model: model, track: player.currentTrack)
-                        .frame(width: 44, height: 26)
-                }
+    /// The track under the art, in the screen's margins.
+    private var trackInfo: some View {
+        trackDetails.padding(.horizontal, 12)
+    }
+
+    /// The title, up to two lines, over the artist and the album on one
+    /// line; the heart at the trailing edge, centred on the two, unless
+    /// the strip has it. The same block under the art and beside it.
+    private var trackDetails: some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                titleText
+                    .font(.title3.bold())
+                    .lineLimit(2)
+                byline
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if !controlsInStrip {
+                HeartButton(model: model, track: player.currentTrack)
+                    .frame(width: 44, height: 44)
+            }
         }
-        .padding(.horizontal, 12)
+    }
+
+    /// "Artist · Album", one line, each half opening its page. The album
+    /// gives way first when the line runs long, then the artist.
+    private var byline: some View {
+        let track = player.currentTrack
+        let hasBoth = track?.grandparentTitle != nil && track?.parentTitle != nil
+        return HStack(spacing: 0) {
+            artistLine
+                .layoutPriority(1)
+            if hasBoth { Text(verbatim: " · ") }
+            albumLine
+        }
+        .font(.body)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
     }
 
     /// The title, followed by the credited artist on a compilation or a
-    /// feature; the album artist is already at the top.
+    /// feature; the album artist is in the byline under it.
     private var titleText: Text {
         guard let track = player.currentTrack else { return Text("Nothing playing") }
         guard let credited = track.trackArtist else { return Text(track.title) }
@@ -543,7 +545,7 @@ struct NowPlayingView: View {
             if !presentation.isColumn { presentation.isShown = false }
             open()
         } label: {
-            Text(name).lineLimit(2)
+            Text(name).lineLimit(1)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

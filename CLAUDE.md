@@ -259,7 +259,11 @@ column** beside the stack, half the width capped at 560; on a Duo it
 ends on the crease while the device is bent like a book and takes 42%
 of the width while it is flat (off centre like Mail), and it meets the
 browser on a soft gradient (`Color.columnEdge`), not a hairline. The
-cover lays the header out as an `ArrangementView` (iOS 27.1); stacked,
+track is one block everywhere (`trackDetails`): the title, up to two
+lines, over "Artist · Album" on one line, the heart at the trailing
+edge; under the art when the art leads the screen, level with the art's
+foot beside it in the cover's stacked split. Nothing sits above the
+art. The cover lays the header out as an `ArrangementView` (iOS 27.1); stacked,
 the art, names and transport share the first pane (45%) and Up Next
 fills the other, side by side the transport heads the queue's pane.
 **Half folded like a laptop** a page's scroll view reads the active
