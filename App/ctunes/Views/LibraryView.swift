@@ -78,8 +78,11 @@ struct LibraryView: View {
         }
         return min(width / 2, 560)
     }
-    /// The column's share of a flat Duo's width: about 360 of 850.
-    private static let flatColumnShare: CGFloat = 0.42
+    /// The column's share of a flat Duo's usable width, about 390 of 850:
+    /// Mail's list ends at 42% of the whole screen, which is 46% once the
+    /// vertical bar's inset is taken off, and this width is measured
+    /// inside it.
+    private static let flatColumnShare: CGFloat = 0.46
 
     /// What the host measures: the window's usable size and the fold.
     private struct Geometry: Equatable {
@@ -127,7 +130,7 @@ struct LibraryView: View {
                 }
         }
         // The Duo moving between book and flat moves the column's edge
-        // from the crease to 42%: that jump springs. A window resize, or a
+        // from the crease to 46%: that jump springs. A window resize, or a
         // rotation the system animates itself, follows the size as it
         // comes; keyed on the width, every frame of a live resize started
         // a spring that laid out the column and the whole stack again.

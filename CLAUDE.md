@@ -256,8 +256,8 @@ queue and the system drag closes it) and a full-screen cover with a title
 bar on a regular one; a window 960pt or wider, or wider than tall and at
 least 800 (a Duo open in landscape is ~850 usable), gets a **leading
 column** beside the stack, half the width capped at 560; on a Duo it
-ends on the crease while the device is bent like a book and takes 42%
-of the width while it is flat (off centre like Mail), and it meets the
+ends on the crease while the device is bent like a book and takes 46%
+of the usable width while it is flat (off centre like Mail), and it meets the
 browser on a soft gradient (`Color.columnEdge`), not a hairline. The
 track is one block everywhere (`trackDetails`): the title, up to two
 lines, over "Artist · Album" on one line, the heart at the trailing

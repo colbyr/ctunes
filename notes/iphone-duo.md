@@ -107,7 +107,7 @@ had none of those, so this note is about the layout.
 - **Flat landscape is off centre, the book pose on the crease.** The
   vertical fold is listed by `reservedRegions(kind: .division)` only
   while bent; with `includeInactive` it is listed flat too. Flat the
-  column is 42% of the width, bent it ends on the fold's midpoint.
+  column is 46% of the usable width (Mail's 42% of the whole screen), bent it ends on the fold's midpoint.
   The hairline is now an 18pt gradient from `Color.columnEdge`.
 - **The laptop pose pads headers to the crease.** `readsCrease()` on
   a page's scroll view turns the active horizontal fold into an offset
