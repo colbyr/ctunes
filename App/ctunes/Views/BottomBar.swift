@@ -44,7 +44,7 @@ struct BottomBar: View {
     private func margin(_ edge: HorizontalEdge) -> CGFloat {
         if let strip = stripInset, strip.edge == edge {
             // Centred on the strip's items, a 52pt button against their 47.
-            return StripSearch.edgeGap - (52 - StripSearch.itemWidth) / 2 - strip.width
+            return StripMetrics.edgeGap - (52 - StripMetrics.itemWidth) / 2 - strip.width
         }
         return keyboardUp ? 12 : 20
     }
@@ -221,65 +221,140 @@ private struct MiniPlayerPill: View {
 
 /// Search in a vertical strip (an iPhone Duo closed, or open in
 /// landscape): the bottom pill hands its icon to the strip and comes back
-/// as the field once a search is open. On the browse root Settings rides
-/// with it, right below.
+/// as the field once a search is open. On the browse root Settings sits
+/// right below it, a button of its own.
 ///
 /// Drawn by hand in the strip's column rather than as a toolbar item:
 /// the strip stacks its items at the head (the top bar's) and the foot
 /// (the bottom bar's) and ignores `ToolbarSpacer`, fixed or flexible, and
 /// a clear item of fixed height, so a toolbar item could only sit by the
-/// clock or by the thumb. On the root it sits a little above the middle,
-/// below the row of mixes; on a pushed page lower, under the strip's own
-/// group (back, then ···, Play and Shuffle, whose foot is 386pt down the
-/// closed Duo). The foot is left to the mini
-/// player and the mix bar, which run under the strip to the window's
-/// edge. Matched to the strip's own glass: 47pt wide, 25pt in from the
-/// window's edge, about 50pt an item, measured off a 3x screenshot.
+/// clock or by the thumb. It sits a little above the middle, below the
+/// root's row of mixes, at the same height on every page; a page's own
+/// ···, Play and Shuffle come under it (`stripActions`), drawn the same
+/// way. The foot is left to the mini player and the mix bar, which run
+/// under the strip to the window's edge.
 struct StripSearch: View {
     /// The browse root's Settings, right below search.
     let settings: Bool
-    /// Nothing but back above it in the strip (the root, Quick Mix); a
-    /// page with ···, Play and Shuffle there takes it lower.
-    let high: Bool
     @Environment(LibraryNavigator.self) private var navigator
 
-    /// The strip's item width and its gap to the window's edge.
-    static let itemWidth: CGFloat = 47
-    static let edgeGap: CGFloat = 25
-    /// Where the group's top sits, as a share of the window's height: on
-    /// the closed Duo's 678pt the root's is 312, under the mixes' band
-    /// (288), and a pushed page's 414, under the strip's own group.
-    private var heightShare: CGFloat { high ? 0.46 : 0.61 }
-
     var body: some View {
-        GeometryReader { proxy in
-            GlassEffectContainer {
-                VStack(spacing: 0) {
-                    item("Search", systemImage: "magnifyingglass") { navigator.searchRequested = true }
-                    if settings {
-                        item("Settings", systemImage: "gearshape") { navigator.settingsRequested = true }
+        StripColumn(top: { StripMetrics.searchTop(in: $0) }) {
+            VStack(spacing: StripMetrics.groupGap) {
+                StripGroup {
+                    StripButton("Search", systemImage: "magnifyingglass") { navigator.searchRequested = true }
+                }
+                if settings {
+                    StripGroup {
+                        StripButton("Settings", systemImage: "gearshape") { navigator.settingsRequested = true }
                     }
                 }
-                .glassEffect(.regular.interactive(), in: .capsule)
             }
-            .padding(navigator.verticalBarEdge == .leading ? .leading : .trailing, Self.edgeGap)
-            .padding(.top, (proxy.size.height * heightShare).rounded())
-            .frame(maxWidth: .infinity, maxHeight: .infinity,
-                   alignment: navigator.verticalBarEdge == .leading ? .topLeading : .topTrailing)
+        }
+    }
+}
+
+/// The strip's measurements, off a 3x screenshot of the closed Duo: its
+/// glass is 47pt wide, 25pt in from the window's edge, about 50pt an
+/// item, and separate groups stand 14pt apart.
+enum StripMetrics {
+    static let itemWidth: CGFloat = 47
+    static let itemHeight: CGFloat = 50
+    static let edgeGap: CGFloat = 25
+    static let groupGap: CGFloat = 14
+    /// Search's top, a share of the window's height: 312 of the closed
+    /// Duo's 678, under the root's band of mixes (288).
+    static func searchTop(in height: CGFloat) -> CGFloat { (height * 0.46).rounded() }
+    /// A page's own group, under search.
+    static func actionsTop(in height: CGFloat) -> CGFloat { searchTop(in: height) + itemHeight + groupGap }
+}
+
+/// Lays its content in the strip's column, `top` down the window.
+struct StripColumn<Content: View>: View {
+    let top: (CGFloat) -> CGFloat
+    @ViewBuilder let content: Content
+    @Environment(LibraryNavigator.self) private var navigator
+
+    var body: some View {
+        let leading = navigator.verticalBarEdge == .leading
+        GeometryReader { proxy in
+            content
+                .padding(leading ? .leading : .trailing, StripMetrics.edgeGap)
+                .padding(.top, top(proxy.size.height))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: leading ? .topLeading : .topTrailing)
         }
         .ignoresSafeArea()
     }
+}
 
-    private func item(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+/// One glass capsule of strip items, as the system draws a group.
+struct StripGroup<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .glassEffect(.regular.interactive(), in: .capsule)
+    }
+}
+
+/// A symbol item in a hand-drawn strip group.
+struct StripButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+    @Environment(\.isEnabled) private var enabled
+
+    init(_ title: String, systemImage: String, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.action = action
+    }
+
+    var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(.primary)
-                .frame(width: Self.itemWidth, height: 50)
-                .contentShape(.rect)
+            StripGlyph(systemImage: systemImage)
+                .opacity(enabled ? 1 : 0.35)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+    }
+}
+
+/// A strip item's glyph and hit area, for a button or a menu's label.
+struct StripGlyph: View {
+    let systemImage: String
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.title3)
+            .foregroundStyle(.primary)
+            .frame(width: StripMetrics.itemWidth, height: StripMetrics.itemHeight)
+            .contentShape(.rect)
+    }
+}
+
+extension View {
+    /// A page's own strip group (···, Play, Shuffle), drawn under the
+    /// strip's search while the window's bars are vertical. The page
+    /// leaves these out of its toolbar then, which would put them above
+    /// search, by the clock.
+    func stripActions<Actions: View>(@ViewBuilder _ actions: () -> Actions) -> some View {
+        modifier(StripActionsModifier(actions: actions()))
+    }
+}
+
+private struct StripActionsModifier<Actions: View>: ViewModifier {
+    let actions: Actions
+    @Environment(LibraryNavigator.self) private var navigator
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if navigator.hasVerticalBar {
+                StripColumn(top: StripMetrics.actionsTop) {
+                    StripGroup { actions }
+                }
+            }
+        }
     }
 }
 

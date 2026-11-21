@@ -129,8 +129,14 @@ had none of those, so this note is about the layout.
   glass; the closed Duo's top group (back, then ···, Play, Shuffle)
   ends 386pt down, which is why a pushed page puts Search at 61%.
 - **Folded Now Playing**: AirPlay, heart, repeat and shuffle in the
-  strip; 150pt art beside the names, 16pt rhythm; three Up Next rows
-  show on the 678pt outer display.
+  strip, AirPlay and the heart as buttons of their own (a fixed
+  `ToolbarSpacer` splits the glass, though it never moves anything),
+  the names over the art again, and the art grown until Up Next and
+  half a row are what's left (`fitStripArt`, from the list's visible
+  height and the header's; about 230pt on the 678pt outer display).
+- **Search sits at 46% on every page**, and a detail page's ···, Play
+  and Shuffle are drawn by hand under it (`stripActions`) rather than
+  left to the strip, which would put them above it.
 - Checked closed in the simulator: Home, an album playing, the Now
   Playing sheet, search open, Quick Mix with a pick. **Not seen**: any
   inner-display pose. `simctl io screenConfig power` does not move the

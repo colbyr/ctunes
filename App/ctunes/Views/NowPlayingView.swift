@@ -91,13 +91,22 @@ struct NowPlayingView: View {
 
     /// The sheet on a screen whose bars run down a vertical strip (an
     /// iPhone Duo closed): AirPlay, the heart, repeat and shuffle go to
-    /// the strip, and the art shrinks beside the names, so Up Next and
-    /// its first track are on screen under the transport.
+    /// the strip, and the art is sized so Up Next and half its first
+    /// track are on screen under the transport.
     private var controlsInStrip: Bool { style == .phone && navigator.hasVerticalBar }
     /// The header's rhythm: tighter on the closed Duo's short screen.
     private var headerSpacing: CGFloat { controlsInStrip ? 16 : 24 }
-    /// The art's edge in the closed Duo's sheet, beside the names.
-    private static let stripArtEdge: CGFloat = 150
+    /// The art's edge in the closed Duo's sheet, leading under the names:
+    /// as big as leaves Up Next's title and half a row showing, measured
+    /// rather than fixed so a longer title or a taller screen is taken
+    /// into account (`fitStripArt`).
+    @State private var stripArtEdge: CGFloat = 150
+    /// The list's visible height and the header's, for that fit.
+    @State private var stripListHeight: CGFloat = 0
+    @State private var stripListWidth: CGFloat = 0
+    @State private var stripHeaderHeight: CGFloat = 0
+    /// Up Next's title and half a row: what must show under the header.
+    private static let upNextPeek: CGFloat = 44 + 32
 
     /// The art on show, at the size the header draws it; the background
     /// takes its color from the same file so it is never a second fetch.
@@ -113,6 +122,14 @@ struct NowPlayingView: View {
                 // and the strip takes them; no title, the art says it.
                 NavigationStack {
                     scrollingList
+                        .onScrollGeometryChange(for: CGSize.self) { geometry in
+                            CGSize(width: geometry.containerSize.width,
+                                   height: geometry.containerSize.height - geometry.contentInsets.top - geometry.contentInsets.bottom)
+                        } action: { _, size in
+                            stripListWidth = size.width
+                            stripListHeight = size.height
+                            fitStripArt()
+                        }
                         .artworkBackground(artworkURL)
                         .background {
                             HiddenRoutePicker(handle: routePicker)
@@ -339,6 +356,22 @@ struct NowPlayingView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal)
         .padding(.bottom, 8)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            guard controlsInStrip else { return }
+            stripHeaderHeight = height
+            fitStripArt()
+        }
+    }
+
+    /// Grows or shrinks the art by what the screen has over or under the
+    /// header plus Up Next's peek. The header grows point for point with
+    /// the art, so one pass lands it. Between 120 and the row's width.
+    private func fitStripArt() {
+        guard controlsInStrip, stripListHeight > 0, stripHeaderHeight > 0 else { return }
+        let spare = stripListHeight - stripHeaderHeight - Self.upNextPeek
+        let widest = max(120, stripListWidth - 56)
+        let edge = min(widest, max(120, stripArtEdge + spare)).rounded()
+        if abs(edge - stripArtEdge) >= 1 { stripArtEdge = edge }
     }
 
     /// The art block as the arrangement's first pane. The art fits the
@@ -399,27 +432,7 @@ struct NowPlayingView: View {
     /// In the column the artist line sits level with the inline title
     /// of the stack beside it: 26pt lower under a vertical bar, where
     /// the window has no status bar on top.
-    @ViewBuilder private var artBlock: some View {
-        if controlsInStrip {
-            // Small and leading, the names beside it, so the queue shows.
-            HStack(alignment: .top, spacing: 16) {
-                art(edge: Self.stripArtEdge)
-                VStack(alignment: .leading, spacing: 4) {
-                    artistLine
-                        .font(.headline)
-                    albumLine
-                        .font(.subheadline)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 24)
-        } else {
-            stackedArtBlock
-        }
-    }
-
-    private var stackedArtBlock: some View {
+    private var artBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 artistLine
@@ -430,7 +443,7 @@ struct NowPlayingView: View {
             .padding(.horizontal, 12)
             .padding(.top, style == .phone ? 28 : style == .column ? (navigator.hasVerticalBar ? 38 : 12) : 8)
 
-            art(edge: style == .column ? columnArtEdge : nil)
+            art(edge: style == .column ? columnArtEdge : controlsInStrip ? stripArtEdge : nil)
                 .padding(.horizontal, 12)
                 // Centred in the column, where it no longer spans the
                 // width; the names and title keep the leading edge.
@@ -588,9 +601,12 @@ struct NowPlayingView: View {
     /// AirPlay, the heart, repeat and shuffle as the strip's items, for
     /// the closed Duo's sheet.
     @ToolbarContentBuilder private var stripItems: some ToolbarContent {
+        // AirPlay and the heart are buttons of their own; repeat and
+        // shuffle, which both act on the queue, share a group.
         ToolbarItem(placement: .topBarTrailing) {
             AirPlayStripButton(picker: routePicker)
         }
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
         ToolbarItem(placement: .topBarTrailing) {
             let track = player.currentTrack
             let favorite = track.map { model.isFavorite($0) } ?? false
@@ -601,6 +617,7 @@ struct NowPlayingView: View {
             .tint(favorite ? Color.heart : nil)
             .disabled(track == nil || model.library?.isConnected == false)
         }
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
         ToolbarItem(placement: .topBarTrailing) {
             Button(repeatLabel, systemImage: player.repeatMode == .one ? "repeat.1" : "repeat") { player.cycleRepeat() }
                 .tint(player.repeatMode != .off ? Color.accentText : nil)

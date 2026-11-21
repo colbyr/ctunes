@@ -162,15 +162,17 @@ struct TracksView: View {
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false)
-                } label: {
-                    Label("More", systemImage: "ellipsis")
+            if !navigator.hasVerticalBar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false)
+                    } label: {
+                        Label("More", systemImage: "ellipsis")
+                    }
                 }
             }
             // The cards' actions follow you down the list as icons.
-            if iconsInBar {
+            if iconsInBar, !navigator.hasVerticalBar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Play", systemImage: "play.fill", action: play)
                         .disabled(playableTracks.isEmpty)
@@ -178,6 +180,18 @@ struct TracksView: View {
                         .disabled(playableTracks.isEmpty)
                 }
             }
+        }
+        // Under a vertical bar, in the strip under search instead.
+        .stripActions {
+            Menu {
+                AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false)
+            } label: {
+                StripGlyph(systemImage: "ellipsis")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("More")
+            StripButton("Play", systemImage: "play.fill", action: play).disabled(playableTracks.isEmpty)
+            StripButton("Shuffle", systemImage: "shuffle", action: shuffle).disabled(playableTracks.isEmpty)
         }
         // Keyed on the revision: a list landing from the server, or a
         // library switch, reads again from the saved copies.

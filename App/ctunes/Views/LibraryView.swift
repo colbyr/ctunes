@@ -457,9 +457,7 @@ struct LibraryView: View {
         // field itself is the bottom bar's once a search is open.
         .overlay {
             if navigator.hasVerticalBar, !searching, model.selectedSection != nil {
-                // Quick Mix's strip holds back alone, so search sits as
-                // high as on the root, without Settings.
-                StripSearch(settings: path.isEmpty, high: path.isEmpty || buildingMix)
+                StripSearch(settings: path.isEmpty)
                     .transition(.opacity)
             }
         }

@@ -285,19 +285,23 @@ and nothing could close.
 open in landscape) is read off `toolbarVerticalEdge` by
 `VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; the
 host overlays `StripSearch` in the strip's column, Search (and on the
-root, Settings) as a glass capsule drawn to match the strip's, since
-the strip ignores `ToolbarSpacer` and a toolbar item can only sit by
-the clock or the thumb: 46% down on the root and Quick Mix, 61% under
-a page's ··· / Play / Shuffle group. The album, artist,
-playlist, Favorites and Quick Mix pages keep their Play and Shuffle
-cards off the page and in the strip from the start (`iconsInBar`), and
+root, Settings, a button of its own) drawn to match the strip's glass,
+since the strip ignores `ToolbarSpacer` for position and a toolbar item
+can only sit by the clock or the thumb: 46% down on every page. The
+album, artist, playlist and Favorites pages draw their ···, Play and
+Shuffle the same way right under it (`stripActions`) and leave them out
+of the toolbar, which would put them above search. Those pages and
+Quick Mix keep their Play and Shuffle cards off the page from the
+start (`iconsInBar`), and
 the bottom bar drops the search pill until a search is open; the mini
 player (48pt), the mix bar and the search field's × run under the
 strip to the window's edge. The closed Duo's Now Playing sheet has a
 stack of its own so AirPlay (`AirPlayStripButton`, a symbol tapping a
 hidden `AVRoutePickerView`; the picker itself would sit in a bar of its
-own), the heart, repeat and shuffle are strip items, and the art is
-150pt beside the names so Up Next shows. An artist tapped in Now Playing, or any route from an
+own), the heart, repeat and shuffle are strip items (a fixed
+`ToolbarSpacer` does split the glass into separate buttons), and the
+art under the names is sized so Up Next and half a row show
+(`fitStripArt`). An artist tapped in Now Playing, or any route from an
 item menu, goes through `LibraryNavigator.open(_:)` in the environment,
 since the host owns the path. The host measures the window itself rather than
 reading the size class: a Mac window only turns compact a hair above its
