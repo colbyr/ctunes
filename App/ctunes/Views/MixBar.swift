@@ -735,15 +735,21 @@ struct RecentMixCard: View {
                         if loading {
                             ProgressView().controlSize(.mini)
                         } else if playing {
-                            Image(systemName: paused ? "pause.fill" : "waveform")
-                                .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing,
-                                              options: .repeat(.continuous), isActive: !paused)
-                                .contentTransition(.symbolEffect(.replace))
-                                // One width for both glyphs, the waveform's,
-                                // so the pin beside them doesn't shift and
-                                // the card doesn't resize on play and pause.
-                                .frame(width: 16, alignment: .leading)
-                                .accessibilityLabel(paused ? "Paused" : "Playing")
+                            // Both glyphs always laid out, one faded in: the
+                            // row's size never changes, so neither the pin
+                            // nor the name above moves on play and pause. A
+                            // symbol replace resized the row mid-transition.
+                            ZStack(alignment: .leading) {
+                                Image(systemName: "waveform")
+                                    .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing,
+                                                  options: .repeat(.continuous), isActive: !paused)
+                                    .opacity(paused ? 0 : 1)
+                                Image(systemName: "pause.fill")
+                                    .opacity(paused ? 1 : 0)
+                            }
+                            .animation(.easeInOut(duration: 0.2), value: paused)
+                            .accessibilityElement()
+                            .accessibilityLabel(paused ? "Paused" : "Playing")
                         } else {
                             Image(systemName: item.style.symbol)
                                 .accessibilityLabel(item.style.verb)
