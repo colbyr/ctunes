@@ -17,6 +17,8 @@ struct AppleMusicSpikeView: View {
     @State private var error: String?
     @State private var writesNowPlaying = AudioPlayer.writesNowPlayingForAppleMusic
     @State private var releasesSession = AppleMusicEngine.releasesSession
+    @State private var padsQueue = AppleMusicEngine.padsQueue
+    @State private var mixableSession = AppleMusicEngine.holdsMixableSession
 
     var body: some View {
         List {
@@ -38,6 +40,14 @@ struct AppleMusicSpikeView: View {
                 Toggle("Release our audio session first", isOn: $releasesSession)
                     .onChange(of: releasesSession) { _, on in
                         AppleMusicEngine.releasesSession = on
+                    }
+                Toggle("Hold our session mixable (overrides release)", isOn: $mixableSession)
+                    .onChange(of: mixableSession) { _, on in
+                        AppleMusicEngine.holdsMixableSession = on
+                    }
+                Toggle("Pad MusicKit's queue (lock screen next/previous)", isOn: $padsQueue)
+                    .onChange(of: padsQueue) { _, on in
+                        AppleMusicEngine.padsQueue = on
                     }
             }
             Section {

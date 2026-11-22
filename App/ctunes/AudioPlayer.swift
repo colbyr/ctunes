@@ -178,6 +178,10 @@ final class AudioPlayer {
     private var commandsConfigured = false
     /// SPIKE (COL-117): the second engine, for `am:` entries.
     @ObservationIgnored let appleMusic = AppleMusicEngine()
+    /// SPIKE: bumped by every load that reaches AVPlayer, so a handoff
+    /// waiting on MusicKit to go quiet doesn't load over a later one.
+    @ObservationIgnored private var handoffGeneration = 0
+    @ObservationIgnored private var reclaim: Task<Void, Never>?
     /// SPIKE: whether we write now-playing info while MusicKit plays, or
     /// leave the lock screen to MusicKit. Toggled from the spike page.
     static var writesNowPlayingForAppleMusic: Bool {
@@ -391,8 +395,13 @@ final class AudioPlayer {
         guard !itemEndHandled else { return }
         itemEndHandled = true
         guard repeatMode != .one else {
+            // MusicKit has moved off the song onto its padding: load it again.
+            if appleMusic.isActive {
+                loadCurrentItem(autoPlay: true)
+                return
+            }
             seek(to: 0)
-            if appleMusic.isActive { appleMusic.play() } else { player.play() }
+            player.play()
             reportTimeline(.playing)
             return
         }
@@ -699,9 +708,25 @@ final class AudioPlayer {
         }
         guard let (track, part, local, url) = playable else { return }
         if appleMusic.isActive {
-            appleMusic.log.notice("handoff MusicKit → AVPlayer")
+            let background = UIApplication.shared.applicationState != .active
+            appleMusic.log.notice("handoff MusicKit → AVPlayer (background=\(background))")
             appleMusic.stop()
+            // In the background our session can't interrupt MusicKit's, so
+            // the item is loaded only once MusicKit has gone quiet.
+            if AppleMusicEngine.holdsMixableSession {
+                reclaimExclusiveSession()
+            } else if background {
+                handoffGeneration += 1
+                let generation = handoffGeneration
+                Task {
+                    await appleMusic.quiesce()
+                    guard generation == handoffGeneration, !appleMusic.isActive else { return }
+                    loadCurrentItem(autoPlay: autoPlay, startAt: startAt)
+                }
+                return
+            }
         }
+        handoffGeneration += 1
         currentItemIsLocal = local != nil
         currentItemIsTranscode = local == nil && streamQuality.bitrate != nil
         if currentItemIsLocal {
@@ -1340,6 +1365,54 @@ final class AudioPlayer {
         prefetch()
     }
 
+    /// SPIKE: after a handoff back from MusicKit AVPlayer plays under the
+    /// mixable session held while MusicKit played. Mixable, we are not the
+    /// now-playing app and the lock screen stays MusicKit's, so the session
+    /// is made exclusive again as soon as iOS allows: at once in the
+    /// foreground; in the background, to be measured.
+    private func reclaimExclusiveSession() {
+        reclaim?.cancel()
+        reclaim = Task {
+            let session = AVAudioSession.sharedInstance()
+            for attempt in 1...3 {
+                // Measured: asked before AVPlayer had started, iOS refused
+                // in the background ("can't stop others…") without the
+                // call throwing, and the track never played. Asked 16ms
+                // after it had started under the mixable session, the same
+                // request interrupted MusicKit. So: audio first.
+                let asked = ContinuousClock.now
+                while player.timeControlStatus != .playing, ContinuousClock.now - asked < .seconds(20) {
+                    try? await Task.sleep(for: .milliseconds(50))
+                    guard !Task.isCancelled, !appleMusic.isActive else { return }
+                }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled, !appleMusic.isActive else { return }
+                guard player.timeControlStatus == .playing else {
+                    appleMusic.log.notice("reclaim: AVPlayer never started under the mixable session (status \(self.player.timeControlStatus.rawValue))")
+                    return
+                }
+                let waited = ContinuousClock.now - asked
+                do {
+                    try session.setCategory(.playback, mode: .default, options: [])
+                    try session.setActive(true)
+                } catch {
+                    appleMusic.log.notice("reclaim attempt \(attempt) threw: \(error, privacy: .public)")
+                }
+                try? await Task.sleep(for: .milliseconds(700))
+                guard !Task.isCancelled, !appleMusic.isActive else { return }
+                if player.timeControlStatus == .playing {
+                    appleMusic.log.notice("session exclusive again on attempt \(attempt), asked \(waited, privacy: .public) after the handoff, AVPlayer still playing")
+                    return
+                }
+                appleMusic.log.notice("reclaim attempt \(attempt) cost the audio (status \(self.player.timeControlStatus.rawValue)), back to mixable")
+                try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+                try? session.setActive(true)
+                if isPlaying { player.play() }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
     private func wireAppleMusic() {
         appleMusic.onTime = { [weak self] seconds in
             self?.currentTime = seconds
@@ -1353,6 +1426,16 @@ final class AudioPlayer {
             case .ended:
                 appleMusic.log.notice("ended, advancing the queue")
                 currentItemEnded()
+            case .skippedNext:
+                appleMusic.log.notice("next from MusicKit, advancing the queue")
+                next()
+            case .skippedPrevious:
+                // MusicKit already judged it early enough in the song to
+                // go back rather than restart, and sits on its padding
+                // either way, so the entry is loaded afresh.
+                appleMusic.log.notice("previous from MusicKit, going back in the queue")
+                if queue.currentIndex > 0 { _ = queue.retreat() }
+                loadCurrentItem(autoPlay: true)
             case .pausedExternally:
                 pausedAt = Date()
                 isPlaying = false

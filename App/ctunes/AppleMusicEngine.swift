@@ -23,6 +23,14 @@ final class AppleMusicEngine {
         /// The clock started for the entry loaded.
         case running(Bool)
         case ended
+        /// MusicKit moved to the padding after the song before it was
+        /// over: a "next" from the lock screen or the car, which goes to
+        /// MusicKit and never to our command handlers.
+        case skippedNext
+        /// MusicKit moved to the padding before the song: a "previous"
+        /// pressed early in it. Later in the song MusicKit restarts it
+        /// itself and no event is needed.
+        case skippedPrevious
         /// MusicKit paused or played with nobody here asking: the lock
         /// screen talking to MusicKit directly, or an interruption.
         case pausedExternally
@@ -62,6 +70,21 @@ final class AppleMusicEngine {
         get { UserDefaults.standard.object(forKey: "amSpike.releaseSession") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "amSpike.releaseSession") }
     }
+    /// Whether the song is loaded between two paddings (the same song
+    /// again), so a remote "next" or "previous", which MusicKit handles
+    /// itself, shows up as the current entry moving. With a queue of one
+    /// a "next" only reset the clock and paused.
+    static var padsQueue: Bool {
+        get { UserDefaults.standard.object(forKey: "amSpike.padQueue") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "amSpike.padQueue") }
+    }
+    /// Where the song sits in MusicKit's queue: 1 when padded.
+    private var songPosition = 0
+    /// Whether the load has put MusicKit on the song, so an entry change
+    /// from here on is someone else's.
+    private var settled = false
+    private var lastShuffle: String?
+    private var lastRepeat: String?
     /// Bumped on every load and stop, so a slow `prepareToPlay` for an
     /// entry already left doesn't start it.
     private var generation = 0
@@ -115,16 +138,48 @@ final class AppleMusicEngine {
         currentTime = startAt
         furthest = startAt
         hasStarted = false
+        settled = false
         loadedAt = .now
         logNowPlaying("before load")
         log.notice("load \(song.title, privacy: .public) autoPlay=\(autoPlay) startAt=\(startAt, format: .fixed(precision: 1))")
         startPolling()
         Task {
             do {
-                if Self.releasesSession { Self.releaseOurSession(log: log) }
-                player.queue = [song]
+                if Self.holdsMixableSession {
+                    Self.holdMixableSession(log: log)
+                } else if Self.releasesSession {
+                    Self.releaseOurSession(log: log)
+                }
+                if Self.padsQueue {
+                    let entries = [song, song, song].map { ApplicationMusicPlayer.Queue.Entry($0) }
+                    player.queue = ApplicationMusicPlayer.Queue(entries, startingAt: entries[1])
+                } else {
+                    player.queue = [song]
+                    songPosition = 0
+                }
                 try await player.prepareToPlay()
                 guard generation == self.generation else { return }
+                // `startingAt` is not honoured for three entries of one
+                // song (measured: the first was current), so step onto the
+                // middle one by hand and trust only where it really is.
+                if Self.padsQueue, currentPosition() == 0 {
+                    try await player.skipToNextEntry()
+                    // The queue's current entry lags the call returning:
+                    // read at once it still said the first, and the tick
+                    // then took the step for a remote "next".
+                    let asked = ContinuousClock.now
+                    while currentPosition() != 1, ContinuousClock.now - asked < .seconds(1) {
+                        try? await Task.sleep(for: .milliseconds(20))
+                    }
+                    guard generation == self.generation else { return }
+                    log.notice("stepped onto the middle entry after \(ContinuousClock.now - asked, privacy: .public), position \(self.currentPosition() ?? -1)")
+                    if !autoPlay { player.pause() }
+                }
+                songPosition = currentPosition() ?? 0
+                lastEntryID = player.queue.currentEntry?.id
+                settled = true
+                let ids = player.queue.entries.map(\.id).joined(separator: ", ")
+                log.notice("queue padded=\(Self.padsQueue) entries=[\(ids, privacy: .public)] current=\(self.player.queue.currentEntry?.id ?? "nil", privacy: .public) songPosition=\(self.songPosition)")
                 if startAt > 0 { player.playbackTime = startAt }
                 if autoPlay { try await player.play() }
                 let elapsed = loadedAt.map { ContinuousClock.now - $0 } ?? .zero
@@ -179,6 +234,25 @@ final class AppleMusicEngine {
         player.queue = []
     }
 
+    private func currentPosition() -> Int? {
+        guard let id = player.queue.currentEntry?.id else { return nil }
+        return player.queue.entries.map(\.id).firstIndex(of: id)
+    }
+
+    /// Waits for MusicKit to stop after `stop()`. In the background iOS
+    /// refuses our session while RemotePlayerService still plays ("can't
+    /// stop others because it is in the background and not the NowPlaying
+    /// app"), so the handoff back to AVPlayer has to follow it, not race it.
+    func quiesce() async {
+        let start = ContinuousClock.now
+        while player.state.playbackStatus == .playing, ContinuousClock.now - start < .seconds(1) {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        let stopped = ContinuousClock.now - start
+        try? await Task.sleep(for: .milliseconds(200))
+        log.notice("quiesced: MusicKit status \(String(describing: self.player.state.playbackStatus), privacy: .public) after \(stopped, privacy: .public), +200ms")
+    }
+
     // MARK: - Watching
 
     /// MusicKit's state is an `ObservableObject`; a poll is simpler to
@@ -213,8 +287,13 @@ final class AppleMusicEngine {
                 ended()
                 return
             }
+            if lastEntryID != nil, let entryID, !endHandled, hasStarted, moved(to: entryID, at: time) {
+                lastEntryID = entryID
+                return
+            }
             lastEntryID = entryID
         }
+        logModes()
         // The clock can read 0 again once the queue has played out, so the
         // end is judged on the last time seen while it was running.
         if status == .playing {
@@ -222,6 +301,13 @@ final class AppleMusicEngine {
             // says paused; passing it on sent the scrubber back to the start.
             let resetAtEnd = activeDuration > 0 && furthest >= activeDuration - 3 && time < 1
             guard !resetAtEnd else { return }
+            // MusicKit restarting the song for a "previous" pressed later
+            // in it, or a scrub from the lock screen: the end is judged
+            // from here again.
+            if time < furthest - 2 {
+                log.notice("clock went back \(self.furthest, format: .fixed(precision: 2))s → \(time, format: .fixed(precision: 2))s with the entry unchanged (restart or seek inside MusicKit)")
+                furthest = time
+            }
             currentTime = time
             furthest = max(furthest, time)
             onTime?(time)
@@ -260,9 +346,77 @@ final class AppleMusicEngine {
         }
     }
 
+    /// The current entry changed under us. With the queue padded that is
+    /// the song ending into the padding after it, or a remote next or
+    /// previous. MusicKit is paused at once so the padding isn't heard.
+    private func moved(to entryID: String, at time: Double) -> Bool {
+        guard Self.padsQueue, settled else { return false }
+        let ids = player.queue.entries.map(\.id)
+        guard let position = ids.firstIndex(of: entryID) else {
+            log.notice("entry \(entryID, privacy: .public) isn't in the queue [\(ids.joined(separator: ", "), privacy: .public)]")
+            return false
+        }
+        guard position != songPosition else { return false }
+        let nearEnd = activeDuration > 0 && furthest >= activeDuration - 3
+        let wanted = wantsPlaying
+        wantsPlaying = false
+        endHandled = true
+        player.pause()
+        if position > songPosition {
+            if nearEnd {
+                log.notice("end: moved into the padding after the song, furthest \(self.furthest, format: .fixed(precision: 2))s")
+                onEvent?(.ended)
+            } else {
+                log.notice("remote next inferred: moved into the padding after the song at furthest \(self.furthest, format: .fixed(precision: 2))s / \(self.activeDuration, format: .fixed(precision: 1))s (wantsPlaying=\(wanted))")
+                onEvent?(.skippedNext)
+            }
+        } else {
+            log.notice("remote previous inferred: moved into the padding before the song at furthest \(self.furthest, format: .fixed(precision: 2))s (wantsPlaying=\(wanted))")
+            onEvent?(.skippedPrevious)
+        }
+        return true
+    }
+
+    /// Shuffle and repeat pressed in the car go to MusicKit too. Logged
+    /// only, to learn whether they show up here at all.
+    private func logModes() {
+        let shuffle = String(describing: player.state.shuffleMode)
+        let repeatMode = String(describing: player.state.repeatMode)
+        if let lastShuffle, lastShuffle != shuffle {
+            log.notice("MusicKit shuffleMode \(lastShuffle, privacy: .public) → \(shuffle, privacy: .public)")
+        }
+        if let lastRepeat, lastRepeat != repeatMode {
+            log.notice("MusicKit repeatMode \(lastRepeat, privacy: .public) → \(repeatMode, privacy: .public)")
+        }
+        lastShuffle = shuffle
+        lastRepeat = repeatMode
+    }
+
     private func ended() {
         endHandled = true
         onEvent?(.ended)
+    }
+
+    /// Whether our session stays active, but mixable, while MusicKit
+    /// plays, instead of being released. Released, it has to interrupt
+    /// MusicKit's to come back, and in the background iOS refuses that
+    /// ("can't stop others because it is in the background and not the
+    /// NowPlaying app"), even with MusicKit stopped. A mixable session
+    /// interrupts nobody, so AVPlayer can start under it at the handoff.
+    static var holdsMixableSession: Bool {
+        get { UserDefaults.standard.object(forKey: "amSpike.mixableSession") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "amSpike.mixableSession") }
+    }
+
+    static func holdMixableSession(log: Logger) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+            log.notice("holding our audio session active and mixable")
+        } catch {
+            log.error("holding a mixable session failed: \(error, privacy: .public)")
+        }
     }
 
     /// Deactivates our session, telling others they may resume, so

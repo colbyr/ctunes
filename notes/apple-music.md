@@ -67,7 +67,8 @@ non-mixable). Ours is the same, so whichever activates last interrupts the
 other. Our `resume()` activating the session before handing play to MusicKit
 interrupted it (fixed: the MusicKit branch now comes first). Releasing our
 session (`setActive(false, .notifyOthersOnDeactivation)`) before MusicKit
-starts is on by default; untested whether it is needed. Our
+starts was the first answer; it is what made 3a, and holding the session
+mixable replaces it (the release toggle only applies with that one off). Our
 `didBecomeInactiveNotification` fires on every handoff to MusicKit and must be
 ignored while MusicKit plays, or the player marks itself paused.
 
@@ -82,24 +83,57 @@ policy, not a bug, but in the product a silent song looks broken: check
 Music app seemed to fix it once; it was coincidence.)
 
 **3. While MusicKit plays, the lock screen talks to MusicKit, not to us.**
-This is the open one. Once `RemotePlayerService` starts, mediaremoted routes
-remote commands to it (`Sending command … NextTrack … to
-com.apple.MediaPlayer.RemotePlayerService`), and our `MPRemoteCommandCenter`
-handlers never see them. With a queue of one, MusicKit's "next" resets the song
-to 0 and pauses; our engine sees "paused at 0, not near the end" and records it
-as someone else pausing. Every later press goes to MusicKit too. Shuffle and
-repeat from the lock screen will be lost the same way, and CarPlay presumably
-with them (untested). Reproduced twice.
+Once `RemotePlayerService` starts, mediaremoted routes remote commands to it
+(`Sending command … NextTrack … to com.apple.MediaPlayer.RemotePlayerService`),
+and our `MPRemoteCommandCenter` handlers never see them. Apple documents this
+for the application player: the framework handles the commands itself. With a
+queue of one, MusicKit's "next" reset the song to 0 and paused.
 
-Candidate fixes, not yet tried:
+Worked around by padding MusicKit's queue (2026-11-21, toggle "Pad MusicKit's
+queue", on by default): the song is loaded three times and played from the
+middle copy, so a remote next or previous moves `queue.currentEntry`, which the
+poll reads within 30–100ms of mediaremoted sending the command.
 
-- Infer the command from MusicKit's state: a reset to 0 mid-song with the
-  entry unchanged reads as next; previous/seek likewise. Cheap, heuristic,
-  and the poll already sees the transitions.
-- Give MusicKit every consecutive Apple Music entry, so next moves inside its
-  queue. Helps between Apple Music songs only, not into Plex.
-- Look for a way to keep our app the command target (`SystemMusicPlayer` is
-  worse: it is the Music app's queue). Unknown whether any exists.
+- A move onto the copy after the song before its last 3s is a next; within the
+  last 3s it is the song ending (173.1s of 173.3s both times), which replaces
+  the "clock reset, then paused" end detection. A move onto the copy before it
+  is a previous pressed early; later in the song MusicKit restarts it itself
+  and only the clock going back is logged. Previous is untested on the device.
+- `Queue(entries, startingAt:)` is not honoured for three entries of one song:
+  the first was current. The engine steps on with `skipToNextEntry()`, and
+  **the queue's current entry lags that call returning** (~20ms): read at
+  once it still named the first entry, and the poll took our own step for a
+  remote next and skipped the song.
+- Repeat-one reloads the entry, since MusicKit has moved onto the padding.
+- Up to one poll (250ms) of the padding copy can be heard on a next. Shuffle
+  and repeat from the car are only logged (`MusicKit shuffleMode …`), not
+  mirrored; CarPlay is untested.
+
+**3a. In the background, AVPlayer can't take the audio back from MusicKit.**
+Found once the padding made a locked-phone handoff possible; a song playing
+out into a Plex track with the phone locked hits it too. audiomxd refuses our
+session: `CMSUtility_IsAllowedToStopOthers: Client ctunes can't stop others
+because it is in the background and not the NowPlaying app`, then `Operation
+denied. Cannot interrupt others` (-12985). The now-playing app is
+`RemotePlayerService`, a different pid. The Plex item loads and never plays,
+nothing throws, and every later press goes to a stopped MusicKit.
+
+- Waiting for MusicKit to stop doesn't help: refused 200ms after its status
+  left `.playing`. Its session stays active on a deactivate timer.
+- What works (toggle "Hold our session mixable", on by default): rather than
+  releasing our session when MusicKit starts, keep it active with
+  `.mixWithOthers`. A mixable session interrupts nobody, so AVPlayer starts
+  under it at the handoff. **Then, and only once AVPlayer is playing**, set
+  the category back to exclusive: asked 16ms after the player had started,
+  the same request interrupted MusicKit and made us the now-playing app
+  again; asked 35ms after the handoff with the stream still loading, it was
+  refused, without throwing, and the track never played.
+  `reclaimExclusiveSession` waits for `timeControlStatus == .playing` plus
+  300ms, checks the player is still playing 700ms later, and falls back to
+  mixable and retries otherwise.
+- That iOS allows the takeover from a client already playing is inferred from
+  those runs, not documented. Untested: a slow stream (the lock screen stays
+  MusicKit's until the player starts), a handoff while paused.
 
 **4. MusicKit's status walk at load.** It goes stopped → paused → playing while
 it prepares; read naively that is "paused by someone else, resumed by someone
@@ -133,13 +167,14 @@ body ("invalid JSON"). Fine minutes later. Propagation, presumably.
 ## Verdict so far
 
 Two engines in one queue is possible: playback, handoff and end detection all
-work. Whether it is shippable turns on problem 3: lock screen and car controls
-during an Apple Music song. Until that is solved or worked around, an Apple
-Music song in the queue breaks the remote controls the app has worked hardest
-on (`notes/carplay.md`).
+work, and with the padded queue and the mixable session the lock screen's next
+works through an Apple Music song, in both directions, with the phone locked.
+Both rest on behaviour measured here rather than documented (a remote next
+moving the queue, iOS letting a playing client take the audio back), so each
+needs watching across iOS releases.
 
-Not yet tested: CarPlay, Siri or a call during an Apple Music song, the
-release-session toggle off, our now-playing writes off.
+Not yet tested: CarPlay, lock screen previous, Siri or a call during an Apple
+Music song, AirPods and headset buttons, our now-playing writes off.
 
 ## Beyond playback (not started)
 
