@@ -291,6 +291,22 @@ final class AppleMusicEngine {
         }
     }
 
+    /// Spawns MusicKit's player with nothing of ours playing: prepares
+    /// `song` and stops there. Tests whether a player created before Plex
+    /// audio stays unmuted through later handoffs.
+    func prewarm(_ song: Song) {
+        log.notice("prewarm with \(song.title, privacy: .public)")
+        Task {
+            do {
+                player.queue = [song]
+                try await player.prepareToPlay()
+                log.notice("prewarm prepared, status \(String(describing: self.player.state.playbackStatus), privacy: .public)")
+            } catch {
+                log.error("prewarm failed: \(error, privacy: .public)")
+            }
+        }
+    }
+
     func logNowPlaying(_ moment: String) {
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         let title = info?[MPMediaItemPropertyTitle] as? String ?? "nil"

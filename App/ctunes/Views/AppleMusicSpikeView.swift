@@ -63,6 +63,9 @@ struct AppleMusicSpikeView: View {
                             Button("Play Next") { enqueue(song, .next) }
                             Button("Add to Queue") { enqueue(song, .end) }
                             Divider()
+                            Button("Prewarm MusicKit with this") {
+                                player.appleMusic.prewarm(song)
+                            }
                             Button("Raw MusicKit (pauses Plex, no queue)") {
                                 player.pause()
                                 player.appleMusic.rawPlay(song)
