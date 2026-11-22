@@ -54,7 +54,7 @@ build:
 
 ## Build the app for the connected device
 device: guard-device
-	$(XCB) -destination 'id=$(DEVICE)' -allowProvisioningUpdates build
+	$(XCB) -destination 'id=$(DEVICE)' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
 
 install: device
 	xcrun devicectl device install app --device $(DEVICE) $(DEVICE_APP)

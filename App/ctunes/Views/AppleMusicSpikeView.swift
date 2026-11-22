@@ -16,6 +16,7 @@ struct AppleMusicSpikeView: View {
     @State private var results: [Song] = []
     @State private var error: String?
     @State private var writesNowPlaying = AudioPlayer.writesNowPlayingForAppleMusic
+    @State private var releasesSession = AppleMusicEngine.releasesSession
 
     var body: some View {
         List {
@@ -33,6 +34,10 @@ struct AppleMusicSpikeView: View {
                 Toggle("We write lock screen info", isOn: $writesNowPlaying)
                     .onChange(of: writesNowPlaying) { _, on in
                         AudioPlayer.writesNowPlayingForAppleMusic = on
+                    }
+                Toggle("Release our audio session first", isOn: $releasesSession)
+                    .onChange(of: releasesSession) { _, on in
+                        AppleMusicEngine.releasesSession = on
                     }
             }
             Section {
@@ -57,6 +62,11 @@ struct AppleMusicSpikeView: View {
                             Button("Play Now") { enqueue(song, .now) }
                             Button("Play Next") { enqueue(song, .next) }
                             Button("Add to Queue") { enqueue(song, .end) }
+                            Divider()
+                            Button("Raw MusicKit (pauses Plex, no queue)") {
+                                player.pause()
+                                player.appleMusic.rawPlay(song)
+                            }
                         } label: {
                             Image(systemName: "plus.circle")
                         }

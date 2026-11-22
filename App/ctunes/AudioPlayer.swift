@@ -303,7 +303,8 @@ final class AudioPlayer {
             restart()
             return
         }
-        activateSession()
+        // SPIKE: before `activateSession`. Our non-mixable session going
+        // active interrupts MusicKit's, which plays in RemotePlayerService.
         if appleMusic.isActive {
             appleMusic.play()
             pausedAt = nil
@@ -311,6 +312,7 @@ final class AudioPlayer {
             updateNowPlayingPlaybackState()
             return
         }
+        activateSession()
         // Emptied while waiting for a server: try the entry again.
         guard player.currentItem != nil else {
             loadCurrentItem(autoPlay: true, startAt: currentTime)
@@ -697,7 +699,7 @@ final class AudioPlayer {
         }
         guard let (track, part, local, url) = playable else { return }
         if appleMusic.isActive {
-            appleMusic.log.info("handoff MusicKit → AVPlayer")
+            appleMusic.log.notice("handoff MusicKit → AVPlayer")
             appleMusic.stop()
         }
         currentItemIsLocal = local != nil
@@ -1315,7 +1317,7 @@ final class AudioPlayer {
     /// Hands the audio to MusicKit: AVPlayer empties so its own watchers
     /// (stall, silent pause, end of item) have nothing to look at.
     private func loadAppleMusic(_ track: PlexTrack, autoPlay: Bool, startAt: Double) {
-        appleMusic.log.info("handoff → MusicKit (from \(self.player.currentItem == nil ? "nothing" : "AVPlayer", privacy: .public))")
+        appleMusic.log.notice("handoff → MusicKit (from \(self.player.currentItem == nil ? "nothing" : "AVPlayer", privacy: .public))")
         player.pause()
         player.replaceCurrentItem(with: nil)
         stallWatchdog?.cancel()
@@ -1349,7 +1351,7 @@ final class AudioPlayer {
                 playerIsRunning = running
                 updateNowPlayingPlaybackState()
             case .ended:
-                appleMusic.log.info("ended, advancing the queue")
+                appleMusic.log.notice("ended, advancing the queue")
                 currentItemEnded()
             case .pausedExternally:
                 pausedAt = Date()
@@ -1367,7 +1369,7 @@ final class AudioPlayer {
     }
 
     private func remote(_ name: String) {
-        appleMusic.log.info("remote command \(name, privacy: .public) (MusicKit active=\(self.appleMusic.isActive))")
+        appleMusic.log.notice("remote command \(name, privacy: .public) (MusicKit active=\(self.appleMusic.isActive))")
     }
 
     // MARK: - Lock screen

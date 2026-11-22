@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import MediaPlayer
 @preconcurrency import MusicKit
@@ -47,6 +48,16 @@ final class AppleMusicEngine {
     private var lastStatus: MusicKit.MusicPlayer.PlaybackStatus?
     private var lastEntryID: String?
     private var endHandled = false
+    /// The furthest the clock got while running: MusicKit reads 0 again
+    /// once a queue of one plays out, sometimes before it reports paused.
+    private var furthest: Double = 0
+    /// Whether to give up our audio session before MusicKit starts. Ours is
+    /// non-mixable, and MusicKit plays from RemotePlayerService under a
+    /// session of its own.
+    static var releasesSession: Bool {
+        get { UserDefaults.standard.object(forKey: "amSpike.releaseSession") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "amSpike.releaseSession") }
+    }
     /// Bumped on every load and stop, so a slow `prepareToPlay` for an
     /// entry already left doesn't start it.
     private var generation = 0
@@ -98,19 +109,21 @@ final class AppleMusicEngine {
         wantsPlaying = autoPlay
         endHandled = false
         currentTime = startAt
+        furthest = startAt
         loadedAt = .now
         logNowPlaying("before load")
-        log.info("load \(song.title, privacy: .public) autoPlay=\(autoPlay) startAt=\(startAt, format: .fixed(precision: 1))")
+        log.notice("load \(song.title, privacy: .public) autoPlay=\(autoPlay) startAt=\(startAt, format: .fixed(precision: 1))")
         startPolling()
         Task {
             do {
+                if Self.releasesSession { Self.releaseOurSession(log: log) }
                 player.queue = [song]
                 try await player.prepareToPlay()
                 guard generation == self.generation else { return }
                 if startAt > 0 { player.playbackTime = startAt }
                 if autoPlay { try await player.play() }
                 let elapsed = loadedAt.map { ContinuousClock.now - $0 } ?? .zero
-                log.info("prepared+play returned after \(elapsed, privacy: .public)")
+                log.notice("prepared+play returned after \(elapsed, privacy: .public)")
                 // What the lock screen holds once MusicKit has started: did
                 // it overwrite ours?
                 try? await Task.sleep(for: .seconds(1))
@@ -141,6 +154,7 @@ final class AppleMusicEngine {
 
     func seek(to seconds: Double) {
         endHandled = false
+        furthest = seconds
         player.playbackTime = seconds
         currentTime = seconds
     }
@@ -149,7 +163,7 @@ final class AppleMusicEngine {
     func stop() {
         guard isActive else { return }
         generation += 1
-        log.info("stop (handing back to AVPlayer)")
+        log.notice("stop (handing back to AVPlayer)")
         wantsPlaying = false
         isActive = false
         isRunning = false
@@ -183,14 +197,14 @@ final class AppleMusicEngine {
         let entryID = player.queue.currentEntry?.id
         if status != lastStatus {
             let since = loadedAt.map { ContinuousClock.now - $0 } ?? .zero
-            log.info("status \(String(describing: self.lastStatus), privacy: .public) → \(String(describing: status), privacy: .public) at \(time, format: .fixed(precision: 2))s / \(self.activeDuration, format: .fixed(precision: 1))s, \(since, privacy: .public) since load, entry=\(entryID ?? "nil", privacy: .public)")
+            log.notice("status \(String(describing: self.lastStatus), privacy: .public) → \(String(describing: status), privacy: .public) at \(time, format: .fixed(precision: 2))s / \(self.activeDuration, format: .fixed(precision: 1))s, \(since, privacy: .public) since load, entry=\(entryID ?? "nil", privacy: .public)")
             handle(status: status, previous: lastStatus, time: time)
             lastStatus = status
         }
         if entryID != lastEntryID {
-            log.info("currentEntry \(self.lastEntryID ?? "nil", privacy: .public) → \(entryID ?? "nil", privacy: .public) at \(time, format: .fixed(precision: 2))s")
+            log.notice("currentEntry \(self.lastEntryID ?? "nil", privacy: .public) → \(entryID ?? "nil", privacy: .public) at \(time, format: .fixed(precision: 2))s")
             if lastEntryID != nil, entryID == nil, !endHandled {
-                log.info("end: current entry went away")
+                log.notice("end: current entry went away")
                 ended()
                 return
             }
@@ -200,6 +214,7 @@ final class AppleMusicEngine {
         // end is judged on the last time seen while it was running.
         if status == .playing {
             currentTime = time
+            furthest = max(furthest, time)
             onTime?(time)
         }
     }
@@ -213,23 +228,23 @@ final class AppleMusicEngine {
         guard previous != nil else { return }
         switch status {
         case .paused, .stopped:
-            let nearEnd = activeDuration > 0 && currentTime >= activeDuration - 2
+            let nearEnd = activeDuration > 0 && furthest >= activeDuration - 3
             if wantsPlaying, nearEnd || status == .stopped, !endHandled {
-                log.info("end: \(String(describing: status), privacy: .public) with last time \(self.currentTime, format: .fixed(precision: 2))s")
+                log.notice("end: \(String(describing: status), privacy: .public) with furthest \(self.furthest, format: .fixed(precision: 2))s, clock \(time, format: .fixed(precision: 2))s")
                 ended()
             } else if wantsPlaying {
-                log.info("paused by someone else (interruption or a remote command routed to MusicKit)")
+                log.notice("paused by someone else (interruption or a remote command routed to MusicKit)")
                 wantsPlaying = false
                 onEvent?(.pausedExternally)
             }
         case .playing:
             if !wantsPlaying, previous == .paused {
-                log.info("resumed by someone else")
+                log.notice("resumed by someone else")
                 wantsPlaying = true
                 onEvent?(.resumedExternally)
             }
         case .interrupted:
-            log.info("interrupted")
+            log.notice("interrupted")
         default:
             break
         }
@@ -240,11 +255,37 @@ final class AppleMusicEngine {
         onEvent?(.ended)
     }
 
+    /// Deactivates our session, telling others they may resume, so
+    /// MusicKit's starts with nothing non-mixable in its way.
+    static func releaseOurSession(log: Logger) {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            log.notice("released our audio session")
+        } catch {
+            log.error("releasing our audio session failed: \(error, privacy: .public)")
+        }
+    }
+
+    /// The control: MusicKit alone, no queue, no `AudioPlayer`.
+    func rawPlay(_ song: Song) {
+        log.notice("raw play \(song.title, privacy: .public), releasesSession=\(Self.releasesSession)")
+        if Self.releasesSession { Self.releaseOurSession(log: log) }
+        Task {
+            do {
+                player.queue = [song]
+                try await player.play()
+                log.notice("raw play returned, status \(String(describing: self.player.state.playbackStatus), privacy: .public)")
+            } catch {
+                log.error("raw play failed: \(error, privacy: .public)")
+            }
+        }
+    }
+
     func logNowPlaying(_ moment: String) {
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         let title = info?[MPMediaItemPropertyTitle] as? String ?? "nil"
         let rate = info?[MPNowPlayingInfoPropertyPlaybackRate].map { "\($0)" } ?? "nil"
         let state = MPNowPlayingInfoCenter.default().playbackState.rawValue
-        log.info("nowPlaying[\(moment, privacy: .public)] title=\(title, privacy: .public) rate=\(rate, privacy: .public) playbackState=\(state) keys=\(info?.count ?? 0)")
+        log.notice("nowPlaying[\(moment, privacy: .public)] title=\(title, privacy: .public) rate=\(rate, privacy: .public) playbackState=\(state) keys=\(info?.count ?? 0)")
     }
 }
