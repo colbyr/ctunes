@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import Foundation
 import MediaPlayer
 @preconcurrency import MusicKit
@@ -31,6 +32,10 @@ final class AppleMusicEngine {
         /// pressed early in it. Later in the song MusicKit restarts it
         /// itself and no event is needed.
         case skippedPrevious
+        /// Shuffle or repeat pressed where the press goes to MusicKit (the
+        /// car's Now Playing): one press each.
+        case shuffleToggled
+        case repeatCycled
         /// MusicKit paused or played with nobody here asking: the lock
         /// screen talking to MusicKit directly, or an interruption.
         case pausedExternally
@@ -83,8 +88,12 @@ final class AppleMusicEngine {
     /// Whether the load has put MusicKit on the song, so an entry change
     /// from here on is someone else's.
     private var settled = false
-    private var lastShuffle: String?
-    private var lastRepeat: String?
+    /// MusicKit's queue and state announcing a change, so a remote next
+    /// is acted on as it lands rather than up to a poll (250ms) later,
+    /// which let that much of the padding be heard.
+    private var endTimer: Task<Void, Never>?
+    private var queueWatch: AnyCancellable?
+    private var stateWatch: AnyCancellable?
     /// Bumped on every load and stop, so a slow `prepareToPlay` for an
     /// entry already left doesn't start it.
     private var generation = 0
@@ -139,6 +148,9 @@ final class AppleMusicEngine {
         furthest = startAt
         hasStarted = false
         settled = false
+        isRunning = false
+        endTimer?.cancel()
+        endTimer = nil
         loadedAt = .now
         logNowPlaying("before load")
         log.notice("load \(song.title, privacy: .public) autoPlay=\(autoPlay) startAt=\(startAt, format: .fixed(precision: 1))")
@@ -150,6 +162,19 @@ final class AppleMusicEngine {
                 } else if Self.releasesSession {
                     Self.releaseOurSession(log: log)
                 }
+                // Coming straight from another Apple Music entry MusicKit is
+                // still winding the old queue down; let it, before the swap.
+                if player.state.playbackStatus == .playing { player.pause() }
+                let swapping = ContinuousClock.now
+                while player.state.playbackStatus == .playing, ContinuousClock.now - swapping < .milliseconds(400) {
+                    try? await Task.sleep(for: .milliseconds(20))
+                }
+                guard generation == self.generation else { return }
+                // MusicKit's own shuffle would reorder the padding and its
+                // repeat would loop it; ours are the queue's. Both stay
+                // off there and a change is read as a press (`mirrorModes`).
+                player.state.shuffleMode = .off
+                player.state.repeatMode = MusicKit.MusicPlayer.RepeatMode.none
                 if Self.padsQueue {
                     let entries = [song, song, song].map { ApplicationMusicPlayer.Queue.Entry($0) }
                     player.queue = ApplicationMusicPlayer.Queue(entries, startingAt: entries[1])
@@ -157,22 +182,42 @@ final class AppleMusicEngine {
                     player.queue = [song]
                     songPosition = 0
                 }
+                watchChanges()
                 try await player.prepareToPlay()
                 guard generation == self.generation else { return }
                 // `startingAt` is not honoured for three entries of one
                 // song (measured: the first was current), so step onto the
                 // middle one by hand and trust only where it really is.
+                // The new queue's current entry can still be unset when
+                // `prepareToPlay` returns. Read then, the step below was
+                // skipped and the song sat first with nothing before it,
+                // so a remote "previous" could only restart it.
+                let prepared = ContinuousClock.now
+                while currentPosition() == nil, ContinuousClock.now - prepared < .seconds(1) {
+                    try? await Task.sleep(for: .milliseconds(20))
+                }
+                guard generation == self.generation else { return }
+                log.notice("current entry known \(ContinuousClock.now - prepared, privacy: .public) after prepare, position \(self.currentPosition() ?? -1)")
                 if Self.padsQueue, currentPosition() == 0 {
-                    try await player.skipToNextEntry()
                     // The queue's current entry lags the call returning:
                     // read at once it still said the first, and the tick
-                    // then took the step for a remote "next".
+                    // then took the step for a remote "next". And a step
+                    // asked right after the queue replaced one that was
+                    // still playing (Apple Music straight after Apple
+                    // Music) returned without moving at all, so it is
+                    // checked and asked again.
                     let asked = ContinuousClock.now
-                    while currentPosition() != 1, ContinuousClock.now - asked < .seconds(1) {
-                        try? await Task.sleep(for: .milliseconds(20))
+                    var attempts = 0
+                    while currentPosition() == 0, attempts < 5 {
+                        attempts += 1
+                        try await player.skipToNextEntry()
+                        let tried = ContinuousClock.now
+                        while currentPosition() == 0, ContinuousClock.now - tried < .milliseconds(400) {
+                            try? await Task.sleep(for: .milliseconds(20))
+                        }
+                        guard generation == self.generation else { return }
                     }
-                    guard generation == self.generation else { return }
-                    log.notice("stepped onto the middle entry after \(ContinuousClock.now - asked, privacy: .public), position \(self.currentPosition() ?? -1)")
+                    log.notice("stepped onto the middle entry after \(ContinuousClock.now - asked, privacy: .public) and \(attempts) ask(s), position \(self.currentPosition() ?? -1)")
                     if !autoPlay { player.pause() }
                 }
                 songPosition = currentPosition() ?? 0
@@ -214,6 +259,8 @@ final class AppleMusicEngine {
 
     func seek(to seconds: Double) {
         endHandled = false
+        endTimer?.cancel()
+        endTimer = nil
         furthest = seconds
         player.playbackTime = seconds
         currentTime = seconds
@@ -230,6 +277,10 @@ final class AppleMusicEngine {
         activeKey = nil
         poll?.cancel()
         poll = nil
+        queueWatch = nil
+        stateWatch = nil
+        endTimer?.cancel()
+        endTimer = nil
         player.stop()
         player.queue = []
     }
@@ -269,6 +320,21 @@ final class AppleMusicEngine {
         }
     }
 
+    /// `objectWillChange` fires before the value lands, so the look is
+    /// taken a hop later and once more after 40ms. `tick` only acts on
+    /// differences, so the extra looks are free.
+    private func watchChanges() {
+        let look: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor in
+                self?.tick()
+                try? await Task.sleep(for: .milliseconds(40))
+                self?.tick()
+            }
+        }
+        queueWatch = player.queue.objectWillChange.sink { _ in look() }
+        stateWatch = player.state.objectWillChange.sink { _ in look() }
+    }
+
     private func tick() {
         guard isActive else { return }
         let status = player.state.playbackStatus
@@ -282,7 +348,9 @@ final class AppleMusicEngine {
         }
         if entryID != lastEntryID {
             log.notice("currentEntry \(self.lastEntryID ?? "nil", privacy: .public) → \(entryID ?? "nil", privacy: .public) at \(time, format: .fixed(precision: 2))s")
-            if lastEntryID != nil, entryID == nil, !endHandled {
+            // Not before the load settles: the entry is briefly nil while
+            // the queue is swapped, and the change watchers look right then.
+            if lastEntryID != nil, entryID == nil, !endHandled, settled {
                 log.notice("end: current entry went away")
                 ended()
                 return
@@ -293,10 +361,12 @@ final class AppleMusicEngine {
             }
             lastEntryID = entryID
         }
-        logModes()
+        mirrorModes()
         // The clock can read 0 again once the queue has played out, so the
         // end is judged on the last time seen while it was running.
-        if status == .playing {
+        // Not before the load settles: the clock is still the last song's
+        // (148s shown for a tick on a song just started).
+        if status == .playing, settled {
             // At the end the clock reads 0 for a tick before the status
             // says paused; passing it on sent the scrubber back to the start.
             let resetAtEnd = activeDuration > 0 && furthest >= activeDuration - 3 && time < 1
@@ -311,10 +381,15 @@ final class AppleMusicEngine {
             currentTime = time
             furthest = max(furthest, time)
             onTime?(time)
+            preemptEnd(from: time)
         }
     }
 
     private func handle(status: MusicKit.MusicPlayer.PlaybackStatus, previous: MusicKit.MusicPlayer.PlaybackStatus?, time: Double) {
+        // Until the load settles the status is the last queue's winding
+        // down: passed on, it flipped the transport's running state and
+        // the lock screen's rate at every Apple Music to Apple Music move.
+        guard settled else { return }
         let running = status == .playing
         if running != isRunning {
             isRunning = running
@@ -343,6 +418,37 @@ final class AppleMusicEngine {
             log.notice("interrupted")
         default:
             break
+        }
+    }
+
+    /// Left to itself MusicKit rolls into the padding after the song and
+    /// its opening is heard before the pause lands. So the end is taken
+    /// here, 0.15s early, and MusicKit paused while still on the song.
+    /// A song that runs longer than its catalog duration loses the
+    /// difference; a shorter one still ends through `moved`.
+    private func preemptEnd(from time: Double) {
+        guard Self.padsQueue, settled, wantsPlaying, !endHandled, endTimer == nil, activeDuration > 0 else { return }
+        let remaining = activeDuration - time
+        guard remaining <= 1.5 else { return }
+        let generation = generation
+        endTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(remaining - 0.15, 0)))
+            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            self.endTimer = nil
+            let now = self.player.playbackTime
+            // A seek back, a pause or a move in the meantime: not the end.
+            guard self.wantsPlaying, !self.endHandled,
+                  self.player.state.playbackStatus == .playing,
+                  self.currentPosition() == self.songPosition,
+                  self.activeDuration - now <= 0.6 else {
+                self.log.notice("end timer stood down at \(now, format: .fixed(precision: 2))s")
+                return
+            }
+            self.log.notice("end: taken at \(now, format: .fixed(precision: 2))s / \(self.activeDuration, format: .fixed(precision: 2))s, before MusicKit rolls into the padding")
+            self.wantsPlaying = false
+            self.endHandled = true
+            self.player.pause()
+            self.onEvent?(.ended)
         }
     }
 
@@ -377,19 +483,21 @@ final class AppleMusicEngine {
         return true
     }
 
-    /// Shuffle and repeat pressed in the car go to MusicKit too. Logged
-    /// only, to learn whether they show up here at all.
-    private func logModes() {
-        let shuffle = String(describing: player.state.shuffleMode)
-        let repeatMode = String(describing: player.state.repeatMode)
-        if let lastShuffle, lastShuffle != shuffle {
-            log.notice("MusicKit shuffleMode \(lastShuffle, privacy: .public) → \(shuffle, privacy: .public)")
+    /// Shuffle and repeat pressed in the car go to MusicKit too. Its modes
+    /// are held off (see `load`), so one leaving off is one press: passed
+    /// on as an event and put back.
+    private func mirrorModes() {
+        guard settled else { return }
+        if let shuffle = player.state.shuffleMode, shuffle != .off {
+            log.notice("MusicKit shuffleMode → \(String(describing: shuffle), privacy: .public): a shuffle press, mirrored")
+            player.state.shuffleMode = .off
+            onEvent?(.shuffleToggled)
         }
-        if let lastRepeat, lastRepeat != repeatMode {
-            log.notice("MusicKit repeatMode \(lastRepeat, privacy: .public) → \(repeatMode, privacy: .public)")
+        if let repeatMode = player.state.repeatMode, repeatMode != MusicKit.MusicPlayer.RepeatMode.none {
+            log.notice("MusicKit repeatMode → \(String(describing: repeatMode), privacy: .public): a repeat press, mirrored")
+            player.state.repeatMode = MusicKit.MusicPlayer.RepeatMode.none
+            onEvent?(.repeatCycled)
         }
-        lastShuffle = shuffle
-        lastRepeat = repeatMode
     }
 
     private func ended() {

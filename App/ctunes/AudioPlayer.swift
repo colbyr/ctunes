@@ -1436,6 +1436,10 @@ final class AudioPlayer {
                 appleMusic.log.notice("previous from MusicKit, going back in the queue")
                 if queue.currentIndex > 0 { _ = queue.retreat() }
                 loadCurrentItem(autoPlay: true)
+            case .shuffleToggled:
+                toggleShuffle()
+            case .repeatCycled:
+                cycleRepeat()
             case .pausedExternally:
                 pausedAt = Date()
                 isPlaying = false

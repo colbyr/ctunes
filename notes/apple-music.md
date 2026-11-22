@@ -105,9 +105,29 @@ poll reads within 30–100ms of mediaremoted sending the command.
   once it still named the first entry, and the poll took our own step for a
   remote next and skipped the song.
 - Repeat-one reloads the entry, since MusicKit has moved onto the padding.
-- Up to one poll (250ms) of the padding copy can be heard on a next. Shuffle
-  and repeat from the car are only logged (`MusicKit shuffleMode …`), not
-  mirrored; CarPlay is untested.
+- **`skipToNextEntry()` can return without moving.** Asked right after the
+  queue replaced one still playing (an Apple Music entry straight after
+  another), it left the song on the first copy with nothing before it, and
+  every remote previous restarted the song. From a Plex track it took within
+  20ms every time. The engine pauses the old queue and waits for it before
+  the swap, then checks the position and asks again (five times, 400ms
+  apart). Why MusicKit drops it is unknown.
+- Nothing is read from MusicKit until the load has settled (`settled`): the
+  entry is briefly nil while the queue is swapped, which read as the song
+  ending and skipped it, and the status and clock are the last queue's.
+- **The end is taken 0.15s early** (`preemptEnd`, a timer set in the last
+  1.5s): left to roll into the padding, the opening of the copy was heard
+  before the pause landed. A song longer than its catalog duration loses the
+  difference; a shorter one still ends through the entry moving.
+- The engine also looks on `queue.objectWillChange` and
+  `state.objectWillChange` (a hop later, and again after 40ms, since the
+  publisher fires before the value lands), so the padding copy is paused as
+  the move lands rather than up to a poll (250ms) later. Not yet measured.
+- MusicKit's own shuffle would reorder the padding and its repeat would loop
+  it, so both are set off at every load, and one leaving off is read as one
+  press: passed to `toggleShuffle` / `cycleRepeat` and put back. Untested, and
+  the car's buttons will then show MusicKit's state (off), not ours. CarPlay
+  is untested altogether.
 
 **3a. In the background, AVPlayer can't take the audio back from MusicKit.**
 Found once the padding made a locked-phone handoff possible; a song playing
