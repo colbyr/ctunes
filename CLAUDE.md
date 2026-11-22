@@ -297,7 +297,10 @@ and a toolbar item can only sit by the clock or the thumb. The album,
 artist, playlist and Favorites pages keep their ···, Play and Shuffle
 as toolbar items, which the strip stacks at its head under back; those
 pages and Quick Mix keep their Play and Shuffle cards off the page from
-the start (`iconsInBar`). The mini player, the mix bar and the search
+the start (`iconsInBar`). Open on its side (`centersTitles`, a
+vertical bar in a landscape window) those pages centre their title and
+subtitle over the bar as a `.principal` item (`centeredStripTitle`),
+leaving the native subtitle empty. The mini player, the mix bar and the search
 field's × run under the
 strip to the window's edge. The closed Duo's Now Playing sheet has a
 stack of its own so AirPlay (`AirPlayStripButton`, a symbol tapping a

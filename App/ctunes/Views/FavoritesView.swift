@@ -175,7 +175,8 @@ struct FavoritesView: View {
             if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle("Favorites")
-        .navigationSubtitle(subtitle)
+        .navigationSubtitle(navigator.centersTitles ? "" : subtitle)
+        .centeredStripTitle("Favorites", subtitle: subtitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // The page's own menu, like the album and artist pages: the

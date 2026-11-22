@@ -156,11 +156,20 @@ struct TracksView: View {
             // title item drawn to match it, without the glass. `.title`
             // rather than `.principal`, which centres it where the native
             // title sits at the leading edge.
+            // On the Duo lying on its side, `.principal`, centred over
+            // the whole bar (`LibraryNavigator.centersTitles`).
             if let artist = album.parentTitle {
-                ToolbarItem(placement: .title) {
-                    titleBlock(artist: artist)
+                if navigator.centersTitles {
+                    ToolbarItem(placement: .principal) {
+                        titleBlock(artist: artist)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .title) {
+                        titleBlock(artist: artist)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
-                .sharedBackgroundVisibility(.hidden)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -272,7 +281,7 @@ struct TracksView: View {
         } label: {
             // The bar centres the title at rest and moves it to the leading
             // edge once the cards' icons scroll in, so the two lines follow.
-            VStack(alignment: iconsInBar ? .leading : .center, spacing: 1) {
+            VStack(alignment: iconsInBar && !navigator.centersTitles ? .leading : .center, spacing: 1) {
                 Text(album.title)
                     .font(.headline)
                     .foregroundStyle(Color.ink)

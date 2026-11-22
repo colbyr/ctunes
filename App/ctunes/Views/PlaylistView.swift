@@ -121,7 +121,8 @@ struct PlaylistView: View {
             .artworkBackground(model.library?.artworkURL(current.composite, size: 900))
             .overlay { if !loaded { LoadingPlaceholder(model: model) } }
             .navigationTitle(current.title)
-            .navigationSubtitle(subtitle)
+            .navigationSubtitle(navigator.centersTitles ? "" : subtitle)
+            .centeredStripTitle(current.title, subtitle: subtitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarItems }
             // Keyed on both generations: going offline, or coming back,

@@ -65,3 +65,52 @@ private struct CreaseFill: ViewModifier {
         }
     }
 }
+
+extension View {
+    /// The page's title over its subtitle, centred over the whole bar
+    /// while the Duo lies on its side (`LibraryNavigator.centersTitles`).
+    /// A `.principal` item, which the bar centres; the native title sits
+    /// at the leading edge there. The page leaves its native subtitle
+    /// empty meanwhile, or it would show beside this.
+    func centeredStripTitle(_ title: String, subtitle: String) -> some View {
+        modifier(CenteredStripTitle(title: title, subtitle: subtitle))
+    }
+}
+
+private struct CenteredStripTitle: ViewModifier {
+    let title: String
+    let subtitle: String
+    @Environment(LibraryNavigator.self) private var navigator
+
+    func body(content: Content) -> some View {
+        content.toolbar {
+            if navigator.centersTitles {
+                ToolbarItem(placement: .principal) {
+                    StripTitle(title: title, subtitle: subtitle)
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
+        }
+    }
+}
+
+/// Two centred lines matched to the bar's own inline title and subtitle.
+struct StripTitle: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(Color.ink)
+            if !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .multilineTextAlignment(.center)
+    }
+}

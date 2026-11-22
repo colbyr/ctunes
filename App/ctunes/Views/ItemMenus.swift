@@ -24,6 +24,14 @@ final class LibraryNavigator {
     var hasVerticalBar = false
     /// Which side that strip runs down.
     var verticalBarEdge: HorizontalEdge?
+    /// The window is wider than tall. Set by the host.
+    var isLandscape = false
+    /// The Duo open on its side, flat or bent, where the strip leaves
+    /// the top bar nothing but the title: a page centres its title and
+    /// subtitle over it (`centeredStripTitle`) rather than letting the
+    /// bar hold them at the leading edge. Closed, the bar is narrow and
+    /// keeps the system's place.
+    var centersTitles: Bool { hasVerticalBar && isLandscape }
     /// The strip's Settings item was tapped; the browse root opens it.
     var settingsRequested = false
 

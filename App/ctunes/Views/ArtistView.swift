@@ -43,6 +43,10 @@ struct ArtistView: View {
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
     @State private var scrollPosition = ScrollPosition()
+    /// The subtitle: how many albums, once they load.
+    private var albumCount: String {
+        loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : ""
+    }
     /// The cards' icons in the bar: once the cards scroll away, or under
     /// a vertical bar, where the strip holds them from the start and the
     /// page shows no cards at all.
@@ -130,7 +134,8 @@ struct ArtistView: View {
             if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle(route.title)
-        .navigationSubtitle(loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : "")
+        .navigationSubtitle(navigator.centersTitles ? "" : albumCount)
+        .centeredStripTitle(route.title, subtitle: albumCount)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

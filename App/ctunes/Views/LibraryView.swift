@@ -311,6 +311,7 @@ struct LibraryView: View {
             let size = geometry.size
             width = size.width
             height = size.height
+            navigator.isLandscape = size.width > size.height
             foldX = geometry.foldX
             folded = geometry.folded
             let column = NowPlayingPresentation.wantsColumn(size)

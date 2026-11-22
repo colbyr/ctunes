@@ -157,6 +157,11 @@ had none of those, so this note is about the layout.
   is gone).
 - **Settings closes with a back chevron**, leading, not Done: in the
   strip it heads the column the way back does on a pushed page.
+- **Detail pages centre their title on their side.** Open landscape,
+  flat or bent, the strip leaves the top bar only the title, which the
+  bar held at the leading edge; a `.principal` item centres it with the
+  subtitle (`LibraryNavigator.centersTitles`, `centeredStripTitle`).
+  Closed, the system's place stays.
 - **The grid is a fixed three across under 560pt**, so the flat and
   the bent Duo agree (`BrowseTile.columns`).
 
