@@ -65,7 +65,7 @@ struct ArtistView: View {
     private static let margin: CGFloat = 16
     /// Same floor as the album browser: wider tiles on a regular width.
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: BrowseTile.minimum(forWidth: width)), spacing: 12, alignment: .top)]
+        BrowseTile.columns(forWidth: width)
     }
     /// Nothing hidden: an album a listening rider vetoed stays on the
     /// page, dimmed, since the page was opened on purpose.
@@ -133,17 +133,15 @@ struct ArtistView: View {
         .navigationSubtitle(loaded ? "\(albums.count) album\(albums.count == 1 ? "" : "s")" : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if !navigator.hasVerticalBar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false)
-                    } label: {
-                        Label("More", systemImage: "ellipsis")
-                    }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false)
+                } label: {
+                    Label("More", systemImage: "ellipsis")
                 }
             }
             // The cards' actions follow you down the grid as icons.
-            if iconsInBar, !navigator.hasVerticalBar {
+            if iconsInBar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Mix Albums", systemImage: "square.stack") { play(.mixAlbums) }
                         .disabled(albums.isEmpty || loading != nil)
@@ -151,18 +149,6 @@ struct ArtistView: View {
                         .disabled(albums.isEmpty || loading != nil)
                 }
             }
-        }
-        // Under a vertical bar, in the strip under search instead.
-        .stripActions {
-            Menu {
-                ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false)
-            } label: {
-                StripGlyph(systemImage: "ellipsis")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("More")
-            StripButton("Mix Albums", systemImage: "square.stack") { play(.mixAlbums) }.disabled(albums.isEmpty || loading != nil)
-            StripButton("Shuffle", systemImage: "shuffle") { play(.shuffle) }.disabled(albums.isEmpty || loading != nil)
         }
         // Keyed on the revision: a list landing from the server, or a
         // library switch, reads again from the saved copies.

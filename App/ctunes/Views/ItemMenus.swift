@@ -20,13 +20,10 @@ final class LibraryNavigator {
     /// A download to remove; the host confirms first.
     var removing: DownloadRemoval?
     /// The window's bars run down a vertical strip (an iPhone Duo closed,
-    /// or open in landscape), where the search icon belongs with the
-    /// other icons rather than in a pill at the bottom. Set by the host.
+    /// or open in landscape). Set by the host.
     var hasVerticalBar = false
     /// Which side that strip runs down.
     var verticalBarEdge: HorizontalEdge?
-    /// The strip's search item was tapped; the host opens the pill.
-    var searchRequested = false
     /// The strip's Settings item was tapped; the browse root opens it.
     var settingsRequested = false
 

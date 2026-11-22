@@ -31,7 +31,7 @@ struct BottomBar: View {
     /// keyboard's safe area, so this never includes it.
     @State private var bottomInset: CGFloat = 0
     /// The window's side insets, for running the pills under a vertical
-    /// strip, whose foot holds no item now that search sits higher.
+    /// strip, whose foot holds no item.
     @State private var sideInsets = EdgeInsets()
     /// The strip's inset on the side it runs down, nil without one. Kept
     /// with the keyboard up too, so the field and its × take the width.
@@ -70,17 +70,13 @@ struct BottomBar: View {
                 // In a wide window the column is always up, and the pill
                 // would only duplicate its transport.
                 } else if let track = player.currentTrack, !nowPlaying.isColumn {
-                    MiniPlayerPill(model: model, track: track, compact: searching, short: navigator.hasVerticalBar && !searching) {
+                    MiniPlayerPill(model: model, track: track, compact: searching) {
                         nowPlaying.isShown = true
                     }
                     .glassEffectID("player", in: glass)
                 }
-                // With a vertical bar the icon is a toolbar item there
-                // (`StripSearch`); the pill only comes back as the field.
-                if searching || !navigator.hasVerticalBar {
-                    SearchPill(query: $query, searching: $searching)
-                        .glassEffectID("search", in: glass)
-                }
+                SearchPill(query: $query, searching: $searching)
+                    .glassEffectID("search", in: glass)
                 if searching {
                     Button {
                         query = ""
@@ -106,10 +102,8 @@ struct BottomBar: View {
         .padding(.trailing, margin(.trailing))
         // Pulled into the home-indicator inset so the gap below the pills is
         // a little more than the 20pt at their sides. With the keyboard up
-        // the pills sit a fixed gap above its top edge instead. Beside a
-        // vertical strip the mini player sits level with the search item
-        // at its foot, whose glass runs 25pt up from the window's edge.
-        .padding(.bottom, keyboardUp ? keyboard.height - bottomInset + 8 : (navigator.hasVerticalBar ? 25 : 26) - bottomInset)
+        // the pills sit a fixed gap above its top edge instead.
+        .padding(.bottom, keyboardUp ? keyboard.height - bottomInset + 8 : 26 - bottomInset)
         .background {
             GeometryReader { proxy in
                 Color.clear
@@ -162,9 +156,6 @@ private struct MiniPlayerPill: View {
     let model: AppModel
     let track: PlexTrack
     let compact: Bool
-    /// 48pt rather than 52, the height of the glass item at the foot of a
-    /// vertical strip, so the two read as one row.
-    let short: Bool
     let open: () -> Void
     @Environment(AudioPlayer.self) private var player
 
@@ -205,7 +196,7 @@ private struct MiniPlayerPill: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, short ? 8 : 10)
+        .padding(.vertical, 10)
         // A touch more air before the art than around it; not when the
         // pill is just the art in a circle, where it would sit off-centre.
         .padding(.leading, compact ? 0 : 4)
@@ -220,36 +211,23 @@ private struct MiniPlayerPill: View {
     }
 }
 
-/// Search in a vertical strip (an iPhone Duo closed, or open in
-/// landscape): the bottom pill hands its icon to the strip and comes back
-/// as the field once a search is open. On the browse root Settings sits
-/// right below it, a button of its own.
+/// The browse root's Settings in a vertical strip (an iPhone Duo closed,
+/// or open in landscape), a little above the middle, below the root's
+/// row of mixes. Search stays the bottom pill beside the mini player.
 ///
 /// Drawn by hand in the strip's column rather than as a toolbar item:
 /// the strip stacks its items at the head (the top bar's) and the foot
 /// (the bottom bar's) and ignores `ToolbarSpacer`, fixed or flexible, and
 /// a clear item of fixed height, so a toolbar item could only sit by the
-/// clock or by the thumb. It sits a little above the middle, below the
-/// root's row of mixes, at the same height on every page; a page's own
-/// ···, Play and Shuffle come under it (`stripActions`), drawn the same
-/// way. The foot is left to the mini player and the mix bar, which run
-/// under the strip to the window's edge.
-struct StripSearch: View {
-    /// The browse root's Settings, right below search.
-    let settings: Bool
+/// clock or by the thumb. A pushed page's own items do sit at the head,
+/// under back, as toolbar items.
+struct StripSettings: View {
     @Environment(LibraryNavigator.self) private var navigator
 
     var body: some View {
-        StripColumn(top: { StripMetrics.searchTop(in: $0) }) {
-            VStack(spacing: StripMetrics.groupGap) {
-                StripGroup {
-                    StripButton("Search", systemImage: "magnifyingglass") { navigator.searchRequested = true }
-                }
-                if settings {
-                    StripGroup {
-                        StripButton("Settings", systemImage: "gearshape") { navigator.settingsRequested = true }
-                    }
-                }
+        StripColumn(top: { StripMetrics.settingsTop(in: $0) }) {
+            StripGroup {
+                StripButton("Settings", systemImage: "gearshape") { navigator.settingsRequested = true }
             }
         }
     }
@@ -262,12 +240,9 @@ enum StripMetrics {
     static let itemWidth: CGFloat = 47
     static let itemHeight: CGFloat = 50
     static let edgeGap: CGFloat = 25
-    static let groupGap: CGFloat = 14
-    /// Search's top, a share of the window's height: 312 of the closed
+    /// Settings' top, a share of the window's height: 312 of the closed
     /// Duo's 678, under the root's band of mixes (288).
-    static func searchTop(in height: CGFloat) -> CGFloat { (height * 0.46).rounded() }
-    /// A page's own group, under search.
-    static func actionsTop(in height: CGFloat) -> CGFloat { searchTop(in: height) + itemHeight + groupGap }
+    static func settingsTop(in height: CGFloat) -> CGFloat { (height * 0.46).rounded() }
 }
 
 /// Lays its content in the strip's column, `top` down the window.
@@ -331,31 +306,6 @@ struct StripGlyph: View {
             .foregroundStyle(.primary)
             .frame(width: StripMetrics.itemWidth, height: StripMetrics.itemHeight)
             .contentShape(.rect)
-    }
-}
-
-extension View {
-    /// A page's own strip group (···, Play, Shuffle), drawn under the
-    /// strip's search while the window's bars are vertical. The page
-    /// leaves these out of its toolbar then, which would put them above
-    /// search, by the clock.
-    func stripActions<Actions: View>(@ViewBuilder _ actions: () -> Actions) -> some View {
-        modifier(StripActionsModifier(actions: actions()))
-    }
-}
-
-private struct StripActionsModifier<Actions: View>: ViewModifier {
-    let actions: Actions
-    @Environment(LibraryNavigator.self) private var navigator
-
-    func body(content: Content) -> some View {
-        content.overlay {
-            if navigator.hasVerticalBar {
-                StripColumn(top: StripMetrics.actionsTop) {
-                    StripGroup { actions }
-                }
-            }
-        }
     }
 }
 

@@ -30,9 +30,11 @@ had none of those, so this note is about the layout.
   edge on the iPad and the Mac too (the browser is still the bigger
   side past 1120).
 - **Grid tiles follow the pane's width**, not the size class
-  (`BrowseTile.minimum(forWidth:)`): the browser beside the column is
+  (`BrowseTile.columns(forWidth:)`): the browser beside the column is
   about 375pt and still regular, where the 180pt floor gave one tile
-  across. Under 560 the floor is the phone's 100, so three across.
+  across. Under 560 it is a fixed three across: a floor of 100 put four
+  on the flat Duo (about 460pt beside the column) and three bent, and
+  the grid reflowed as the device folded.
 - **The column is the phone's Now Playing, half the screen wide.** The
   same `List` as the sheet: names over the art, the title, the
   transport, then Up Next, all scrolling together, with no title row
@@ -142,6 +144,21 @@ had none of those, so this note is about the layout.
   Playing sheet, search open, Quick Mix with a pick. **Not seen**: any
   inner-display pose. `simctl io screenConfig power` does not move the
   hinge (and toggling it crashed SpringBoard); fold in DeviceHub.
+
+## Strip, revised (2026-11-22)
+
+- **Search is the bottom pill again**, beside the mini player, on every
+  page; mid-strip at 46% was tried and dropped after living with it. The
+  pill is back to 52pt, 26pt up, as everywhere else (`short` is gone).
+- **The root's Settings takes search's old spot** (`StripSettings`, 46%
+  down), still drawn by hand since a toolbar item would sit by the clock.
+- **A detail page's ···, Play and Shuffle are toolbar items again**,
+  which the strip stacks at its head right under back (`stripActions`
+  is gone).
+- **Settings closes with a back chevron**, leading, not Done: in the
+  strip it heads the column the way back does on a pushed page.
+- **The grid is a fixed three across under 560pt**, so the flat and
+  the bent Duo agree (`BrowseTile.columns`).
 
 ## Measured
 

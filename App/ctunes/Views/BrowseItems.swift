@@ -5,16 +5,22 @@ import SwiftUI
 /// layout, a row for the list. The root, the artist page and the mix
 /// pools all draw from here so an album reads the same everywhere.
 
-/// The grid's tile floor for a pane this wide: three across on a phone
-/// and on the page beside the Now Playing column, where a Duo leaves
-/// about 375pt; four across from 560, which is the Duo's inner display
+/// The grid for a pane this wide: three across under 560, a fixed count
+/// rather than a floor, so a phone, and the page beside the Now Playing
+/// column on a Duo whether it is bent (about 375pt) or flat (about 460),
+/// all read three; a floor of 100 put four on the flat Duo and three on
+/// the bent one, and the fold between them reflowed the grid. Four
+/// across from 560, which is the Duo's inner display
 /// upright (669pt), where 180 left three tiles of 200; from 720 the
 /// floor rises so an iPad or a Mac window doesn't pack thumbnails. By
 /// width, not size class: a regular-width pane can be narrower than a
 /// phone.
 enum BrowseTile {
-    static func minimum(forWidth width: CGFloat) -> CGFloat {
-        width >= 720 ? 180 : width >= 560 ? 136 : 100
+    static func columns(forWidth width: CGFloat) -> [GridItem] {
+        guard width >= 560 else {
+            return Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3)
+        }
+        return [GridItem(.adaptive(minimum: width >= 720 ? 180 : 136), spacing: 12, alignment: .top)]
     }
 }
 

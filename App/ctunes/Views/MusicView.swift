@@ -120,7 +120,7 @@ struct MusicView: View {
         }
     }
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: tileMinimum), spacing: 12, alignment: .top)]
+        BrowseTile.columns(forWidth: width)
     }
 
     /// Tiles push onto the path by hand: a NavigationLink in a List row makes
@@ -286,7 +286,6 @@ struct MusicView: View {
 
     /// Matches the nav bar's large title and the bottom pills.
     private static let margin: CGFloat = 16
-    private var tileMinimum: CGFloat { BrowseTile.minimum(forWidth: width) }
     /// The screen's width, for the hero cards' layout and the tile floor.
     @State private var width: CGFloat = 0
 
@@ -376,8 +375,8 @@ struct MusicView: View {
         // on the divider with no margin; the inline title is centred.
         .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .toolbar {
-            // Under a vertical strip Settings sits right below search
-            // (`StripSearch`).
+            // Under a vertical strip Settings sits a little above the
+            // middle of it (`StripSettings`).
             if !navigator.hasVerticalBar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Settings", systemImage: "gearshape") { showingSettings = true }

@@ -178,13 +178,6 @@ struct LibraryView: View {
             navigator.open(route)
             links.route = nil
         }
-        // The vertical bar's search item opens the pill the way its own
-        // icon does.
-        .onChange(of: navigator.searchRequested) { _, wanted in
-            guard wanted else { return }
-            navigator.searchRequested = false
-            searching = true
-        }
         .background {
             if #available(iOS 27.1, *) {
                 VerticalBarProbe(navigator: navigator)
@@ -461,11 +454,11 @@ struct LibraryView: View {
         .safeAreaInset(edge: .bottom) {
             BottomBar(model: model, query: $query, searching: $searching)
         }
-        // Search (and on the root, Settings) in a vertical strip; the
-        // field itself is the bottom bar's once a search is open.
+        // The root's Settings in a vertical strip, where the toolbar
+        // would put it by the clock.
         .overlay {
-            if navigator.hasVerticalBar, !searching, model.selectedSection != nil {
-                StripSearch(settings: path.isEmpty)
+            if navigator.hasVerticalBar, !searching, path.isEmpty, model.selectedSection != nil {
+                StripSettings()
                     .transition(.opacity)
             }
         }

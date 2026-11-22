@@ -269,8 +269,9 @@ fills the other, side by side the transport heads the queue's pane.
 **Half folded like a laptop** a page's scroll view reads the active
 horizontal fold (`readsCrease`, `DuoLayout.swift`) and its header pads
 down to it (`fillsToCrease`) so the browser starts under the crease;
-it scrolls away as usual. Grids are four across from 560pt
-(`BrowseTile.minimum`), the Duo's 669pt upright. **The column is the phone's screen with no title**: one
+it scrolls away as usual. Grids are three across under 560pt, fixed, so the page beside the
+column reads the same bent and flat, and four across from 560
+(`BrowseTile.columns`), the Duo's 669pt upright. **The column is the phone's screen with no title**: one
 `List` scrolling the header away with the queue, the artist line level
 with the stack's inline title beside it, the art centred
 and sized from a measurement of the column (its width less the margins,
@@ -287,18 +288,17 @@ in the same pass that dropped the flag, one SwiftUI took as dismissed
 and nothing could close.
 **A vertical bar** (the Duo closed, or
 open in landscape) is read off `toolbarVerticalEdge` by
-`VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`; the
-host overlays `StripSearch` in the strip's column, Search (and on the
-root, Settings, a button of its own) drawn to match the strip's glass,
-since the strip ignores `ToolbarSpacer` for position and a toolbar item
-can only sit by the clock or the thumb: 46% down on every page. The
-album, artist, playlist and Favorites pages draw their ···, Play and
-Shuffle the same way right under it (`stripActions`) and leave them out
-of the toolbar, which would put them above search. Those pages and
-Quick Mix keep their Play and Shuffle cards off the page from the
-start (`iconsInBar`), and
-the bottom bar drops the search pill until a search is open; the mini
-player (48pt), the mix bar and the search field's × run under the
+`VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`. Search
+stays the bottom pill beside the mini player (mid-strip, tried and
+dropped); the root's Settings is the one item drawn by
+hand in the strip's column (`StripSettings`, 46% down, matched to the
+strip's glass), since the strip ignores `ToolbarSpacer` for position
+and a toolbar item can only sit by the clock or the thumb. The album,
+artist, playlist and Favorites pages keep their ···, Play and Shuffle
+as toolbar items, which the strip stacks at its head under back; those
+pages and Quick Mix keep their Play and Shuffle cards off the page from
+the start (`iconsInBar`). The mini player, the mix bar and the search
+field's × run under the
 strip to the window's edge. The closed Duo's Now Playing sheet has a
 stack of its own so AirPlay (`AirPlayStripButton`, a symbol tapping a
 hidden `AVRoutePickerView`; the picker itself would sit in a bar of its

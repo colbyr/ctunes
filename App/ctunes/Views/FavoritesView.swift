@@ -181,17 +181,15 @@ struct FavoritesView: View {
             // The page's own menu, like the album and artist pages: the
             // queue items, the way in to the mixer and the offline pin.
             // Declared first so it sits leftmost, ahead of the icons.
-            if !navigator.hasVerticalBar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        FavoritesMenu(model: model, tracks: rows, showFavorites: false)
-                    } label: {
-                        Label("More", systemImage: "ellipsis")
-                    }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    FavoritesMenu(model: model, tracks: rows, showFavorites: false)
+                } label: {
+                    Label("More", systemImage: "ellipsis")
                 }
             }
             // The cards' actions follow you down the list as icons.
-            if iconsInBar, !navigator.hasVerticalBar {
+            if iconsInBar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Play", systemImage: "play.fill", action: play)
                         .disabled(playable.isEmpty)
@@ -199,18 +197,6 @@ struct FavoritesView: View {
                         .disabled(playable.isEmpty)
                 }
             }
-        }
-        // Under a vertical bar, in the strip under search instead.
-        .stripActions {
-            Menu {
-                FavoritesMenu(model: model, tracks: rows, showFavorites: false)
-            } label: {
-                StripGlyph(systemImage: "ellipsis")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("More")
-            StripButton("Play", systemImage: "play.fill", action: play).disabled(playable.isEmpty)
-            StripButton("Shuffle", systemImage: "shuffle", action: shuffle).disabled(playable.isEmpty)
         }
         // Keyed on the revision: a list landing from the server, or a
         // library switch, reads again from the saved copies.

@@ -35,9 +35,12 @@ struct SettingsSheet: View {
             .settingsBackground()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            // A back chevron where a pushed page's would be, rather than
+            // Done: in a vertical strip it heads the strip like back on
+            // every other page, and the sheet reads as a page stepped into.
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Back", systemImage: "chevron.backward") { dismiss() }
                 }
             }
             .navigationDestination(for: Page.self) { page in

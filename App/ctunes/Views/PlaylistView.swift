@@ -124,18 +124,6 @@ struct PlaylistView: View {
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarItems }
-            // Under a vertical bar, in the strip under search instead.
-            .stripActions {
-                Menu {
-                    PlaylistMenu(model: model, playlist: current, items: items, showPlaylist: false)
-                } label: {
-                    StripGlyph(systemImage: "ellipsis")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("More")
-                StripButton("Play", systemImage: "play.fill", action: play).disabled(playable.isEmpty)
-                StripButton("Shuffle", systemImage: "shuffle", action: shuffle).disabled(playable.isEmpty)
-            }
             // Keyed on both generations: going offline, or coming back,
             // reloads from whichever library is current, and an add from
             // another screen's menu lands here too.
@@ -204,13 +192,11 @@ struct PlaylistView: View {
         // The page's own menu, like the album and artist pages: the
         // queue items, Rename and Delete, the offline pin. Declared
         // first so it sits leftmost, ahead of the icons.
-        if !navigator.hasVerticalBar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    PlaylistMenu(model: model, playlist: current, items: items, showPlaylist: false)
-                } label: {
-                    Label("More", systemImage: "ellipsis")
-                }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                PlaylistMenu(model: model, playlist: current, items: items, showPlaylist: false)
+            } label: {
+                Label("More", systemImage: "ellipsis")
             }
         }
         if reorderable, !items.isEmpty {
@@ -222,7 +208,7 @@ struct PlaylistView: View {
             }
         }
         // The cards' actions follow you down the list as icons.
-        if iconsInBar, !navigator.hasVerticalBar {
+        if iconsInBar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Play", systemImage: "play.fill", action: play)
                     .disabled(playable.isEmpty)

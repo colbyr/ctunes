@@ -229,7 +229,7 @@ struct MixBuilderView: View {
     private static let poolAnchor = "pool"
     /// Same floor as the album browser: wider tiles on a regular width.
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: BrowseTile.minimum(forWidth: width)), spacing: 12, alignment: .top)]
+        BrowseTile.columns(forWidth: width)
     }
 
     var body: some View {
