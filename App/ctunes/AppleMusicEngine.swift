@@ -51,6 +51,10 @@ final class AppleMusicEngine {
     /// The furthest the clock got while running: MusicKit reads 0 again
     /// once a queue of one plays out, sometimes before it reports paused.
     private var furthest: Double = 0
+    /// Set on the first `.playing` after a load. Before it, MusicKit walks
+    /// stopped → paused → playing while it prepares, which read as someone
+    /// else pausing and resuming: the play button flickered at the switch.
+    private var hasStarted = false
     /// Whether to give up our audio session before MusicKit starts. Ours is
     /// non-mixable, and MusicKit plays from RemotePlayerService under a
     /// session of its own.
@@ -110,6 +114,7 @@ final class AppleMusicEngine {
         endHandled = false
         currentTime = startAt
         furthest = startAt
+        hasStarted = false
         loadedAt = .now
         logNowPlaying("before load")
         log.notice("load \(song.title, privacy: .public) autoPlay=\(autoPlay) startAt=\(startAt, format: .fixed(precision: 1))")
@@ -213,6 +218,10 @@ final class AppleMusicEngine {
         // The clock can read 0 again once the queue has played out, so the
         // end is judged on the last time seen while it was running.
         if status == .playing {
+            // At the end the clock reads 0 for a tick before the status
+            // says paused; passing it on sent the scrubber back to the start.
+            let resetAtEnd = activeDuration > 0 && furthest >= activeDuration - 3 && time < 1
+            guard !resetAtEnd else { return }
             currentTime = time
             furthest = max(furthest, time)
             onTime?(time)
@@ -225,7 +234,8 @@ final class AppleMusicEngine {
             isRunning = running
             onEvent?(.running(running))
         }
-        guard previous != nil else { return }
+        if running { hasStarted = true }
+        guard previous != nil, hasStarted else { return }
         switch status {
         case .paused, .stopped:
             let nearEnd = activeDuration > 0 && furthest >= activeDuration - 3
