@@ -223,6 +223,11 @@ final class AppleMusicEngine {
                 songPosition = currentPosition() ?? 0
                 lastEntryID = player.queue.currentEntry?.id
                 settled = true
+                // A status the poll saw before this was noted but not acted
+                // on; one that stays put (still playing through the swap)
+                // would never be reported as running, and the published
+                // rate would sit at 0 for the whole song.
+                lastStatus = nil
                 let ids = player.queue.entries.map(\.id).joined(separator: ", ")
                 log.notice("queue padded=\(Self.padsQueue) entries=[\(ids, privacy: .public)] current=\(self.player.queue.currentEntry?.id ?? "nil", privacy: .public) songPosition=\(self.songPosition)")
                 if startAt > 0 { player.playbackTime = startAt }

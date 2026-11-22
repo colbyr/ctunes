@@ -1554,7 +1554,15 @@ final class AudioPlayer {
     }
 
     private func updateNowPlayingInfo(for track: PlexTrack) {
-        guard !leavesNowPlayingToMusicKit else { return }
+        guard !leavesNowPlayingToMusicKit else {
+            // Ours would be the last Plex track's, and while our player
+            // has info the car's Now Playing reads it and not MusicKit's.
+            if MPNowPlayingInfoCenter.default().nowPlayingInfo != nil {
+                appleMusic.log.notice("clearing our now-playing info, MusicKit's stands")
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            }
+            return
+        }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.grandparentTitle ?? "",

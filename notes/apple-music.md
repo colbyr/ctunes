@@ -164,6 +164,34 @@ the first `.playing` after a load.
 Service failed with `developerTokenInvalid`, then a parse error on the error
 body ("invalid JSON"). Fine minutes later. Propagation, presumably.
 
+**6. The car shows an Apple Music song as paused** (2026-11-22, in a car).
+Audio, transitions and every control worked. But the system keeps two players
+for the app, ours (`com.colbyr.ctunes … default`) and the one MusicKit runs
+for us (`RemotePlayerService/com.colbyr.ctunes`), and **CarPlay's Now Playing
+reads ours**: its commands came to our handlers through an Apple Music song
+(both seeks did), unlike the lock screen's. Ours has no stated playback state,
+so mediaremoted infers one from our own audio (`setting inferred playback
+state from <Playing> to <Paused>` at every handoff to MusicKit). The car drew
+the play glyph and a still scrubber at rate 1; a seek moved it to the new
+position and it sat there.
+
+- `MPNowPlayingInfoCenter.playbackState = .playing` changes nothing on iOS:
+  no line from mediaremoted, the inferred state stood.
+- A loop of silence in our process under the mixable session doesn't count as
+  playing either. Only our own non-mixable session playing does, and that is
+  what cuts MusicKit off. Both were removed.
+- Untested: the "We write lock screen info" toggle off, which now clears our
+  info for the song so only MusicKit's player has any. The car may then show
+  MusicKit's player (playing, clock moving), with its title and artwork, its
+  shuffle and repeat state, and next and previous going to it (the padded
+  queue). The fallback is writing the elapsed time once a second so the
+  scrubber moves under a wrong glyph.
+- The same gap is the play/pause flicker on the lock screen at a handoff: ours
+  goes paused 0.1 to 1s before MusicKit's goes playing.
+- Also fixed: a status MusicKit already held when the load settled was never
+  reported as running, which would leave our rate at 0 for the song. Not seen
+  on the drive.
+
 ## Setup it needed
 
 - MusicKit enabled under App Services for `com.colbyr.ctunes` in the developer
@@ -193,8 +221,9 @@ Both rest on behaviour measured here rather than documented (a remote next
 moving the queue, iOS letting a playing client take the audio back), so each
 needs watching across iOS releases.
 
-Not yet tested: CarPlay, lock screen previous, Siri or a call during an Apple
-Music song, AirPods and headset buttons, our now-playing writes off.
+In the car everything works but the display (problem 6). Lock screen previous
+works. Not yet tested: our now-playing writes off (the car's display rides on
+it), Siri or a call during an Apple Music song, AirPods and headset buttons.
 
 ## Beyond playback (not started)
 
