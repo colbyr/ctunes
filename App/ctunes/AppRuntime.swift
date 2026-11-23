@@ -46,7 +46,9 @@ final class AppRuntime {
             player.adopt(model.library)
             return recovered
         }
+        player.queueKeyProvider = { [model] in model.storageKey("playQueue") }
         followModel()
+        followSavedQueue()
         followPlaylists()
         followSceneActivation()
         Task { await model.bootstrap() }
@@ -77,6 +79,33 @@ final class AppRuntime {
             for await current in Observations({ model.playlists.map(\.title) }) where current != titles {
                 titles = current
                 CtunesShortcuts.updateAppShortcutParameters()
+            }
+        }
+    }
+
+    /// The last session's queue, put back paused as soon as a library is
+    /// open, from disk at launch before the server answers, so the column
+    /// can offer to resume it and the mini player shows it. Again when the
+    /// library changes, while nothing has been played: each library keeps
+    /// its own queue.
+    private func followSavedQueue() {
+        let model = model, player = player
+        Task { @MainActor in
+            var restoredKey: String?
+            for await key in Observations({ model.library == nil ? nil : model.storageKey("playQueue") }) {
+                guard let key, key != restoredKey, let library = model.library else { continue }
+                guard player.queue.isEmpty || player.isRestored else { continue }
+                restoredKey = key
+                let snapshot = await Task.detached(priority: .userInitiated) {
+                    AudioPlayer.queueStore.load(key: key)
+                }.value
+                // Something may have started playing while the file was read.
+                guard player.queue.isEmpty || player.isRestored else { continue }
+                if let snapshot {
+                    player.restore(snapshot, key: key, library: library)
+                } else {
+                    player.forgetRestored()
+                }
             }
         }
     }

@@ -400,6 +400,30 @@ shuffle in the app (mixes, favorites, album shuffle, the Now Playing toggle)
 is a spread shuffle by artist then album (`SpreadShuffle.swift`,
 `PlexTrack.shuffleGrouping`), not a uniform `shuffled()`.
 
+**The queue survives a cold launch** (`QueueSnapshot`, `QueueStore` in
+PlexKit, `Application Support/ctunes/Queues/<storageKey>.json`, per
+account and library, never synced): `AudioPlayer` writes the tracks, the
+cursor, the pre-shuffle order, repeat and the position a second after
+any queue change, on pause, seek, the trip to the background and exit,
+and every 20–30s of play (not every tick: battery). `AppRuntime`
+restores it paused the moment a library opens (`restore`, from disk,
+before the server answers) without loading an item; `isRestored` holds
+until the first `loadCurrentItem`, which wakes the remote commands. A
+queue played out removes its file. In the Now Playing column a restored
+or empty player shows `NowPlayingIdleView` instead: the resume card
+(dated by `restoredSavedAt`), then three albums listed plainly with no
+tagline, only "Played …", one per slot: one of the top tenth of On
+Rotation's order (`catalog.rotation`), one at random, one of the
+bottom tenth of the albums ever played (no play in the year's history,
+longest ago first, then the lowest scores; each pool at least 5), the random slot filled last so a tiny library's
+albums go to the slots with a rule first; 4
+tracks or more (no singles), nothing played in the past week, under the vetoes, downloads only when the
+server is unreachable, played whole and recorded as a recent mix.
+AirPlay there is the strip's, not the column's. Without the column the
+mini player swaps its transport for an amber Resume while
+`isRestored`, and opens the same idle view (`PresentedNowPlaying`),
+which turns into the player in place once it plays; Siri's Resume works after a cold launch.
+
 **Browsing** (`AlbumBrowse.swift`, `AlbumBrowserControls.swift`,
 `BrowseItems.swift`): the arrange chip is two menus. The first, its glyph
 the current layout, holds what to browse (`BrowseSubject`, on the root

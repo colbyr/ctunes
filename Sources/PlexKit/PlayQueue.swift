@@ -159,6 +159,43 @@ public struct PlayQueue<Item: Sendable>: Sendable {
         currentIndex = currentID.flatMap { id in entries.firstIndex { $0.id == id } } ?? 0
     }
 
+    // MARK: - Saving
+
+    /// The queue as it can be written down: the items in play order, the
+    /// cursor, and the pre-shuffle order as positions into `items`. Entry
+    /// ids are not kept; a restored queue numbers its entries afresh.
+    public var saved: Saved {
+        let position = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($0.element.id, $0.offset) })
+        return Saved(
+            items: entries.map(\.item),
+            currentIndex: currentIndex,
+            unshuffledOrder: unshuffled?.compactMap { position[$0.id] }
+        )
+    }
+
+    public struct Saved {
+        public var items: [Item]
+        public var currentIndex: Int
+        public var unshuffledOrder: [Int]?
+
+        public init(items: [Item], currentIndex: Int, unshuffledOrder: [Int]?) {
+            self.items = items
+            self.currentIndex = currentIndex
+            self.unshuffledOrder = unshuffledOrder
+        }
+    }
+
+    /// A queue restored from `saved`, shuffled as it was. A pre-shuffle
+    /// order that doesn't name every item once is dropped, leaving the
+    /// queue in play order and unshuffled.
+    public init(_ saved: Saved) {
+        self.init(saved.items, startingAt: saved.currentIndex)
+        if let order = saved.unshuffledOrder,
+           order.count == entries.count, Set(order) == Set(entries.indices) {
+            unshuffled = order.map { entries[$0] }
+        }
+    }
+
     private mutating func makeEntries(_ items: [Item]) -> [Entry] {
         defer { nextID += items.count }
         return items.enumerated().map { Entry(id: nextID + $0.offset, item: $0.element) }

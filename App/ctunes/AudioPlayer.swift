@@ -16,7 +16,9 @@ import SwiftUI
 @MainActor
 @Observable
 final class AudioPlayer {
-    private(set) var queue = PlayQueue<PlexTrack>()
+    private(set) var queue = PlayQueue<PlexTrack>() {
+        didSet { scheduleQueueSave() }
+    }
     /// Whether playback is wanted: what the transport buttons show. The
     /// player can lag behind it while a track buffers or a Bluetooth route
     /// comes up, which is what `playerIsRunning` tracks.
@@ -35,6 +37,25 @@ final class AudioPlayer {
     /// current track stays put so the header still has something to show;
     /// `resume` plays it again and `restart` goes back to the top.
     private(set) var hasEnded = false
+    /// The last session's queue, restored paused at launch and not played
+    /// since: what the column offers to resume rather than showing as
+    /// Now Playing. Any load of an item ends it.
+    private(set) var isRestored = false
+    /// When the restored queue was saved, for the resume card's "Yesterday".
+    private(set) var restoredSavedAt: Date?
+    /// The key the queue saves under (`AppModel.storageKey`), asked when a
+    /// queue starts: the tracks are that library's, and a queue carried
+    /// across a library switch keeps saving where it began.
+    @ObservationIgnored var queueKeyProvider: (@MainActor () -> String?)?
+    @ObservationIgnored private var queueKey: String?
+    @ObservationIgnored private var queueSave: Task<Void, Never>?
+    @ObservationIgnored private var lastQueueSave = Date.distantPast
+    private let queueSaveInterval: TimeInterval = 20
+    @ObservationIgnored private nonisolated(unsafe) var backgroundObserver: NSObjectProtocol?
+    nonisolated static let queueStore = QueueStore(
+        directory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appending(path: "ctunes/Queues")
+    )
 
     var isShuffled: Bool { queue.isShuffled }
     var currentTrack: PlexTrack? { queue.current }
@@ -235,12 +256,16 @@ final class AudioPlayer {
         if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
         if let mediaResetObserver { NotificationCenter.default.removeObserver(mediaResetObserver) }
         if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
     }
 
     // MARK: - Playback
 
     func play(_ tracks: [PlexTrack], startingAt index: Int, library: any LibrarySource) {
         self.library = library
+        isRestored = false
+        restoredSavedAt = nil
+        queueKey = queueKeyProvider?()
         queue = PlayQueue(tracks, startingAt: index)
         sessionIdentifier = UUID().uuidString
         activateSession()
@@ -291,6 +316,7 @@ final class AudioPlayer {
         isPlaying = false
         updateNowPlayingPlaybackState()
         reportTimeline(.paused)
+        saveQueue()
     }
 
     /// A manual skip. Repeat-one is deliberately ignored here: skipping past
@@ -331,6 +357,9 @@ final class AudioPlayer {
         hasEnded = true
         // Not `pause()`: the session is over, so the last report is a stop.
         reportTimeline(.stopped)
+        // Played out: nothing left to pick up at the next launch.
+        queueSave?.cancel()
+        if let queueKey { Self.queueStore.remove(key: queueKey) }
     }
 
     /// Reached from the end-of-item notification and from the clock fallback
@@ -364,6 +393,7 @@ final class AudioPlayer {
         repeatMode = mode
         updateNowPlayingModes()
         prefetch()
+        scheduleQueueSave()
     }
 
     func previous() {
@@ -391,6 +421,7 @@ final class AudioPlayer {
             Task { @MainActor in
                 self?.currentTime = seconds
                 self?.updateNowPlayingPlaybackState()
+                self?.scheduleQueueSave()
                 landed?()
             }
         }
@@ -447,6 +478,86 @@ final class AudioPlayer {
         prefetch()
     }
 
+    // MARK: - Saved queue
+
+    /// Puts the last session's queue back, paused where it was, without
+    /// loading an item: nothing plays or claims the lock screen until it
+    /// is resumed (`loadCurrentItem` wakes it). Only over an empty queue,
+    /// or over another restored one when the library changes.
+    func restore(_ snapshot: QueueSnapshot, key: String, library: any LibrarySource) {
+        guard queue.isEmpty || isRestored else { return }
+        let restored = snapshot.queue
+        guard let track = restored.current else { return }
+        self.library = library
+        queueKey = key
+        restoredSavedAt = snapshot.savedAt
+        isRestored = true
+        queue = restored
+        repeatMode = snapshot.repeatModeValue
+        currentTime = snapshot.position
+        duration = track.durationSeconds ?? 0
+        isPlaying = false
+        hasEnded = false
+        log.notice("restored a queue of \(restored.entries.count) at \(restored.currentIndex), \(snapshot.position, format: .fixed(precision: 1))s")
+    }
+
+    /// Drops a restored queue nobody played, for a library with none saved.
+    func forgetRestored() {
+        guard isRestored else { return }
+        isRestored = false
+        restoredSavedAt = nil
+        queueKey = nil
+        queue = PlayQueue()
+        currentTime = 0
+        duration = 0
+    }
+
+    /// The first load of a restored queue: from here it is the session's.
+    private func wakeRestored() {
+        guard isRestored else { return }
+        isRestored = false
+        restoredSavedAt = nil
+        sessionIdentifier = UUID().uuidString
+        activateSession()
+        configureRemoteCommands()
+        setRemoteCommandsEnabled(true)
+        updateNowPlayingModes()
+    }
+
+    /// Every queue change lands here; a second later the queue is written,
+    /// so a burst of edits (a drag through Up Next) is one write.
+    private func scheduleQueueSave() {
+        queueSave?.cancel()
+        queueSave = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.saveQueue()
+        }
+    }
+
+    /// Writes the queue and the position now, encoded off the main actor,
+    /// or on it and waited for when the process is about to exit. Not
+    /// periodically while playing: every track change, pause, seek and
+    /// trip to the background writes it, and a write every few seconds
+    /// would cost battery for the seconds into one track.
+    private func saveQueue(waiting: Bool = false) {
+        queueSave?.cancel()
+        queueSave = nil
+        guard !queue.isEmpty, !hasEnded else { return }
+        if queueKey == nil { queueKey = queueKeyProvider?() }
+        guard let key = queueKey else { return }
+        // A restored queue keeps its date until it plays.
+        let snapshot = QueueSnapshot(queue, repeatMode: repeatMode, position: currentTime,
+                                     savedAt: isRestored ? (restoredSavedAt ?? .now) : .now)
+        lastQueueSave = .now
+        log.info("saving the queue at \(snapshot.currentIndex), \(snapshot.position, format: .fixed(precision: 1))s")
+        if waiting {
+            try? Self.queueStore.save(snapshot, key: key)
+        } else {
+            Task.detached(priority: .utility) { try? Self.queueStore.save(snapshot, key: key) }
+        }
+    }
+
     // MARK: - Cache
 
     /// Keeps the next few entries on disk, and the current one last: it's
@@ -489,6 +600,10 @@ final class AudioPlayer {
     /// the account is left on the device.
     func signOut() async {
         reportTimeline(.stopped)
+        queueSave?.cancel()
+        queueKey = nil
+        isRestored = false
+        restoredSavedAt = nil
         player.replaceCurrentItem(with: nil)
         isPlaying = false
         hasEnded = false
@@ -503,6 +618,7 @@ final class AudioPlayer {
 
     private func loadCurrentItem(autoPlay: Bool, startAt: Double = 0) {
         guard let library else { return }
+        wakeRestored()
         // The cached or pinned file when there is one, else the stream. Both
         // resolve synchronously: an await here would let the cursor move
         // under us. Looked up by server and part, not by source, since an
@@ -803,6 +919,10 @@ final class AudioPlayer {
         // A seek can move the clock backwards, so compare on distance.
         guard abs(currentTime - lastReportedProgress) >= reportInterval else { return }
         reportTimeline(.playing)
+        // The position too, now and then: a process ended in the
+        // background without a word (jetsam, a crash) still resumes close
+        // to where it was.
+        if Date.now.timeIntervalSince(lastQueueSave) >= queueSaveInterval { saveQueue() }
     }
 
     /// Without an active `.playback` session, audio plays in the foreground and
@@ -1060,7 +1180,20 @@ final class AudioPlayer {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.reportStopBeforeExit() }
+            MainActor.assumeIsolated {
+                self?.reportStopBeforeExit()
+                self?.saveQueue(waiting: true)
+            }
+        }
+
+        // Where the process is likeliest to be ended without a word: the
+        // queue and how far into the track, written down on the way out.
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveQueue() }
         }
     }
 

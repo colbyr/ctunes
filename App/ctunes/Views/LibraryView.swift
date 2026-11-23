@@ -113,9 +113,20 @@ struct LibraryView: View {
         // page with the library on the right.
         HStack(spacing: 0) {
             if nowPlaying.isColumn {
-                NowPlayingView(model: model, style: .column)
-                    .frame(width: columnWidth)
-                    .transition(.move(edge: .leading))
+                // Nothing playing this session: the last queue to pick up
+                // and albums to start, rather than a blank player.
+                Group {
+                    if player.currentTrack == nil || player.isRestored {
+                        NowPlayingIdleView(model: model, catalog: catalog)
+                            .transition(.opacity)
+                    } else {
+                        NowPlayingView(model: model, style: .column)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: player.currentTrack == nil || player.isRestored)
+                .frame(width: columnWidth)
+                .transition(.move(edge: .leading))
             }
             stack
                 // The pages meet on a soft shadow from the column rather
@@ -154,14 +165,14 @@ struct LibraryView: View {
         // any sheet does; a regular width too narrow for the column gets
         // the cover, since a sheet there is a card floating mid-screen.
         .sheet(isPresented: presentingIn == .compact ? presented : .constant(false)) {
-            NowPlayingView(model: model, style: .phone)
+            PresentedNowPlaying(model: model, catalog: catalog, style: .phone)
                 .environment(player)
                 .environment(nowPlaying)
                 .environment(navigator)
                 .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: presentingIn == .compact ? .constant(false) : presented) {
-            NowPlayingView(model: model, style: .fullScreen)
+            PresentedNowPlaying(model: model, catalog: catalog, style: .fullScreen)
                 .environment(player)
                 .environment(nowPlaying)
                 .environment(navigator)

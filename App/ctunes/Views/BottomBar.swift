@@ -160,7 +160,21 @@ private struct MiniPlayerPill: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            if !compact {
+            if !compact, player.isRestored {
+                // Last session's queue, not yet played: one button that
+                // picks it up where it was.
+                Button { player.resume() } label: {
+                    Label("Resume", systemImage: "play.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.accentInk)
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
+                        .background(Color.amber, in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity)
+            } else if !compact {
                 Button { player.togglePlayPause() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title3)
@@ -183,7 +197,7 @@ private struct MiniPlayerPill: View {
         // A touch more air before the art than around it; not when the
         // pill is just the art in a circle, where it would sit off-centre.
         .padding(.leading, compact ? 0 : 4)
-        .padding(.trailing, compact ? 0 : 8)
+        .padding(.trailing, compact || player.isRestored ? 0 : 8)
         // Plain buttons only hit-test their opaque content, so without this
         // a tap in the padding lands on the list row underneath the pill.
         .contentShape(.capsule)
@@ -191,6 +205,7 @@ private struct MiniPlayerPill: View {
         // A long press is the playing track's menu, the same one the art
         // in Now Playing has.
         .contextMenu { TrackMenu(model: model, track: track, placement: .playing) }
+        .animation(.snappy, value: player.isRestored)
     }
 }
 
