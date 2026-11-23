@@ -129,7 +129,7 @@ final class ImageLoader {
 
     private static let tintsFile: URL? = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-        .appending(path: "ctunes/ArtworkTints.json")
+        .appending(path: "ctunes/ArtworkTints-v2.json")
 
     /// One JSON object of `key: [r, g, b]`; a few dozen bytes a cover.
     private static func loadTints() -> [String: ArtworkTint] {

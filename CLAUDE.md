@@ -325,7 +325,7 @@ environment and traps. The album, artist and Now Playing screens take
 their ground from the art (`ArtworkTint`, `artworkBackground(_:)`): the
 cover's dominant color, computed off the main actor the first time any
 size of it loads (a grid tile counts), keyed by the cover's thumb path
-rather than the URL, kept in `Application Support/ctunes/ArtworkTints.json`
+rather than the URL, kept in `Application Support/ctunes/ArtworkTints-v2.json`
 across launches, and washed into the parchment at the top. The same tint
 is the page's `artworkAccent` in the environment, pushed to a readable
 value for each appearance, and the hero cards take it in the amber's

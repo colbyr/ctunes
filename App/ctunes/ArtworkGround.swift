@@ -2,6 +2,12 @@ import SwiftUI
 import UIKit
 
 extension UIImage {
+    /// What every pixel scores before its vividness is added: lower lets a
+    /// smaller vivid patch beat a larger dull area, higher leans toward
+    /// whatever covers the most of the sleeve.
+    nonisolated static let tintBaseWeight = 0.02
+
+
     /// The most common color once the image is shrunk to a thumbnail,
     /// weighted toward saturated pixels so a colorful sleeve's color wins
     /// over its white border, and skipping near-black and near-white unless
@@ -35,11 +41,15 @@ extension UIImage {
             let b = Double(pixels[offset + 2]) / 255
             let high = max(r, g, b)
             let low = min(r, g, b)
-            let saturation = high == 0 ? 0 : (high - low) / high
+            // Chroma rather than HSV saturation: a near-black red has full
+            // saturation but reads as dark, not vivid. Squared so a small
+            // vivid patch outscores a wide dull one (chroma 0.8 counts ~11×
+            // chroma 0.2 per pixel, where saturation alone gave ~2.7×).
+            let chroma = high - low
             let key = (Int(r * 15) << 8) | (Int(g * 15) << 4) | Int(b * 15)
             let extreme = high < 0.12 || low > 0.9
             var bin = (extreme ? extremes : bins)[key, default: Bin()]
-            bin.score += 0.15 + saturation
+            bin.score += Self.tintBaseWeight + chroma * chroma
             bin.count += 1
             bin.sum = (bin.sum.0 + r, bin.sum.1 + g, bin.sum.2 + b)
             if extreme { extremes[key] = bin } else { bins[key] = bin }
