@@ -58,6 +58,9 @@ struct SearchView: View {
     @Binding var path: NavigationPath
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var nowPlaying
+    @Environment(LibraryNavigator.self) private var navigator
+    /// The hidden picker the strip's AirPlay item taps.
+    @State private var routePicker = RoutePickerHandle()
 
     /// The server's tracks for `trackQuery`, which lags the field by the
     /// debounce and the round trip; until it catches up the list is
@@ -159,6 +162,12 @@ struct SearchView: View {
         // on the divider with no margin; the inline title is centred.
         .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .navigationBarTitleDisplayMode(.large)
+        .hostsRoutePicker(routePicker, when: navigator.hasVerticalBar)
+        .toolbar {
+            // Under a vertical bar, AirPlay right under back, as on the
+            // pages search opens.
+            StripAirPlayItem(picker: routePicker, shown: navigator.hasVerticalBar)
+        }
         .task(id: model.storageKey("recentSearches")) {
             recents.load(key: model.storageKey("recentSearches"))
         }
