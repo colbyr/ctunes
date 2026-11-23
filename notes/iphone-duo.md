@@ -172,6 +172,17 @@ had none of those, so this note is about the layout.
 - **The grid is a fixed three across under 560pt**, so the flat and
   the bent Duo agree (`BrowseTile.columns`).
 
+- **A hand-drawn rail for the upright, flat and laptop poses was tried
+  and dropped** (2026-11-22). The system gives no vertical bar there and
+  nothing asks for one (`toolbarVerticalEdge` and UIKit's
+  `verticalBarEdge` are read-only; `AxisBehavior.verticalPreferred`
+  only chooses between bars that are both present), so the page's
+  actions were drawn down the trailing edge to match the strip's glass,
+  back and the title left in the top bar. It worked (the page insetting
+  itself, since `safeAreaPadding` on the stack never reached the pages,
+  and a 128pt tile floor to keep four across) but didn't feel right
+  beside the system's own strip; those poses keep the top bar.
+
 ## Measured
 
 - With `.split.axes(.vertical)` a cover wider than tall showed the
