@@ -298,7 +298,8 @@ page hosts; first under back on the detail pages, and on Mix through
 artist, playlist and Favorites pages keep their ···, Play and Shuffle
 as toolbar items, which the strip stacks at its head under back; those
 pages and Quick Mix keep their Play and Shuffle cards off the page from
-the start (`iconsInBar`), and the root's band of mixes stops at the
+the start (`iconsInBar`). On the Duo in every pose (a strip, or a
+fold: `LibraryNavigator.hasFold`) the root's band of mixes stops at the
 grid's edge, its rounded end shaded inward (`mixBand`). Open on its side (`centersTitles`, a
 vertical bar in a landscape window) those pages centre their title and
 subtitle over the bar as a `.principal` item (`centeredStripTitle`),

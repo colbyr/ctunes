@@ -26,6 +26,9 @@ final class LibraryNavigator {
     var verticalBarEdge: HorizontalEdge?
     /// The window is wider than tall. Set by the host.
     var isLandscape = false
+    /// The window has a fold, placed even while flat: the iPhone Duo's
+    /// inner display. Set by the host.
+    var hasFold = false
     /// The Duo open on its side, flat or bent, where the strip leaves
     /// the top bar nothing but the title: a page centres its title and
     /// subtitle over it (`centeredStripTitle`) rather than letting the

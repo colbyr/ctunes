@@ -89,6 +89,8 @@ struct LibraryView: View {
         var size: CGSize
         var foldX: CGFloat?
         var folded = false
+        /// Any fold at all, either way, active or not.
+        var hasFold = false
     }
 
     /// The cover while the window is narrow.
@@ -293,11 +295,13 @@ struct LibraryView: View {
         .onGeometryChange(for: Geometry.self) { proxy in
             var foldX: CGFloat?
             var folded = false
+            var hasFold = false
             if #available(iOS 27.1, *) {
                 // The fold as a division region, inactive while flat but
                 // still placed; only one running top to bottom is a page
                 // boundary, the horizontal one of the laptop pose isn't.
                 let folds = proxy.reservedRegions(kind: .division, options: .includeInactive)
+                hasFold = !folds.isEmpty
                 let fold = folds.first { $0.frame.height > $0.frame.width }
                 foldX = fold?.frame.midX
                 // Without `includeInactive` a fold is listed only while
@@ -306,12 +310,13 @@ struct LibraryView: View {
                     folded = proxy.reservedRegions(kind: .division).contains { $0.id == fold.id }
                 }
             }
-            return Geometry(size: proxy.size, foldX: foldX, folded: folded)
+            return Geometry(size: proxy.size, foldX: foldX, folded: folded, hasFold: hasFold)
         } action: { geometry in
             let size = geometry.size
             width = size.width
             height = size.height
             navigator.isLandscape = size.width > size.height
+            navigator.hasFold = geometry.hasFold
             foldX = geometry.foldX
             folded = geometry.folded
             let column = NowPlayingPresentation.wantsColumn(size)

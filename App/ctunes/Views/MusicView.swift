@@ -286,8 +286,10 @@ struct MusicView: View {
         }
     }
 
-    /// The band of mixes ends at the grid's edge, short of a vertical strip.
-    private var stripBand: Bool { navigator.hasVerticalBar }
+    /// The band of mixes ends at the grid's edge on the Duo, closed or
+    /// open, in every pose: short of a vertical strip, and alike without
+    /// one so the band doesn't change shape as the device turns.
+    private var stripBand: Bool { navigator.hasVerticalBar || navigator.hasFold }
     /// Matches the nav bar's large title and the bottom pills.
     private static let margin: CGFloat = 16
     /// The screen's width, for the hero cards' layout and the tile floor.
