@@ -383,8 +383,7 @@ struct MusicView: View {
         .navigationTitle("Infinite Disc Changer")
         // Beside the Now Playing column the bar's large title sits flush
         // on the divider with no margin; the inline title is centred.
-        // Under the Duo's strip the large title keeps the page's margin.
-        .navigationBarTitleDisplayMode(nowPlaying.isColumn && !navigator.hasVerticalBar ? .inline : .automatic)
+        .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .toolbar {
             // Under a vertical strip the strip stacks it at its head.
             ToolbarItem(placement: .topBarTrailing) {
