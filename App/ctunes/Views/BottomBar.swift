@@ -30,27 +30,6 @@ struct BottomBar: View {
     /// The home indicator inset under the bar. The stack ignores the
     /// keyboard's safe area, so this never includes it.
     @State private var bottomInset: CGFloat = 0
-    /// The window's side insets, for running the pills under a vertical
-    /// strip, whose foot holds no item.
-    @State private var sideInsets = EdgeInsets()
-    /// The strip's inset on the side it runs down, nil without one. Kept
-    /// with the keyboard up too, so the field and its × take the width.
-    private var stripInset: (edge: HorizontalEdge, width: CGFloat)? {
-        guard navigator.hasVerticalBar, let edge = navigator.verticalBarEdge else { return nil }
-        return (edge, edge == .leading ? sideInsets.leading : sideInsets.trailing)
-    }
-    /// The margin on either side of the pills. On the strip's side the
-    /// pills run under it, the close button (or the end of a pill)
-    /// centred in the strip's width as its items are.
-    private func margin(_ edge: HorizontalEdge) -> CGFloat {
-        if let strip = stripInset, strip.edge == edge {
-            // Centred on the strip's items, a 52pt button against their
-            // 47, whose glass stands 25pt in from the window's edge
-            // (measured off a 3x screenshot of the closed Duo).
-            return 25 - (52 - 47) / 2 - strip.width
-        }
-        return keyboardUp ? 12 : 20
-    }
     /// How much of the screen the keyboard covers, from its own
     /// notifications, so the bar tracks it whatever screen was on top.
     @Environment(KeyboardInset.self) private var keyboard
@@ -71,7 +50,10 @@ struct BottomBar: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .bottom)))
                 // In a wide window the column is always up, and the pill
                 // would only duplicate its transport.
-                } else if let track = player.currentTrack, !nowPlaying.isColumn {
+                // Nor beside a strip while searching, where the field
+                // wants the width the strip's lane takes.
+                } else if let track = player.currentTrack, !nowPlaying.isColumn,
+                          !(searching && navigator.hasVerticalBar) {
                     MiniPlayerPill(model: model, track: track, compact: searching) {
                         nowPlaying.isShown = true
                     }
@@ -100,8 +82,10 @@ struct BottomBar: View {
         }
         // Tighter to the edges while the keyboard is up: the field wants
         // the width, and the keyboard's own margins already frame it.
-        .padding(.leading, margin(.leading))
-        .padding(.trailing, margin(.trailing))
+        // Beside a vertical strip they stop short of it like the page's
+        // content: run under it, the × met the back button the keyboard
+        // pushes down, and the pills read as part of the strip.
+        .padding(.horizontal, keyboardUp ? 12 : 20)
         // Pulled into the home-indicator inset so the gap below the pills is
         // a little more than the 20pt at their sides. With the keyboard up
         // the pills sit a fixed gap above its top edge instead.
@@ -111,9 +95,6 @@ struct BottomBar: View {
                 Color.clear
                     .onChange(of: proxy.safeAreaInsets.bottom, initial: true) { _, inset in
                         bottomInset = inset
-                    }
-                    .onChange(of: proxy.safeAreaInsets, initial: true) { _, insets in
-                        sideInsets = insets
                     }
             }
         }

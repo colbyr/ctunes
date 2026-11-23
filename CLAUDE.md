@@ -303,8 +303,9 @@ grid's edge, its rounded end shaded inward (`mixBand`). Open on its side (`cente
 vertical bar in a landscape window) those pages centre their title and
 subtitle over the bar as a `.principal` item (`centeredStripTitle`),
 leaving the native subtitle empty. The mini player, the mix bar and the search
-field's × run under the
-strip to the window's edge. The closed Duo's Now Playing sheet has a
+pill stop short of the strip like the page's content (under it, the ×
+met the back button the keyboard pushes down), and with a search open
+the mini player steps aside for the field. The closed Duo's Now Playing sheet has a
 stack of its own so the heart, AirPlay (`AirPlayStripButton`, a symbol
 tapping a hidden `AVRoutePickerView`; the picker itself would sit in a
 bar of its own), repeat and shuffle are strip items (a fixed
