@@ -321,7 +321,11 @@ item menu, goes through `LibraryNavigator.open(_:)` in the environment,
 since the host owns the path. The host measures the window itself rather than
 reading the size class: a Mac window only turns compact a hair above its
 640pt minimum, so `.inspector` kept the column at every usable width.
-Screens set the flag; none presents the cover themselves. **The
+Screens set the flag; none presents the cover themselves. **The column never animates as the window arrives**: the host's
+measurements in the background (the app switcher's snapshot lays the
+window out in the other orientation and back) wait for the scene's
+return, and from launch or the background until a second after the
+scene is active every change is applied with animations off. **The
 cover must be handed `.environment(player)`, `.environment(nowPlaying)`
 and `.environment(navigator)` explicitly**: when a Mac window is dragged across the compact/regular
 boundary UIKit re-hosts the open presentation without the inherited

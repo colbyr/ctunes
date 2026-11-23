@@ -93,6 +93,39 @@ struct LibraryView: View {
         var hasFold = false
     }
 
+    /// The scene's phase, for holding the snapshot's layout passes back.
+    @Environment(\.scenePhase) private var scenePhase
+    /// The last geometry measured while in the background, applied when
+    /// the scene comes back.
+    @State private var pendingGeometry: Geometry?
+    /// From launch or the trip to the background until a moment after the
+    /// scene is active: geometry changes then are the window arriving,
+    /// not a resize or rotation to animate.
+    @State private var arriving = true
+
+    private func applyQuietly(_ geometry: Geometry) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { apply(geometry) }
+    }
+
+    private func apply(_ geometry: Geometry) {
+        let size = geometry.size
+        width = size.width
+        height = size.height
+        navigator.isLandscape = size.width > size.height
+        navigator.hasFold = geometry.hasFold
+        foldX = geometry.foldX
+        folded = geometry.folded
+        let column = NowPlayingPresentation.wantsColumn(size)
+        guard column != nowPlaying.isColumn else { return }
+        nowPlaying.isColumn = column
+        // Crossing either way closes the presentation: into the column
+        // it is redundant, out of it the column is gone and the stack
+        // should be what's left, not a cover over it.
+        nowPlaying.isShown = false
+    }
+
     /// The cover while the window is narrow.
     private var presented: Binding<Bool> {
         Binding(
@@ -323,20 +356,40 @@ struct LibraryView: View {
             }
             return Geometry(size: proxy.size, foldX: foldX, folded: folded, hasFold: hasFold)
         } action: { geometry in
-            let size = geometry.size
-            width = size.width
-            height = size.height
-            navigator.isLandscape = size.width > size.height
-            navigator.hasFold = geometry.hasFold
-            foldX = geometry.foldX
-            folded = geometry.folded
-            let column = NowPlayingPresentation.wantsColumn(size)
-            guard column != nowPlaying.isColumn else { return }
-            nowPlaying.isColumn = column
-            // Crossing either way closes the presentation: into the column
-            // it is redundant, out of it the column is gone and the stack
-            // should be what's left, not a cover over it.
-            nowPlaying.isShown = false
+            // In the background the system lays the window out in the
+            // other orientation for the app switcher's snapshot and back
+            // again. Taken as they came, an open sheet was closed: only
+            // the last one counts, applied when the scene is back.
+            if scenePhase == .background, width > 0 {
+                pendingGeometry = geometry
+            } else if arriving || width == 0 {
+                // Coming on screen is never a change to animate: a launch
+                // in a wide window, or a return in another orientation,
+                // opens with the column in place rather than sliding it in.
+                applyQuietly(geometry)
+            } else {
+                apply(geometry)
+            }
+        }
+        .task(id: scenePhase) {
+            switch scenePhase {
+            case .background:
+                arriving = true
+            case .active:
+                if let geometry = pendingGeometry {
+                    pendingGeometry = nil
+                    applyQuietly(geometry)
+                }
+                // The window's size at the new orientation lands a moment
+                // after the scene is active, not with it.
+                try? await Task.sleep(for: .seconds(1))
+                arriving = false
+            default:
+                if let geometry = pendingGeometry {
+                    pendingGeometry = nil
+                    applyQuietly(geometry)
+                }
+            }
         }
         // The search page goes wherever the pill opens, on top of the
         // root or of an album page, so back returns to what was there.
