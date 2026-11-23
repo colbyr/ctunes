@@ -455,14 +455,6 @@ struct LibraryView: View {
         .safeAreaInset(edge: .bottom) {
             BottomBar(model: model, query: $query, searching: $searching)
         }
-        // The root's Settings in a vertical strip, where the toolbar
-        // would put it by the clock.
-        .overlay {
-            if navigator.hasVerticalBar, !searching, path.isEmpty, model.selectedSection != nil {
-                StripSettings()
-                    .transition(.opacity)
-            }
-        }
         // The bar lifts itself from the keyboard's frame notification.
         // SwiftUI's own avoidance is applied to whichever screen is on top
         // when the keyboard rises, so a search opened from an album page

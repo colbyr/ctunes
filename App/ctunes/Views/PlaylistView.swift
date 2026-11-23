@@ -65,6 +65,8 @@ struct PlaylistView: View {
     @State private var loaded = false
     /// Keyed on the server and the playlist, so each remembers its own.
     @AppStorage private var sort: PlaylistSort
+    /// The hidden picker the strip's AirPlay item taps.
+    @State private var routePicker = RoutePickerHandle()
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
@@ -124,6 +126,7 @@ struct PlaylistView: View {
             .navigationSubtitle(navigator.centersTitles ? "" : subtitle)
             .centeredStripTitle(current.title, subtitle: subtitle)
             .navigationBarTitleDisplayMode(.inline)
+            .hostsRoutePicker(routePicker, when: navigator.hasVerticalBar)
             .toolbar { toolbarItems }
             // Keyed on both generations: going offline, or coming back,
             // reloads from whichever library is current, and an add from
@@ -190,6 +193,8 @@ struct PlaylistView: View {
     }
 
     @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
+            // Under a vertical bar, AirPlay right under back.
+            StripAirPlayItem(picker: routePicker, shown: navigator.hasVerticalBar)
         // The page's own menu, like the album and artist pages: the
         // queue items, Rename and Delete, the offline pin. Declared
         // first so it sits leftmost, ahead of the icons.

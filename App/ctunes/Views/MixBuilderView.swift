@@ -313,6 +313,7 @@ struct MixBuilderView: View {
                 }
             }
         }
+        .stripAirPlay()
         // On a wide pool the picks dock beside the grid, covering none of
         // it; the page's own Cancel and Save stand for the sheet's. An
         // overlay with the pool's margin rather than a safe-area inset,

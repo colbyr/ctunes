@@ -150,8 +150,12 @@ had none of those, so this note is about the layout.
 - **Search is the bottom pill again**, beside the mini player, on every
   page; mid-strip at 46% was tried and dropped after living with it. The
   pill is back to 52pt, 26pt up, as everywhere else (`short` is gone).
-- **The root's Settings takes search's old spot** (`StripSettings`, 46%
-  down), still drawn by hand since a toolbar item would sit by the clock.
+- **The root's Settings is a toolbar item again**, at the head of the
+  strip by the clock. Drawn by hand at 46%, then 40%, it never sat
+  high enough; the hand-drawn strip items are gone. AirPlay stacks
+  under it as a separate button, and right under back on Mix and
+  the detail pages (`StripAirPlayItem`, ahead of ···, Play and Shuffle); in Now Playing's
+  strip the heart now leads, AirPlay after it.
 - **A detail page's ···, Play and Shuffle are toolbar items again**,
   which the strip stacks at its head right under back (`stripActions`
   is gone).
@@ -162,6 +166,9 @@ had none of those, so this note is about the layout.
   bar held at the leading edge; a `.principal` item centres it with the
   subtitle (`LibraryNavigator.centersTitles`, `centeredStripTitle`).
   Closed, the system's place stays.
+- **The band of mixes stops at the grid's edge** beside the strip,
+  rounded at its trailing end, the cards cut off under an inset shadow
+  (`Color.columnEdge` turned inward) rather than a bare clip.
 - **The grid is a fixed three across under 560pt**, so the flat and
   the bent Duo agree (`BrowseTile.columns`).
 

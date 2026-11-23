@@ -32,8 +32,6 @@ final class LibraryNavigator {
     /// bar hold them at the leading edge. Closed, the bar is narrow and
     /// keeps the system's place.
     var centersTitles: Bool { hasVerticalBar && isLandscape }
-    /// The strip's Settings item was tapped; the browse root opens it.
-    var settingsRequested = false
 
     func open(_ route: LibraryRoute) { requested = route }
 }

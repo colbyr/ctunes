@@ -39,6 +39,8 @@ struct ArtistView: View {
     @MainActor private static var portraits: [String: String] = [:]
     @State private var loaded = false
     @State private var loading: PlayStyle?
+    /// The hidden picker the strip's AirPlay item taps.
+    @State private var routePicker = RoutePickerHandle()
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
@@ -137,7 +139,10 @@ struct ArtistView: View {
         .navigationSubtitle(navigator.centersTitles ? "" : albumCount)
         .centeredStripTitle(route.title, subtitle: albumCount)
         .navigationBarTitleDisplayMode(.inline)
+        .hostsRoutePicker(routePicker, when: navigator.hasVerticalBar)
         .toolbar {
+            // Under a vertical bar, AirPlay right under back.
+            StripAirPlayItem(picker: routePicker, shown: navigator.hasVerticalBar)
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     ArtistMenu(model: model, ratingKey: route.ratingKey, title: route.title, showArtist: false, showPlayback: false)

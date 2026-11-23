@@ -62,6 +62,8 @@ struct FavoritesView: View {
     /// the albums land, not on every redraw of the page.
     @State private var byArtist: [AlbumGroup] = []
     @State private var loaded = false
+    /// The hidden picker the strip's AirPlay item taps.
+    @State private var routePicker = RoutePickerHandle()
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
@@ -178,7 +180,10 @@ struct FavoritesView: View {
         .navigationSubtitle(navigator.centersTitles ? "" : subtitle)
         .centeredStripTitle("Favorites", subtitle: subtitle)
         .navigationBarTitleDisplayMode(.inline)
+        .hostsRoutePicker(routePicker, when: navigator.hasVerticalBar)
         .toolbar {
+            // Under a vertical bar, AirPlay right under back.
+            StripAirPlayItem(picker: routePicker, shown: navigator.hasVerticalBar)
             // The page's own menu, like the album and artist pages: the
             // queue items, the way in to the mixer and the offline pin.
             // Declared first so it sits leftmost, ahead of the icons.

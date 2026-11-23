@@ -44,8 +44,10 @@ struct BottomBar: View {
     /// centred in the strip's width as its items are.
     private func margin(_ edge: HorizontalEdge) -> CGFloat {
         if let strip = stripInset, strip.edge == edge {
-            // Centred on the strip's items, a 52pt button against their 47.
-            return StripMetrics.edgeGap - (52 - StripMetrics.itemWidth) / 2 - strip.width
+            // Centred on the strip's items, a 52pt button against their
+            // 47, whose glass stands 25pt in from the window's edge
+            // (measured off a 3x screenshot of the closed Duo).
+            return 25 - (52 - 47) / 2 - strip.width
         }
         return keyboardUp ? 12 : 20
     }
@@ -208,104 +210,6 @@ private struct MiniPlayerPill: View {
         // A long press is the playing track's menu, the same one the art
         // in Now Playing has.
         .contextMenu { TrackMenu(model: model, track: track, placement: .playing) }
-    }
-}
-
-/// The browse root's Settings in a vertical strip (an iPhone Duo closed,
-/// or open in landscape), a little above the middle, below the root's
-/// row of mixes. Search stays the bottom pill beside the mini player.
-///
-/// Drawn by hand in the strip's column rather than as a toolbar item:
-/// the strip stacks its items at the head (the top bar's) and the foot
-/// (the bottom bar's) and ignores `ToolbarSpacer`, fixed or flexible, and
-/// a clear item of fixed height, so a toolbar item could only sit by the
-/// clock or by the thumb. A pushed page's own items do sit at the head,
-/// under back, as toolbar items.
-struct StripSettings: View {
-    @Environment(LibraryNavigator.self) private var navigator
-
-    var body: some View {
-        StripColumn(top: { StripMetrics.settingsTop(in: $0) }) {
-            StripGroup {
-                StripButton("Settings", systemImage: "gearshape") { navigator.settingsRequested = true }
-            }
-        }
-    }
-}
-
-/// The strip's measurements, off a 3x screenshot of the closed Duo: its
-/// glass is 47pt wide, 25pt in from the window's edge, about 50pt an
-/// item, and separate groups stand 14pt apart.
-enum StripMetrics {
-    static let itemWidth: CGFloat = 47
-    static let itemHeight: CGFloat = 50
-    static let edgeGap: CGFloat = 25
-    /// Settings' top, a share of the window's height: 312 of the closed
-    /// Duo's 678, under the root's band of mixes (288).
-    static func settingsTop(in height: CGFloat) -> CGFloat { (height * 0.46).rounded() }
-}
-
-/// Lays its content in the strip's column, `top` down the window.
-struct StripColumn<Content: View>: View {
-    let top: (CGFloat) -> CGFloat
-    @ViewBuilder let content: Content
-    @Environment(LibraryNavigator.self) private var navigator
-
-    var body: some View {
-        let leading = navigator.verticalBarEdge == .leading
-        GeometryReader { proxy in
-            content
-                .padding(leading ? .leading : .trailing, StripMetrics.edgeGap)
-                .padding(.top, top(proxy.size.height))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: leading ? .topLeading : .topTrailing)
-        }
-        .ignoresSafeArea()
-    }
-}
-
-/// One glass capsule of strip items, as the system draws a group.
-struct StripGroup<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(spacing: 0) { content }
-            .glassEffect(.regular.interactive(), in: .capsule)
-    }
-}
-
-/// A symbol item in a hand-drawn strip group.
-struct StripButton: View {
-    let title: String
-    let systemImage: String
-    let action: () -> Void
-    @Environment(\.isEnabled) private var enabled
-
-    init(_ title: String, systemImage: String, action: @escaping () -> Void) {
-        self.title = title
-        self.systemImage = systemImage
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            StripGlyph(systemImage: systemImage)
-                .opacity(enabled ? 1 : 0.35)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-    }
-}
-
-/// A strip item's glyph and hit area, for a button or a menu's label.
-struct StripGlyph: View {
-    let systemImage: String
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .font(.title3)
-            .foregroundStyle(.primary)
-            .frame(width: StripMetrics.itemWidth, height: StripMetrics.itemHeight)
-            .contentShape(.rect)
     }
 }
 

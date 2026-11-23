@@ -594,8 +594,9 @@ struct NowPlayingView: View {
         .frame(maxWidth: .infinity)
         // AirPlay is an output control, so it rides with the transport, as
         // an overlay rather than a fourth member so play stays centred.
+        // Not beside the strip, whose pages carry it themselves.
         .overlay(alignment: .trailing) {
-            if !controlsInStrip {
+            if !controlsInStrip, !(style == .column && navigator.hasVerticalBar) {
                 AirPlayButton()
                     .frame(width: 44, height: 44)
                     .padding(.trailing, 12)
@@ -604,15 +605,11 @@ struct NowPlayingView: View {
         }
     }
 
-    /// AirPlay, the heart, repeat and shuffle as the strip's items, for
+    /// The heart, AirPlay, repeat and shuffle as the strip's items, for
     /// the closed Duo's sheet.
     @ToolbarContentBuilder private var stripItems: some ToolbarContent {
-        // AirPlay and the heart are buttons of their own; repeat and
+        // The heart and AirPlay are buttons of their own; repeat and
         // shuffle, which both act on the queue, share a group.
-        ToolbarItem(placement: .topBarTrailing) {
-            AirPlayStripButton(picker: routePicker)
-        }
-        ToolbarSpacer(.fixed, placement: .topBarTrailing)
         ToolbarItem(placement: .topBarTrailing) {
             let track = player.currentTrack
             let favorite = track.map { model.isFavorite($0) } ?? false
@@ -622,6 +619,10 @@ struct NowPlayingView: View {
             }
             .tint(favorite ? Color.heart : nil)
             .disabled(track == nil || model.library?.isConnected == false)
+        }
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        ToolbarItem(placement: .topBarTrailing) {
+            AirPlayStripButton(picker: routePicker)
         }
         ToolbarSpacer(.fixed, placement: .topBarTrailing)
         ToolbarItem(placement: .topBarTrailing) {

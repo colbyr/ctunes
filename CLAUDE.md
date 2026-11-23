@@ -290,22 +290,24 @@ and nothing could close.
 open in landscape) is read off `toolbarVerticalEdge` by
 `VerticalBarProbe` into `LibraryNavigator.hasVerticalBar`. Search
 stays the bottom pill beside the mini player (mid-strip, tried and
-dropped); the root's Settings is the one item drawn by
-hand in the strip's column (`StripSettings`, 46% down, matched to the
-strip's glass), since the strip ignores `ToolbarSpacer` for position
-and a toolbar item can only sit by the clock or the thumb. The album,
+dropped), and the root's Settings is an ordinary toolbar item, which the
+strip stacks at its head (drawn by hand 46% down, also dropped), over
+a separate AirPlay (`StripAirPlayItem`, which taps a hidden picker the
+page hosts; first under back on the detail pages, and on Mix through
+`stripAirPlay`). The album,
 artist, playlist and Favorites pages keep their ···, Play and Shuffle
 as toolbar items, which the strip stacks at its head under back; those
 pages and Quick Mix keep their Play and Shuffle cards off the page from
-the start (`iconsInBar`). Open on its side (`centersTitles`, a
+the start (`iconsInBar`), and the root's band of mixes stops at the
+grid's edge, its rounded end shaded inward (`mixBand`). Open on its side (`centersTitles`, a
 vertical bar in a landscape window) those pages centre their title and
 subtitle over the bar as a `.principal` item (`centeredStripTitle`),
 leaving the native subtitle empty. The mini player, the mix bar and the search
 field's × run under the
 strip to the window's edge. The closed Duo's Now Playing sheet has a
-stack of its own so AirPlay (`AirPlayStripButton`, a symbol tapping a
-hidden `AVRoutePickerView`; the picker itself would sit in a bar of its
-own), the heart, repeat and shuffle are strip items (a fixed
+stack of its own so the heart, AirPlay (`AirPlayStripButton`, a symbol
+tapping a hidden `AVRoutePickerView`; the picker itself would sit in a
+bar of its own), repeat and shuffle are strip items (a fixed
 `ToolbarSpacer` does split the glass into separate buttons), and the
 art under the names is sized so Up Next and half a row show
 (`fitStripArt`). An artist tapped in Now Playing, or any route from an

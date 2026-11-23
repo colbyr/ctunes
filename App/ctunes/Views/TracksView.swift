@@ -11,6 +11,8 @@ struct TracksView: View {
 
     @State private var tracks: [PlexTrack] = []
     @State private var loaded = false
+    /// The hidden picker the strip's AirPlay item taps.
+    @State private var routePicker = RoutePickerHandle()
     /// Whether the action cards are on screen; once they scroll away the
     /// toolbar takes over with icon-only copies.
     @State private var actionsVisible = true
@@ -150,6 +152,7 @@ struct TracksView: View {
         // Room to scroll the last row clear of the floating bottom pills.
         .contentMargins(.bottom, 84, for: .scrollContent)
         .navigationBarTitleDisplayMode(.inline)
+        .hostsRoutePicker(routePicker, when: navigator.hasVerticalBar)
         .toolbar {
             // The title bar carries the artist under the title, and opens
             // their page: the native subtitle is plain text, so this is a
@@ -171,6 +174,8 @@ struct TracksView: View {
                     .sharedBackgroundVisibility(.hidden)
                 }
             }
+            // Under a vertical bar, AirPlay right under back.
+            StripAirPlayItem(picker: routePicker, shown: navigator.hasVerticalBar)
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false)

@@ -30,6 +30,8 @@ struct MusicView: View {
     @State private var playlistTracks: [String: [PlexTrack]] = [:]
     @State private var showingListeners = false
     @State private var showingSettings = false
+    /// The hidden picker the strip's AirPlay item taps.
+    @State private var routePicker = RoutePickerHandle()
     @Environment(NowPlayingPresentation.self) private var nowPlaying
     @Environment(LibraryNavigator.self) private var navigator
     @Environment(MixDraft.self) private var draft
@@ -284,6 +286,8 @@ struct MusicView: View {
         }
     }
 
+    /// The band of mixes ends at the grid's edge, short of a vertical strip.
+    private var stripBand: Bool { navigator.hasVerticalBar }
     /// Matches the nav bar's large title and the bottom pills.
     private static let margin: CGFloat = 16
     /// The screen's width, for the hero cards' layout and the tile floor.
@@ -310,10 +314,14 @@ struct MusicView: View {
                     let mixes = RecentMixItem.all(model, pinned: visibleShortcuts).filter { $0.picks.isEmpty || !$0.picks.allSatisfy(isHidden) }
                     // On a band the width of the screen, so the white cards
                     // stand off the ground and the browser starts below it.
+                    // Beside a vertical strip the band stops at the grid's
+                    // edge instead, its trailing corners rounded, and the
+                    // cards are cut off there, so the strip keeps a lane of
+                    // its own and the row still shows it scrolls.
                     MixesRow(model: model, items: mixes, margin: Self.margin, open: open)
                         .padding(.vertical, 18)
                         .frame(maxWidth: .infinity)
-                        .background(Color.band)
+                        .mixBand(endsAt: stripBand ? Self.margin : nil)
                         .padding(.top, 8)
                 }
                 // The browser starts here: the chips with the arrange
@@ -375,19 +383,14 @@ struct MusicView: View {
         // on the divider with no margin; the inline title is centred.
         .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .toolbar {
-            // Under a vertical strip Settings sits a little above the
-            // middle of it (`StripSettings`).
-            if !navigator.hasVerticalBar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Settings", systemImage: "gearshape") { showingSettings = true }
-                }
+            // Under a vertical strip the strip stacks it at its head.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Settings", systemImage: "gearshape") { showingSettings = true }
             }
+            // AirPlay under it there, a button of its own.
+            StripAirPlayItem(picker: routePicker, shown: navigator.hasVerticalBar, leading: false)
         }
-        .onChange(of: navigator.settingsRequested) { _, wanted in
-            guard wanted else { return }
-            navigator.settingsRequested = false
-            showingSettings = true
-        }
+        .hostsRoutePicker(routePicker, when: navigator.hasVerticalBar)
         // Keyed on the revision: a list landing from the server, or a
         // library switch, reads again from the saved copies.
         .task(id: model.libraryRevision) {
@@ -672,4 +675,31 @@ struct BrowseInputs: Equatable {
     let view: AlbumView
     let hidden: VetoSet
     let downloads: Int?
+}
+
+private extension View {
+    /// The band behind the mixes: the screen's width, or with `endsAt`,
+    /// stopping that far short of the trailing edge with its trailing
+    /// corners rounded and what scrolls past cut off there. Full width it
+    /// is a plain color, which runs into the safe area as a clip can't.
+    /// The end is shaded inward so it reads as an edge, not a cut.
+    @ViewBuilder func mixBand(endsAt inset: CGFloat?) -> some View {
+        if let inset {
+            let band = UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24)
+            background(Color.band, in: band)
+                // An inset shadow along the rounded end, the Now Playing
+                // column's soft edge turned inward, so the cards slip
+                // under it rather than being sliced off.
+                .overlay(alignment: .trailing) {
+                    LinearGradient(colors: [Color.columnEdge.opacity(0), Color.columnEdge],
+                                   startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 28)
+                        .allowsHitTesting(false)
+                }
+                .clipShape(band)
+                .padding(.trailing, inset)
+        } else {
+            background(Color.band)
+        }
+    }
 }

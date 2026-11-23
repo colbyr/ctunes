@@ -93,3 +93,56 @@ struct HiddenRoutePicker: UIViewRepresentable {
 
     func updateUIView(_ picker: AVRoutePickerView, context: Context) { handle.picker = picker }
 }
+
+/// AirPlay as a strip item of its own while the window's bars are
+/// vertical (an iPhone Duo closed, or open in landscape). Declared first
+/// in a page's toolbar it stacks right under back; last, under the rest.
+/// The spacer splits it from its neighbour's glass, which works only
+/// within one `.toolbar`, so the page puts it in its own rather than in
+/// a modifier's. The page hosts the picker (`hostsRoutePicker`).
+struct StripAirPlayItem: ToolbarContent {
+    let picker: RoutePickerHandle
+    let shown: Bool
+    /// Before the page's other items, so the spacer comes after it.
+    var leading = true
+
+    var body: some ToolbarContent {
+        if shown {
+            if !leading { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+            ToolbarItem(placement: .topBarTrailing) {
+                AirPlayStripButton(picker: picker)
+            }
+            if leading { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+        }
+    }
+}
+
+extension View {
+    /// The hidden picker a strip's AirPlay item taps, in the content
+    /// rather than the item, which the strip re-hosts.
+    func hostsRoutePicker(_ picker: RoutePickerHandle, when shown: Bool) -> some View {
+        background {
+            if shown {
+                HiddenRoutePicker(handle: picker)
+                    .frame(width: 1, height: 1)
+                    .opacity(0.01)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    /// AirPlay as a strip item after the page's other items, from a
+    /// toolbar of its own: under back on Mix, which has nothing else.
+    func stripAirPlay() -> some View { modifier(StripAirPlay()) }
+}
+
+private struct StripAirPlay: ViewModifier {
+    @Environment(LibraryNavigator.self) private var navigator
+    @State private var picker = RoutePickerHandle()
+
+    func body(content: Content) -> some View {
+        content
+            .hostsRoutePicker(picker, when: navigator.hasVerticalBar)
+            .toolbar { StripAirPlayItem(picker: picker, shown: navigator.hasVerticalBar, leading: false) }
+    }
+}
