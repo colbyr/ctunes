@@ -81,6 +81,8 @@ struct ArtistView: View {
 
     /// The page's width, for the tile floor.
     @State private var width: CGFloat = 0
+    /// The portrait's centre, which a centred title sits over.
+    @State private var portraitMidX: CGFloat?
 
     var body: some View {
         ScrollView {
@@ -136,8 +138,8 @@ struct ArtistView: View {
             if !loaded { LoadingPlaceholder(model: model) }
         }
         .navigationTitle(route.title)
-        .navigationSubtitle(navigator.centersTitles ? "" : albumCount)
-        .centeredStripTitle(route.title, subtitle: albumCount)
+        .navigationSubtitle(navigator.centersTitle(overArt: true) ? "" : albumCount)
+        .centeredStripTitle(route.title, subtitle: albumCount, overArt: true, artMidX: portraitMidX)
         .navigationBarTitleDisplayMode(.inline)
         .hostsRoutePicker(routePicker, when: navigator.hasVerticalBar)
         .toolbar {
@@ -241,6 +243,7 @@ struct ArtistView: View {
         VStack(spacing: 12) {
             Artwork(url: artworkURL, size: 200, corner: 100)
                 .clipShape(.circle)
+                .reportsMidX($portraitMidX)
                 .artworkShadow()
                 // The badge the tiles carry, or an arrow that downloads the
                 // artist, pulled in toward the rim where a circle has room.

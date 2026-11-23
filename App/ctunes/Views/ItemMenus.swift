@@ -35,6 +35,9 @@ final class LibraryNavigator {
     /// bar hold them at the leading edge. Closed, the bar is narrow and
     /// keeps the system's place.
     var centersTitles: Bool { hasVerticalBar && isLandscape }
+    /// `centersTitles`, and on a page led by centred art (an album, an
+    /// artist) the Duo closed as well, so the title sits over the art.
+    func centersTitle(overArt: Bool) -> Bool { centersTitles || (overArt && hasVerticalBar) }
 
     func open(_ route: LibraryRoute) { requested = route }
 }

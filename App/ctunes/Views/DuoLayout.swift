@@ -67,26 +67,45 @@ private struct CreaseFill: ViewModifier {
 }
 
 extension View {
-    /// The page's title over its subtitle, centred over the whole bar
-    /// while the Duo lies on its side (`LibraryNavigator.centersTitles`).
-    /// A `.principal` item, which the bar centres; the native title sits
-    /// at the leading edge there. The page leaves its native subtitle
-    /// empty meanwhile, or it would show beside this.
-    func centeredStripTitle(_ title: String, subtitle: String) -> some View {
-        modifier(CenteredStripTitle(title: title, subtitle: subtitle))
+    /// The page's title over its subtitle, centred while the bar leaves
+    /// it the top bar alone (`LibraryNavigator.centersTitle(overArt:)`):
+    /// the Duo on its side, and on a page led by art (`artMidX`, the
+    /// art's centre in global space) the Duo closed too. A `.principal`
+    /// item, which the bar centres; the native title sits at the leading
+    /// edge there. The page leaves its native subtitle empty meanwhile,
+    /// or it would show beside this.
+    func centeredStripTitle(_ title: String, subtitle: String, overArt: Bool = false, artMidX: CGFloat? = nil) -> some View {
+        modifier(CenteredStripTitle(title: title, subtitle: subtitle, overArt: overArt, artMidX: artMidX))
+    }
+
+    /// Shifts a bar item so its centre sits at `x` in global space. The
+    /// bar centres a `.principal` item over its own width, which runs
+    /// ~10pt into the strip beside the page, so a title centred by the
+    /// bar sat off the art under it. The shift is capped so a measurement
+    /// gone wrong can't push the title far.
+    func centred(onX x: CGFloat?) -> some View {
+        modifier(CentredOnX(x: x))
+    }
+
+    /// Reports the view's centre in global space, for `centred(onX:)`.
+    func reportsMidX(_ midX: Binding<CGFloat?>) -> some View {
+        onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).midX } action: { midX.wrappedValue = $0 }
     }
 }
 
 private struct CenteredStripTitle: ViewModifier {
     let title: String
     let subtitle: String
+    let overArt: Bool
+    let artMidX: CGFloat?
     @Environment(LibraryNavigator.self) private var navigator
 
     func body(content: Content) -> some View {
         content.toolbar {
-            if navigator.centersTitles {
+            if navigator.centersTitle(overArt: overArt) {
                 ToolbarItem(placement: .principal) {
-                    StripTitle(title: title, subtitle: subtitle)
+                    BarTitle(title: title, subtitle: subtitle)
+                        .centred(onX: artMidX)
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
@@ -94,15 +113,44 @@ private struct CenteredStripTitle: ViewModifier {
     }
 }
 
-/// Two centred lines matched to the bar's own inline title and subtitle.
-struct StripTitle: View {
+private struct CentredOnX: ViewModifier {
+    let x: CGFloat?
+    /// The shift applied so far, corrected by what is left to go each
+    /// time the item is measured. The bar re-centres an offset item, so
+    /// the measurement includes the shift: a plain `x - midX` flipped
+    /// between two values on every pass. Accumulating converges whether
+    /// the measurement includes the shift or not.
+    @State private var shift: CGFloat = 0
+    @State private var midX: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .reportsMidX($midX)
+            .offset(x: shift)
+            .onChange(of: midX) { _, _ in correct() }
+            .onChange(of: x) { _, _ in correct() }
+    }
+
+    private func correct() {
+        guard let x, let midX else { return }
+        let next = max(-24, min(24, shift + x - midX))
+        if abs(next - shift) > 0.5 { shift = next }
+    }
+}
+
+/// The page's title over its subtitle, drawn to match the bar's own
+/// inline title and subtitle, for the places a page draws them itself:
+/// centred over the bar on a Duo lying on its side, and the album page's
+/// title, whose artist line opens the artist.
+struct BarTitle: View {
     let title: String
     let subtitle: String
+    var alignment: HorizontalAlignment = .center
 
     var body: some View {
-        VStack(spacing: 1) {
+        VStack(alignment: alignment, spacing: -1) {
             Text(title)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.ink)
             if !subtitle.isEmpty {
                 Text(subtitle)
@@ -111,6 +159,6 @@ struct StripTitle: View {
             }
         }
         .lineLimit(1)
-        .multilineTextAlignment(.center)
+        .multilineTextAlignment(alignment == .leading ? .leading : .center)
     }
 }

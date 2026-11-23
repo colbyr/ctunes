@@ -303,7 +303,11 @@ fold: `LibraryNavigator.hasFold`) the root's band of mixes stops at the
 grid's edge, its rounded end shaded inward (`mixBand`). Open on its side (`centersTitles`, a
 vertical bar in a landscape window) those pages centre their title and
 subtitle over the bar as a `.principal` item (`centeredStripTitle`),
-leaving the native subtitle empty. The mini player, the mix bar and the search
+leaving the native subtitle empty; the album and artist pages do so
+under any strip, closed too (`centersTitle(overArt:)`), shifted onto
+the art's measured centre (`centred(onX:)`), since the bar's own centre
+runs ~10pt into the strip. The album's hand-drawn title is `BarTitle`,
+sized to the native one and leading on a regular width. The mini player, the mix bar and the search
 pill stop short of the strip like the page's content (under it, the ×
 met the back button the keyboard pushes down), and with a search open
 the mini player steps aside for the field. The closed Duo's Now Playing sheet has a

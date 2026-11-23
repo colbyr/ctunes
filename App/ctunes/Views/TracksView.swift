@@ -28,6 +28,9 @@ struct TracksView: View {
     /// Whether the debug hooks have run, so a revision re-run doesn't
     /// start playback again.
     @State private var hooked = false
+    /// The cover's centre, which a centred title sits over.
+    @State private var coverMidX: CGFloat?
+    @Environment(\.horizontalSizeClass) private var sizeClass
     private var hidden: VetoSet { model.roster.hidden }
     private var scope: VetoScope { VetoScope(album: album) }
 
@@ -159,12 +162,13 @@ struct TracksView: View {
             // title item drawn to match it, without the glass. `.title`
             // rather than `.principal`, which centres it where the native
             // title sits at the leading edge.
-            // On the Duo lying on its side, `.principal`, centred over
-            // the whole bar (`LibraryNavigator.centersTitles`).
+            // Under the Duo's strip, `.principal`, centred over the cover
+            // (`LibraryNavigator.centersTitle(overArt:)`).
             if let artist = album.parentTitle {
-                if navigator.centersTitles {
+                if navigator.centersTitle(overArt: true) {
                     ToolbarItem(placement: .principal) {
                         titleBlock(artist: artist)
+                            .centred(onX: coverMidX)
                     }
                     .sharedBackgroundVisibility(.hidden)
                 } else {
@@ -284,18 +288,16 @@ struct TracksView: View {
                 path.append(ArtistRoute(ratingKey: key, title: artist))
             }
         } label: {
-            // The bar centres the title at rest and moves it to the leading
-            // edge once the cards' icons scroll in, so the two lines follow.
-            VStack(alignment: iconsInBar && !navigator.centersTitles ? .leading : .center, spacing: 1) {
-                Text(album.title)
-                    .font(.headline)
-                    .foregroundStyle(Color.ink)
-                    .lineLimit(1)
-                Text(artist).font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            }
-            .contentShape(.rect)
+            // On a compact width the bar centres the title at rest and moves
+            // it to the leading edge once the cards' icons scroll in; on a
+            // regular one (the Duo open upright, an iPad) it is at the
+            // leading edge from the start. The two lines follow.
+            // A `.title` item sits ~5pt further in than the native title
+            // does at the leading edge; pulled back to the artist page's.
+            let leading = !navigator.centersTitle(overArt: true) && (iconsInBar || sizeClass == .regular)
+            BarTitle(title: album.title, subtitle: artist, alignment: leading ? .leading : .center)
+                .offset(x: leading ? -5 : 0)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(album.parentRatingKey == nil)
@@ -310,6 +312,7 @@ struct TracksView: View {
             // shows, and the menu is a long press away.
             Artwork(url: artworkURL, size: 240, corner: 12, fallback: tileArtworkURL)
                 .artworkShadow()
+                .reportsMidX($coverMidX)
                 .overlay(alignment: .bottomTrailing) {
                     DownloadOverlay(state: state, offline: offline) {
                         guard let library = model.library, !tracks.isEmpty else { return }
