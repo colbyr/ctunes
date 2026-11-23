@@ -466,18 +466,32 @@ struct NowPlayingView: View {
     /// The title, up to two lines, over the artist and the album on one
     /// line; the heart at the trailing edge, centred on the two, unless
     /// the strip has it. The same block under the art and beside it.
+    /// The block always takes two lines of title, the names sitting at
+    /// its foot, so a long title wrapping on the next track grows up into
+    /// the room rather than pushing the transport down.
     private var trackDetails: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                titleText
-                    .font(.title3.bold())
-                    .lineLimit(2)
-                byline
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if !controlsInStrip {
-                HeartButton(model: model, track: player.currentTrack)
-                    .frame(width: 44, height: 44)
+        VStack(alignment: .leading, spacing: 2) {
+            titleText
+                .font(.title3.bold())
+                .lineLimit(2, reservesSpace: true)
+            byline
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .hidden()
+        .accessibilityHidden(true)
+        .overlay(alignment: .bottom) {
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    titleText
+                        .font(.title3.bold())
+                        .lineLimit(2)
+                    byline
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !controlsInStrip {
+                    HeartButton(model: model, track: player.currentTrack)
+                        .frame(width: 44, height: 44)
+                }
             }
         }
     }
