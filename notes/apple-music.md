@@ -225,6 +225,48 @@ In the car everything works but the display (problem 6). Lock screen previous
 works. Not yet tested: our now-playing writes off (the car's display rides on
 it), Siri or a call during an Apple Music song, AirPods and headset buttons.
 
+## Still to test in the car
+
+All during an Apple Music song unless said otherwise. Collect a log after
+(`--start` around the drive works hours later). DeviceHub's CarPlay screen
+will do for anything about the display, since a muted song still reports
+playing.
+
+With "We write lock screen info" **off** (the open question from problem 6):
+
+- **Does Now Playing show the song playing, the scrubber moving?** If it
+  still reads paused, the fallback is the elapsed time written once a second.
+- Whose title, artist, album and artwork show, in the car and on the lock
+  screen, and whether they blink or show the last Plex track's at a handoff
+  in either direction.
+- Where next and previous go. With our info up they came to our handlers;
+  with it cleared they may go to MusicKit, and the padded queue has never
+  caught a press from the car. Into and out of a Plex track, and between two
+  Apple Music songs.
+- Scrubbing from the car: whether the seek lands, and the end is still taken
+  cleanly after one near the end.
+- Play/pause from the screen and from the car's own button or steering
+  wheel: one press each way, and the glyph agreeing with the audio.
+- Shuffle and repeat: whether a press arrives (`mirrored` in the log) and
+  what the buttons show, since MusicKit's own state is always off.
+
+With the toggle either way:
+
+- Starting playback from the car with the phone locked and the app not
+  running, on an Apple Music entry and on a Plex one. A queue restored from
+  the last launch can't play its Apple Music entries (the songs are only in
+  memory); what the queue does next is untested.
+- A song playing out into a Plex track, and a Plex track into a song, with
+  the phone locked the whole time (3a held on the desk, never in the car).
+- A weak signal at the handoff back to Plex: the player has to be playing
+  before the session is taken back, and until then presses go to a stopped
+  MusicKit.
+- The car's voice assistant, Siri or a call taking the audio during a song,
+  and whether the song resumes after.
+- Unplugging or the car switching off during a song: music must not carry on
+  from the phone's speaker.
+- The play/pause flicker at each handoff, and whether the car shows it.
+
 ## Beyond playback (not started)
 
 - Ids: every `PlexTrack`/`ratingKey` consumer (vetoes, mix picks, recents,
