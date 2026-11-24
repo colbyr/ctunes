@@ -43,13 +43,10 @@ feedback:
 
 ## Archive a Release build and upload it to App Store Connect. Xcode bumps
 ## the build number on upload; internal testers get it once it processes.
+## Signs in with the App Store Connect API key from 1Password, not Xcode's
+## Apple Account, whose session expires.
 testflight: test
-	rm -rf build/ctunes.xcarchive
-	$(XCB) -configuration Release -destination 'generic/platform=iOS' \
-		-archivePath build/ctunes.xcarchive -allowProvisioningUpdates archive
-	xcodebuild -exportArchive -archivePath build/ctunes.xcarchive \
-		-exportOptionsPlist scripts/ExportOptions.plist -exportPath build/export \
-		-allowProvisioningUpdates
+	scripts/testflight.sh
 
 ## Build the package alone
 build:

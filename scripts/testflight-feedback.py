@@ -23,7 +23,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 VAULT = os.environ.get("OP_VAULT", "Private")
-ITEM = os.environ.get("ASC_OP_ITEM", "App Store Connect API Key")
+# "Apple App Store Connect (Developer)", by UUID so a rename doesn't break it.
+ITEM = os.environ.get("ASC_OP_ITEM", "schb6jmus3gptj36srkqxjh7vm")
 BUNDLE_ID = "com.colbyr.ctunes"
 API = "https://api.appstoreconnect.apple.com"
 OUT = Path(__file__).resolve().parent.parent / "build" / "feedback"

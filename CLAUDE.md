@@ -16,7 +16,7 @@ make sim         # build for simulator
 make sim-run     # build, install, launch in simulator
 make run         # build, install, launch on the attached iPhone
 make devices     # list attached devices
-make testflight  # tests, Release archive, upload to TestFlight
+make testflight  # tests, Release archive, upload to TestFlight (API key, not Xcode's account)
 make feedback    # TestFlight comments, screenshots and crash logs → build/feedback/
 ```
 
@@ -903,8 +903,19 @@ the server has no client profile for the CLI's.
 
 `make feedback` (`scripts/testflight-feedback.py`, `FEEDBACK_ARGS='--days 7'`)
 reads the App Store Connect API with the team key in 1Password
-(`op://Private/App Store Connect API Key`: the `.p8` attached, the key id as
+("Apple App Store Connect (Developer)", referenced by UUID: the `.p8` attached, the key id as
 `username`, the issuer id as `Issuer`), signing the JWT with `openssl` so
 the key never lands on disk. Apple drops an older crash's log while still
 listing the submission, and screenshot URLs expire after a few days, so the
 script keeps what it fetched under `build/feedback/<submission id>/`.
+
+`make testflight` (`scripts/testflight.sh`) archives and uploads signed in
+with an **Admin** team key ("Apple App Store Connect (Admin)", by UUID),
+never the Apple Account in Xcode's settings, whose session expires and
+fails the export with "App Store Connect access for … is required". There
+is no distribution certificate on the Mac, so the export cloud-signs,
+which only an Admin key may do (the Developer key fails with "Cloud signing
+permission error"). `xcodebuild` takes the key only as a file, so the
+script writes it to a private temp directory and removes it on exit. The
+issuer id is the team's; the script falls back to the Developer item's
+when the Admin item has none.
