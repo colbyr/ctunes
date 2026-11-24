@@ -621,6 +621,9 @@ final class AudioPlayer {
         let quality = streamQuality
         let sources = tracks.compactMap { library.trackSource(for: $0, quality: quality) }
         Task { await cache.retain(window: sources) }
+        // Apple Music entries have no file to fetch; their songs are
+        // looked up ahead instead, so the handoff waits on MusicKit alone.
+        AppleMusic.shared.warm(tracks.filter(\.isAppleMusic))
     }
 
     /// Bytes of cached audio on disk.
@@ -678,7 +681,7 @@ final class AudioPlayer {
         let asked = queue.currentIndex
         var playable: (track: PlexTrack, part: PlexPart, local: URL?, url: URL)?
         while let track = currentTrack {
-            if AppleMusicEngine.isAppleMusic(track) {
+            if track.isAppleMusic {
                 loadAppleMusic(track, autoPlay: autoPlay, startAt: startAt)
                 return
             }
@@ -968,7 +971,7 @@ final class AudioPlayer {
     /// Fire and forget: a slow server must never stall playback, and a lost
     /// report just means the next one carries the update.
     private func reportTimeline(_ state: PlaybackState) {
-        guard let track = currentTrack, let library, !AppleMusicEngine.isAppleMusic(track) else { return }
+        guard let track = currentTrack, let library, !track.isAppleMusic else { return }
         lastReportedProgress = currentTime
         let time = currentTime
         let session = sessionIdentifier
@@ -1270,7 +1273,7 @@ final class AudioPlayer {
     /// it times the client out. Detached, since the main thread is the one
     /// blocked.
     private func reportStopBeforeExit() {
-        guard let track = currentTrack, let library, library.isConnected, !hasEnded else { return }
+        guard let track = currentTrack, !track.isAppleMusic, let library, library.isConnected, !hasEnded else { return }
         let time = currentTime, session = sessionIdentifier
         let sent = DispatchSemaphore(value: 0)
         Task.detached {
@@ -1580,10 +1583,8 @@ final class AudioPlayer {
     }
 
     private func loadArtwork(for track: PlexTrack) {
-        let artURL = AppleMusicEngine.isAppleMusic(track)
-            ? appleMusic.artworkURL(for: track)
-            : library?.artworkURL(track.thumb, size: 900)
-        guard let url = artURL else { return }
+        // An Apple Music cover is its own URL, which the library hands back.
+        guard let url = library?.artworkURL(track.thumb, size: 900) else { return }
         let ratingKey = track.ratingKey
 
         Task {

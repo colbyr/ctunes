@@ -282,6 +282,9 @@ public actor CachedLibrary: LibrarySource {
     /// server's URL, from the connection or from the address the record
     /// kept, which the image loader's disk cache can still answer.
     public nonisolated func artworkURL(_ thumb: String?, size: Int) -> URL? {
+        // Not the server's art, and so never in the store: its own URL,
+        // connection or none.
+        if let thumb, let remote = AppleMusicID.artwork(thumb, size: size) { return remote }
         if let saved = store.artURL(thumb, server: id.server) { return saved }
         if let connection { return connection.artworkURL(thumb, size: size) }
         guard let base = record?.baseURL, let token else { return nil }

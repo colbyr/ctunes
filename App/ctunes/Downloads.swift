@@ -267,6 +267,9 @@ final class Downloads {
     func canPlay(_ track: PlexTrack) -> Bool {
         _ = generation
         _ = connected
+        // An Apple Music song has no file and no server: it plays when
+        // the account can play the catalog.
+        if track.isAppleMusic { return AppleMusic.shared.canPlay }
         return library?.canPlay(track) ?? false
     }
 

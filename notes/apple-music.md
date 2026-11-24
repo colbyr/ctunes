@@ -1,6 +1,6 @@
 # Apple Music: a spike playing Apple Music songs inside the Plex queue
 
-COL-117. Status: **spike, on branch `worktree-apple-music-spike`, not on main.**
+COL-117. Status: **prototype, on branch `worktree-apple-music-spike`, not on main.**
 Findings from one evening of device testing (iPhone Duo, iOS 27, 2026-11-21).
 
 ## Context
@@ -40,6 +40,57 @@ transcoder or `-1005`/stall recovery applies to those entries.
 - Every handoff, status transition, remote command and now-playing snapshot is
   logged at `notice` under category `AppleMusic`. `info` lines are not kept on
   the device: they are gone by the time the log is collected.
+
+## The prototype (2026-11-23)
+
+The playback above, behind a real switch and real screens. Settings → Apple
+Music → "Fill Gaps from Apple Music", off by default, per device.
+
+**The rule: the library is home and Apple Music only fills gaps.**
+
+- **Where it shows.** Search gets an "Apple Music · Not in your library" group
+  under the library's results (3 albums, 5 songs at most). An artist's page
+  gets a "More on Apple Music" shelf under their own albums, in the page's
+  layout, singles left out. Nowhere else: no browse subject, no mixes.
+- **What is hidden.** Anything the library has, matched by folded names
+  (`MusicMatch` in PlexKit: case, accents, "The", "&", and edition brackets
+  and suffixes such as "(Deluxe Edition)" or "- 2011 Remaster"). It errs
+  toward showing a duplicate, never toward hiding something not owned.
+- **The mark.** Only Apple Music is marked, with one glyph (`AppleMusicMark`)
+  leading the line under the title: search rows, shelf tiles, Up Next, the
+  mini player. An Apple Music album's page says it once in its header
+  (" Music · 1969 · 10 songs") and its rows are bare.
+- **Now Playing.** The heart's slot holds the mark for an Apple Music song
+  (a menu: "Playing from Apple Music", Open in Music). No third line under
+  the names: the block reserves a fixed height so the transport never moves
+  between tracks, and the heart can't apply anyway.
+- **What it can do.** Play, Shuffle, Play Next, Add to Queue, Go to Album, Go
+  to Artist (only an artist the library has), Open in Music. No heart, no
+  Add to Playlist, no Download, no Listeners, no Create Mix, no recent mix:
+  each is kept by the server or keyed to its tracks.
+- **Shapes.** A song is a `PlexTrack` keyed `am:<id>`, an album a `PlexAlbum`
+  keyed `am-album:<id>` (`AppleMusicSource.swift`), so the queue, its
+  snapshot, search's recents and the album route carry them unchanged, and
+  **the album page is `TracksView` itself**. The artist key is the library's
+  own when it has the artist, so the artist link, the spread shuffle and an
+  artist veto treat the song as theirs. `thumb` is an absolute URL that
+  `artworkURL` hands back at the size asked.
+- **The service** is `AppleMusic.shared` (`AppleMusic.swift`): access, the
+  subscription, the three catalog reads, and the `Song` behind a key, asked
+  by id when no screen loaded it, which is what lets a restored queue play
+  its Apple Music entries. Upcoming entries are looked up ahead.
+- A song's album id is read out of its share link; one with no link has no
+  Go to Album and plays alone.
+- Screen capture: Now Playing says "Apple Music is silent while the screen
+  is being recorded or mirrored" off `isSceneCaptured`. Whether DeviceHub's
+  pairing sets that flag is untested.
+- `CTUNES_DEV_APPLE_MUSIC=sample` answers from made-up records so the
+  screens draw in a simulator; `queue` also puts two after the playing
+  track. Nothing plays there.
+
+Untested on a device: every real catalog request (search, the shelf's artist
+lookup and paging, an album's tracks, a song by id), the authorization
+prompt, and Open in Music's built links.
 
 ## Findings
 

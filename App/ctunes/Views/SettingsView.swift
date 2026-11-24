@@ -18,6 +18,7 @@ struct SettingsSheet: View {
     private enum Page: Hashable {
         case listeners
         case storage
+        case appleMusic
     }
 
     private var offline: Bool { !model.isConnected }
@@ -30,12 +31,8 @@ struct SettingsSheet: View {
                 downloadsSection
                 listenersSection
                 storageSection
+                appleMusicSection
                 accountSection
-                #if DEBUG
-                Section("Spikes") {
-                    NavigationLink("Apple Music") { AppleMusicSpikeView(model: model) }
-                }
-                #endif
             }
             .settingsBackground()
             .navigationTitle("Settings")
@@ -55,6 +52,8 @@ struct SettingsSheet: View {
                         .navigationTitle("Listeners")
                 case .storage:
                     StorageList(model: model)
+                case .appleMusic:
+                    AppleMusicSettingsView(model: model)
                 }
             }
             .navigationDestination(for: DownloadRoute.self) { route in
@@ -216,6 +215,26 @@ struct SettingsSheet: View {
         if inventory.favoritesPinned { parts.append("Favorites") }
         let size = "\(DownloadText.bytes(model.downloads.usage)) downloaded"
         return parts.isEmpty ? size : "\(size) · \(parts.joined(separator: ", "))"
+    }
+
+    /// A second source beside the library, off until asked for.
+    @ViewBuilder private var appleMusicSection: some View {
+        Section {
+            NavigationLink(value: Page.appleMusic) {
+                HStack(spacing: 12) {
+                    Image(systemName: AppleMusicMark.symbol)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Apple Music")
+                        Text(AppleMusic.shared.status == .off
+                             ? "Fill what your library is missing"
+                             : AppleMusicSettingsView.summary(AppleMusic.shared.status))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder private var accountSection: some View {

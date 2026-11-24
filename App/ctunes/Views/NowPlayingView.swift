@@ -55,6 +55,9 @@ struct NowPlayingView: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var presentation
     @Environment(LibraryNavigator.self) private var navigator
+    /// Whether the window is being recorded or mirrored, which silences
+    /// Apple Music with nothing in its API to say so.
+    @Environment(\.isSceneCaptured) private var isCaptured
 
     /// Which way the arrangement split its panes, from the environment
     /// inside the art pane; nil before it reports, and on iOS 27.0.
@@ -253,6 +256,16 @@ struct NowPlayingView: View {
         let ended = player.hasEnded
 
         return Section {
+            // MusicKit mutes itself under screen capture and goes on
+            // reporting that it plays; a silent song with a moving
+            // scrubber looks broken, so the reason is on screen.
+            if isCaptured, player.currentTrack?.isAppleMusic == true, !ended {
+                Label("Apple Music is silent while the screen is being recorded or mirrored.",
+                      systemImage: "speaker.slash")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            }
             if ended {
                 endOfQueue
             } else if upcoming.isEmpty {
@@ -266,7 +279,7 @@ struct NowPlayingView: View {
                                 .artworkShadow()
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.item.title).lineLimit(1)
-                                Text([entry.item.trackArtist, entry.item.grandparentTitle].compactMap { $0 }.joined(separator: " · "))
+                                Self.byline(entry.item)
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -300,6 +313,14 @@ struct NowPlayingView: View {
             if !ended { upNextHeader }
         }
         .listRowBackground(Color.clear)
+    }
+
+    /// The artists under a queued title, led by the mark for an Apple
+    /// Music song: in a mixed queue it is the one line that says which
+    /// rows aren't the library's.
+    private static func byline(_ track: PlexTrack) -> Text {
+        let names = [track.trackArtist, track.grandparentTitle].compactMap { $0 }.joined(separator: " · ")
+        return track.isAppleMusic ? AppleMusicMark.text(names) : Text(names)
     }
 
     /// The title with repeat and shuffle at its trailing edge: both act on
@@ -730,6 +751,15 @@ struct HeartButton: View {
     var body: some View {
         // Read unconditionally so observation tracks the override map.
         let favorite = track.map { model.isFavorite($0) } ?? false
+        if let track, track.isAppleMusic {
+            // No heart to give: the slot says where the song is from.
+            AppleMusicSourceButton(track: track)
+        } else {
+            heart(favorite)
+        }
+    }
+
+    private func heart(_ favorite: Bool) -> some View {
         Button {
             guard let track else { return }
             Task { await model.toggleFavorite(track) }
@@ -791,12 +821,22 @@ struct NowPlayingStripItems: ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             let track = player.currentTrack
             let favorite = track.map { model.isFavorite($0) } ?? false
-            Button(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.fill" : "heart") {
-                guard let track else { return }
-                Task { await model.toggleFavorite(track) }
+            // The heart's slot names the source for an Apple Music song,
+            // as under the art (`AppleMusicSourceButton`).
+            if let track, track.isAppleMusic {
+                Menu {
+                    Section("Playing from Apple Music") { OpenInMusicButton(key: track.ratingKey) }
+                } label: {
+                    Label("From Apple Music", systemImage: AppleMusicMark.symbol)
+                }
+            } else {
+                Button(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.fill" : "heart") {
+                    guard let track else { return }
+                    Task { await model.toggleFavorite(track) }
+                }
+                .tint(favorite ? Color.heart : nil)
+                .disabled(track == nil || model.library?.isConnected == false)
             }
-            .tint(favorite ? Color.heart : nil)
-            .disabled(track == nil || model.library?.isConnected == false)
         }
         ToolbarSpacer(.fixed, placement: .topBarTrailing)
         ToolbarItem(placement: .topBarTrailing) {

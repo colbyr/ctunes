@@ -702,6 +702,47 @@ struct TrackMenu: View {
                 }
             }
         }
+        // An Apple Music song stops here: a heart, a playlist, a pin and
+        // a veto are all kept by the Plex server or keyed to its tracks.
+        // The Music app is where it can be loved or added to a library.
+        if track.isAppleMusic {
+            Section("From Apple Music") {
+                OpenInMusicButton(key: track.ratingKey)
+            }
+        } else {
+            libraryItems(actions: actions, favorite: favorite)
+        }
+        switch placement {
+        case .queued(let entry):
+            Section {
+                Button(role: .destructive) { player.remove(entry) } label: {
+                    Label("Remove from Queue", systemImage: MenuSymbol.removeFromList)
+                }
+            }
+        case .playlistItem(let item, let playlist, _):
+            // A smart playlist's items are the server's; a regular one's
+            // go by their item id. The page reloads on the generation the
+            // write bumps, so the row leaves when the server agrees.
+            if !offline, !playlist.smart, item.playlistItemID != nil {
+                Section {
+                    Button(role: .destructive) {
+                        Task { await model.remove(item, from: playlist) }
+                    } label: {
+                        Label("Remove from Playlist", systemImage: MenuSymbol.removeFromList)
+                    }
+                }
+            }
+        case .list, .playing:
+            EmptyView()
+        }
+    }
+}
+
+extension TrackMenu {
+    /// What only a library track has: the heart, the playlists, the
+    /// download and the listeners.
+    @ViewBuilder
+    fileprivate func libraryItems(actions: LibraryActions, favorite: Bool) -> some View {
         // Hearts are read-only offline.
         if !offline {
             Section {
@@ -727,29 +768,6 @@ struct TrackMenu: View {
             remove: { model.downloads.unpin(track) }
         )
         ListenersMenu(model: model, scope: VetoScope(track: track))
-        switch placement {
-        case .queued(let entry):
-            Section {
-                Button(role: .destructive) { player.remove(entry) } label: {
-                    Label("Remove from Queue", systemImage: MenuSymbol.removeFromList)
-                }
-            }
-        case .playlistItem(let item, let playlist, _):
-            // A smart playlist's items are the server's; a regular one's
-            // go by their item id. The page reloads on the generation the
-            // write bumps, so the row leaves when the server agrees.
-            if !offline, !playlist.smart, item.playlistItemID != nil {
-                Section {
-                    Button(role: .destructive) {
-                        Task { await model.remove(item, from: playlist) }
-                    } label: {
-                        Label("Remove from Playlist", systemImage: MenuSymbol.removeFromList)
-                    }
-                }
-            }
-        case .list, .playing:
-            EmptyView()
-        }
     }
 }
 

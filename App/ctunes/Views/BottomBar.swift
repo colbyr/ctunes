@@ -171,7 +171,9 @@ private struct MiniPlayerPill: View {
                     if !compact {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(track.title).font(.footnote.weight(.semibold)).lineLimit(1)
-                            Text(track.grandparentTitle ?? "")
+                            (track.isAppleMusic
+                                ? AppleMusicMark.text(track.grandparentTitle ?? "")
+                                : Text(track.grandparentTitle ?? ""))
                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .transition(.opacity.combined(with: .move(edge: .leading)))

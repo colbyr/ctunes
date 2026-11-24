@@ -68,6 +68,10 @@ struct SearchView: View {
     @State private var tracks: [PlexTrack] = []
     @State private var trackQuery = ""
     @State private var recents: RecentSearches
+    /// What the Apple Music catalog has for `appleQuery` that the library
+    /// doesn't; it lags the field like the tracks do.
+    @State private var apple = AppleMusic.SearchResults()
+    @State private var appleQuery = ""
 
     init(model: AppModel, section: PlexSection, catalog: LibraryCatalog,
          query: Binding<String>, path: Binding<NavigationPath>) {
@@ -97,12 +101,26 @@ struct SearchView: View {
     }
     /// The server has answered for what is in the field.
     private var settled: Bool { trackQuery == needle }
+    /// Apple Music's results for what is in the field, as one list:
+    /// albums, then songs. The albums the library has were dropped when
+    /// they were fetched; a song is dropped here once the server's own
+    /// tracks for the query show the library has it.
+    private var appleHits: [SearchHit] {
+        guard AppleMusic.shared.isBrowsable, appleQuery == needle, !needle.isEmpty else { return [] }
+        let owned = MusicMatch.Owned(tracks: trackQuery == needle ? tracks : [])
+        return apple.albums.map(SearchHit.album) + apple.songs
+            .filter { !owned.owns(song: $0.title, artist: $0.trackArtist ?? $0.grandparentTitle ?? "", album: nil) }
+            .map(SearchHit.track)
+    }
+    /// Apple Music has answered too, or was never asked.
+    private var appleSettled: Bool { !AppleMusic.shared.isBrowsable || appleQuery == needle }
 
     private static let margin: CGFloat = 16
 
     var body: some View {
         let hits = hits
         let completions = completions
+        let appleHits = appleHits
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if needle.isEmpty {
@@ -141,6 +159,16 @@ struct SearchView: View {
                     BrowseList(items: hits) { row($0) }
                         .padding(.horizontal, Self.margin)
                         .padding(.top, completions.isEmpty ? 4 : 8)
+                    // The library's results always come first; Apple
+                    // Music follows as a group of its own, only with what
+                    // the library doesn't have.
+                    if !appleHits.isEmpty {
+                        AppleMusicGroupHeader(title: "Apple Music", caption: "Not in your library")
+                            .padding(.init(top: hits.isEmpty ? 12 : 28, leading: Self.margin, bottom: 6, trailing: Self.margin))
+                        hairline
+                        BrowseList(items: appleHits) { row($0) }
+                            .padding(.horizontal, Self.margin)
+                    }
                 }
             }
         }
@@ -153,7 +181,7 @@ struct SearchView: View {
             if needle.isEmpty && recents.items.isEmpty {
                 ContentUnavailableView("Search Your Library", systemImage: "magnifyingglass",
                                        description: Text("Artists, albums, playlists and songs."))
-            } else if !needle.isEmpty && settled && hits.isEmpty && completions.isEmpty {
+            } else if !needle.isEmpty && settled && appleSettled && hits.isEmpty && appleHits.isEmpty && completions.isEmpty {
                 ContentUnavailableView.search(text: query)
             }
         }
@@ -176,6 +204,9 @@ struct SearchView: View {
         // Keyed on the connection too, so a search opened before the
         // server was found asks it once it is; not on the revision,
         // which a connect bumps five times in a burst.
+        .task(id: TrackFetch(needle: needle, connected: AppleMusic.shared.isBrowsable)) {
+            await searchAppleMusic()
+        }
         .task(id: TrackFetch(needle: needle, connected: model.isConnected)) {
             guard !needle.isEmpty else {
                 tracks = []
@@ -195,6 +226,25 @@ struct SearchView: View {
                 trackQuery = needle
             }
         }
+    }
+
+    /// Asks the catalog as the query settles, a beat after the server:
+    /// the library's answer is the one being waited for.
+    private func searchAppleMusic() async {
+        guard AppleMusic.shared.isBrowsable, !needle.isEmpty else {
+            apple = .init()
+            appleQuery = ""
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(400))
+        guard !Task.isCancelled else { return }
+        let asked = needle
+        let found = try? await AppleMusic.shared.search(
+            asked, owned: MusicMatch.Owned(albums: catalog.albums), artists: catalog.artists
+        )
+        guard !Task.isCancelled else { return }
+        apple = found ?? .init()
+        appleQuery = asked
     }
 
     /// What the track fetch is keyed on.
@@ -240,6 +290,18 @@ struct SearchView: View {
             } menu: {
                 ArtistMenu(model: model, ratingKey: artist.ratingKey, title: artist.title)
             }
+        case .album(let album) where album.isAppleMusic:
+            BrowseRow(
+                url: model.library?.artworkURL(album.thumb),
+                title: album.title,
+                subtitle: Self.subtitle("Album", album.parentTitle),
+                appleMusic: true
+            ) {
+                recents.add(hit)
+                path.append(album)
+            } menu: {
+                AppleMusicAlbumMenu(model: model, album: album)
+            }
         case .album(let album):
             BrowseRow(
                 url: model.library?.artworkURL(album.thumb),
@@ -273,7 +335,8 @@ struct SearchView: View {
                 title: track.title,
                 subtitle: Self.subtitle("Song", track.trackArtist ?? track.grandparentTitle),
                 download: model.downloads.state(track),
-                dimmed: !model.downloads.canPlay(track)
+                dimmed: !model.downloads.canPlay(track),
+                appleMusic: track.isAppleMusic
             ) {
                 recents.add(hit)
                 play(track)
@@ -297,7 +360,13 @@ struct SearchView: View {
         guard model.downloads.canPlay(track) else { return }
         Task {
             var siblings = [track]
-            if let key = track.parentRatingKey,
+            if track.isAppleMusic {
+                // The same rule from the other source: its album, from it.
+                if let fetched = await AppleMusic.shared.albumTracks(around: track, artists: catalog.artists),
+                   fetched.contains(where: { $0.id == track.id }) {
+                    siblings = fetched
+                }
+            } else if let key = track.parentRatingKey,
                let fetched = try? await library.tracks(inAlbum: key), !fetched.isEmpty {
                 siblings = fetched
             }

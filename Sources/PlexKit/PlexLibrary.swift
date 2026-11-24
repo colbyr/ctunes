@@ -384,6 +384,8 @@ public actor PlexLibrary {
     /// for exactly what it saw online.
     public static func artworkURL(_ thumb: String?, size: Int, base: URL, token: String) -> URL? {
         guard let thumb, !thumb.isEmpty else { return nil }
+        // Art that isn't the server's (an Apple Music cover) is its own URL.
+        if let remote = AppleMusicID.artwork(thumb, size: size) { return remote }
         let encoded = thumb.addingPercentEncoding(
             withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~"))
         ) ?? thumb

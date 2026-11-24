@@ -1,6 +1,10 @@
 import PlexKit
 import SwiftUI
 
+/// One album's page. **An Apple Music album is the same page**: the
+/// tracks come from the catalog, the header says where it is from, and
+/// what only the library can do (download, heart, the listeners, a
+/// recent mix) is left off.
 struct TracksView: View {
     let model: AppModel
     let album: PlexAlbum
@@ -11,6 +15,17 @@ struct TracksView: View {
 
     @State private var tracks: [PlexTrack] = []
     @State private var loaded = false
+    /// An Apple Music album as the catalog has it: the route may carry
+    /// only its key and title (a song's Go to Album).
+    @State private var catalogAlbum: PlexAlbum?
+    private var isAppleMusic: Bool { album.isAppleMusic }
+    /// "1969 · 10 songs" beside the source in the header.
+    private var appleMusicDetail: String? {
+        let known = catalogAlbum ?? album
+        let count = tracks.isEmpty ? known.leafCount : tracks.count
+        let parts = [known.year.map(String.init), count.map { "\($0) song\($0 == 1 ? "" : "s")" }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
     /// The hidden picker the strip's AirPlay item taps.
     @State private var routePicker = RoutePickerHandle()
     /// Whether the action cards are on screen; once they scroll away the
@@ -147,7 +162,12 @@ struct TracksView: View {
             withAnimation(.snappy) { actionsVisible = !scrolledPast }
         }
         .overlay {
-            if !loaded { LoadingPlaceholder(model: model) }
+            if !loaded {
+                LoadingPlaceholder(model: model)
+            } else if isAppleMusic, tracks.isEmpty {
+                ContentUnavailableView("Couldn't Load This Album", systemImage: AppleMusicMark.symbol,
+                                       description: Text("Apple Music didn't answer. Pull down to try again."))
+            }
         }
         .navigationTitle(album.title)
         // Same edge as the browse root; see MusicView for why not `.hard`.
@@ -182,7 +202,7 @@ struct TracksView: View {
             StripAirPlayItem(picker: routePicker, shown: navigator.hasVerticalBar)
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false)
+                    albumMenu
                 } label: {
                     Label("More", systemImage: "ellipsis")
                 }
@@ -226,6 +246,14 @@ struct TracksView: View {
                 player.addToQueue(tracks, library: library)
             }
             #if DEBUG
+            // `queue` puts two sample Apple Music songs after the playing
+            // track, so Up Next shows the two sources side by side.
+            if ProcessInfo.processInfo.environment["CTUNES_DEV_APPLE_MUSIC"] == "queue", !isAppleMusic, !tracks.isEmpty {
+                let sample = AppleMusic.Sample.search(album.parentTitle ?? "Sample", owned: .init(), artists: AppRuntime.shared.catalog.artists)
+                player.playNext(Array(sample.songs.prefix(2)), library: library)
+            }
+            #endif
+            #if DEBUG
             if let y = ProcessInfo.processInfo.environment["CTUNES_DEV_SCROLL"].flatMap(Double.init) {
                 try? await Task.sleep(for: .seconds(1))
                 scrollPosition.scrollTo(y: y)
@@ -237,7 +265,24 @@ struct TracksView: View {
 
     private static let margin: CGFloat = 16
 
+    /// The album's own menu, by source.
+    @ViewBuilder private var albumMenu: some View {
+        if isAppleMusic {
+            AppleMusicAlbumMenu(model: model, album: catalogAlbum ?? album, tracks: tracks, showAlbum: false)
+        } else {
+            AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false)
+        }
+    }
+
     private func load() async {
+        if isAppleMusic {
+            if let page = try? await AppleMusic.shared.page(for: album, artists: AppRuntime.shared.catalog.artists) {
+                catalogAlbum = page.album
+                tracks = page.tracks
+            }
+            loaded = true
+            return
+        }
         guard let library = model.library else { return }
         // The library answers from its saved copy and asks the server
         // behind it; a miss it can't fetch leaves the page as it is.
@@ -314,15 +359,21 @@ struct TracksView: View {
                 .artworkShadow()
                 .reportsMidX($coverMidX)
                 .overlay(alignment: .bottomTrailing) {
-                    DownloadOverlay(state: state, offline: offline) {
-                        guard let library = model.library, !tracks.isEmpty else { return }
-                        model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
-                    } remove: {
-                        model.downloads.unpin(album)
+                    // Nothing of Apple Music's can be kept on the phone.
+                    if !isAppleMusic {
+                        DownloadOverlay(state: state, offline: offline) {
+                            guard let library = model.library, !tracks.isEmpty else { return }
+                            model.downloads.pin(album, tracks: tracks, section: model.selectedSection?.key ?? "", library: library)
+                        } remove: {
+                            model.downloads.unpin(album)
+                        }
                     }
                 }
-                .contextMenu { AlbumMenu(model: model, album: album, tracks: tracks, showAlbum: false) }
+                .contextMenu { albumMenu }
                 .padding(.bottom, 8)
+            // The page's one statement of its source; the rows under it
+            // are all the same and carry no mark.
+            if isAppleMusic { AppleMusicLabel(detail: appleMusicDetail) }
             HiddenRightNowLabel(model: model, scope: scope)
             // Under a vertical bar the strip has these from the start.
             if !navigator.hasVerticalBar {
@@ -409,7 +460,7 @@ struct TracksView: View {
         .rowContextMenu { TrackMenu(model: model, track: track, placement: .list(siblings: tracks), showAlbum: false) }
         // The heart without the menu, as Favorites unfavorites. Hearts are
         // read-only offline.
-        .rowSwipe(offline ? nil : RowSwipe(
+        .rowSwipe(offline || isAppleMusic ? nil : RowSwipe(
             title: favorite ? "Unfavorite" : "Favorite",
             systemImage: favorite ? "heart.slash" : "heart",
             tint: .heart
@@ -429,7 +480,8 @@ struct TracksView: View {
     private func play() {
         guard let library = model.library, !playableTracks.isEmpty else { return }
         player.play(playableTracks, startingAt: 0, library: library)
-        model.recordMix([MixPick(album: album)], style: .play, player: player)
+        // A recent mix is a pick, and a pick is the library's.
+        if !isAppleMusic { model.recordMix([MixPick(album: album)], style: .play, player: player) }
         nowPlaying.isShown = true
     }
 
@@ -437,7 +489,7 @@ struct TracksView: View {
     private func shuffle() {
         guard let library = model.library, !playableTracks.isEmpty else { return }
         player.play(playableTracks.spreadShuffled(), startingAt: 0, library: library)
-        model.recordMix([MixPick(album: album)], style: .shuffle, player: player)
+        if !isAppleMusic { model.recordMix([MixPick(album: album)], style: .shuffle, player: player) }
         nowPlaying.isShown = true
     }
 

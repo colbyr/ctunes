@@ -1129,6 +1129,8 @@ final class AppModel {
     /// outbox. The library asks for the favorites again after the write,
     /// and the pinned group follows the saved list through `libraryDidSave`.
     func toggleFavorite(_ track: PlexTrack) async {
+        // A heart is a rating on the server, which has no such track.
+        guard !track.isAppleMusic else { return }
         guard let library, library.isConnected else { return }
         let previous = favoriteOverrides[track.ratingKey]
         let favorite = !isFavorite(track)

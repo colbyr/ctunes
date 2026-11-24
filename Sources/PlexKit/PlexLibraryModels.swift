@@ -213,8 +213,10 @@ public struct PlexTrack: Codable, Sendable, Identifiable, Hashable {
 
 extension PlexTrack {
     /// Artist, then album: the grouping every shuffle in the app spreads by.
+    /// By name where there is no key: an Apple Music song by an artist the
+    /// library doesn't have, which would otherwise all share one group.
     public static let shuffleGrouping: [@Sendable (PlexTrack) -> String] =
-        [{ $0.grandparentRatingKey ?? "" }, { $0.parentRatingKey ?? "" }]
+        [{ $0.grandparentRatingKey ?? $0.grandparentTitle ?? "" }, { $0.parentRatingKey ?? $0.parentTitle ?? "" }]
 }
 
 extension Array where Element == PlexTrack {

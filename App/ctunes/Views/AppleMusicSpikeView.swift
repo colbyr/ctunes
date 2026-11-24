@@ -94,10 +94,11 @@ struct AppleMusicSpikeView: View {
     private enum Placement { case now, next, end }
 
     private func enqueue(_ song: Song, _ placement: Placement) {
-        guard let library = model.library, let track = player.appleMusic.entry(for: song) else {
-            error = "No library open, or the song didn't convert"
+        guard let library = model.library else {
+            error = "No library open"
             return
         }
+        let track = AppleMusic.shared.track(song, artists: [])
         switch placement {
         case .now: player.play([track], startingAt: 0, library: library)
         case .next: player.playNext([track], library: library)

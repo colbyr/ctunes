@@ -42,7 +42,10 @@ struct AlbumTile: View {
                 Text(album.title)
                     .font(.footnote)
                     .lineLimit(1)
-                Text(album.subtitle(showArtist: showArtist))
+                // An Apple Music album leads its line with the mark.
+                (album.isAppleMusic
+                    ? AppleMusicMark.text(album.subtitle(showArtist: showArtist))
+                    : Text(album.subtitle(showArtist: showArtist)))
                     .font(.caption2).foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -50,6 +53,7 @@ struct AlbumTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         // Browsable but not playable: still in the grid, clearly dimmed.
         .opacity(offline && !playable ? 0.35 : 1)
+        .accessibilityHint(album.isAppleMusic ? "From Apple Music" : "")
         .contentShape(.rect)
     }
 }
@@ -70,6 +74,7 @@ struct AlbumRow<Menu: View>: View {
             subtitle: album.subtitle(showArtist: showArtist),
             download: model.downloads.state(album),
             dimmed: model.connection == .unreachable && !model.downloads.hasDownloads(album),
+            appleMusic: album.isAppleMusic,
             action: action,
             menu: menu
         )
@@ -342,6 +347,8 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
     let subtitle: String?
     var download: DownloadState = .none
     var dimmed = false
+    /// From Apple Music: the line under the title leads with the mark.
+    var appleMusic = false
     /// Off in Quick Mix, where a tap picks the item and the menu
     /// stays a long press away.
     var showsMore = true
@@ -388,10 +395,11 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
                     .font(.body)
                     .lineLimit(1)
                 if let subtitle {
-                    Text(subtitle)
+                    (appleMusic ? AppleMusicMark.text(subtitle) : Text(subtitle))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .accessibilityLabel(appleMusic ? "\(subtitle), from Apple Music" : subtitle)
                 }
             }
             Spacer(minLength: 8)
@@ -404,10 +412,10 @@ struct BrowseRow<Accessory: View, Menu: View>: View {
 
 extension BrowseRow where Accessory == EmptyView {
     init(url: URL?, round: Bool = false, placeholder: String = "music.note", title: String, subtitle: String?,
-         download: DownloadState = .none, dimmed: Bool = false,
+         download: DownloadState = .none, dimmed: Bool = false, appleMusic: Bool = false,
          action: @escaping () -> Void, @ViewBuilder menu: @escaping () -> Menu) {
         self.init(url: url, round: round, placeholder: placeholder, title: title, subtitle: subtitle, download: download,
-                  dimmed: dimmed, action: action, accessory: { EmptyView() }, menu: menu)
+                  dimmed: dimmed, appleMusic: appleMusic, action: action, accessory: { EmptyView() }, menu: menu)
     }
 }
 

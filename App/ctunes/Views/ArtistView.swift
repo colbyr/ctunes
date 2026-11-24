@@ -38,6 +38,8 @@ struct ArtistView: View {
     /// portrait on the first frame instead of waiting on the artist list.
     @MainActor private static var portraits: [String: String] = [:]
     @State private var loaded = false
+    /// Their albums on Apple Music that the library doesn't have.
+    @State private var shelf: [PlexAlbum] = []
     @State private var loading: PlayStyle?
     /// The hidden picker the strip's AirPlay item taps.
     @State private var routePicker = RoutePickerHandle()
@@ -120,6 +122,10 @@ struct ArtistView: View {
                         }
                     }
                 }
+                // Under everything of theirs the library has, whatever
+                // the sort: the page is the library's first.
+                AppleMusicShelf(model: model, albums: shelf, layout: layout, columns: columns, path: $path)
+                    .padding(.init(top: 32, leading: Self.margin, bottom: 0, trailing: Self.margin))
             }
         }
         .readsCrease()
@@ -173,12 +179,31 @@ struct ArtistView: View {
             }
             #endif
         }
+        // Once the library's albums are known, since the shelf is what
+        // they leave out; again when Apple Music is switched on or off.
+        .task(id: ShelfFetch(loaded: loaded, albums: albums.count, browsable: AppleMusic.shared.isBrowsable)) {
+            guard AppleMusic.shared.isBrowsable else {
+                shelf = []
+                return
+            }
+            if let known = AppleMusic.shared.cachedShelf(for: route.ratingKey) { shelf = known }
+            guard loaded else { return }
+            if let fetched = try? await AppleMusic.shared.albums(missingFor: route, owned: albums), !Task.isCancelled {
+                shelf = fetched
+            }
+        }
         .refreshable { await load() }
         .alert("Nothing to play", isPresented: $nothingToPlay) {
             Button("OK") {}
         } message: {
             Text(offline ? "None of this artist's tracks are downloaded." : "This artist has no tracks to play.")
         }
+    }
+
+    private struct ShelfFetch: Hashable {
+        let loaded: Bool
+        let albums: Int
+        let browsable: Bool
     }
 
     /// Every album is theirs, so no Go to Artist in the menu. An album a

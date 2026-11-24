@@ -12,9 +12,10 @@ import os
 /// one, watched until it ends, and the queue advances by hand as it does
 /// for Plex.
 ///
-/// An entry is a `PlexTrack` whose `ratingKey` is `am:<catalog id>`, decoded
-/// from a hand-built payload, so the queue, Up Next and shuffle need no
-/// changes. The `Song` itself is kept here by that key.
+/// An entry is a `PlexTrack` whose `ratingKey` is `am:<catalog id>`
+/// (`AppleMusicSource.swift` in PlexKit), so the queue, Up Next and
+/// shuffle need no changes. The `Song` itself comes from `AppleMusic`,
+/// which keeps the ones the screens loaded and asks for the rest by id.
 ///
 /// Everything it learns is logged under category `AppleMusic`:
 /// `log show --info --predicate 'category == "AppleMusic" || category == "AudioPlayer"'`.
@@ -51,7 +52,6 @@ final class AppleMusicEngine {
     private(set) var currentTime: Double = 0
 
     private let player = ApplicationMusicPlayer.shared
-    private var songs: [String: Song] = [:]
     private var activeKey: String?
     private var activeDuration: Double = 0
     /// Whether playback is wanted here, to tell our pauses from MusicKit's.
@@ -99,49 +99,14 @@ final class AppleMusicEngine {
     private var generation = 0
     let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ctunes", category: "AppleMusic")
 
-    static func isAppleMusic(_ track: PlexTrack) -> Bool {
-        track.ratingKey.hasPrefix("am:")
-    }
-
-    // MARK: - Entries
-
-    /// The queue entry for `song`, remembered so it can load later.
-    func entry(for song: Song) -> PlexTrack? {
-        let key = "am:\(song.id.rawValue)"
-        songs[key] = song
-        var payload: [String: Any] = [
-            "ratingKey": key,
-            "title": song.title,
-            "grandparentTitle": song.artistName,
-            "grandparentRatingKey": "am-artist:\(song.artistName)",
-            "parentTitle": song.albumTitle ?? "",
-            "parentRatingKey": "am-album:\(song.albumTitle ?? song.id.rawValue)",
-        ]
-        if let duration = song.duration { payload["duration"] = Int(duration * 1000) }
-        if let thumb = song.artwork?.url(width: 900, height: 900)?.absoluteString {
-            payload["thumb"] = thumb
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
-        return try? JSONDecoder().decode(PlexTrack.self, from: data)
-    }
-
-    func artworkURL(for track: PlexTrack) -> URL? {
-        track.thumb.flatMap(URL.init(string:))
-    }
-
     // MARK: - Transport
 
     func load(_ track: PlexTrack, autoPlay: Bool, startAt: Double) {
-        guard let song = songs[track.ratingKey] else {
-            log.error("no song for \(track.ratingKey, privacy: .public)")
-            onEvent?(.failed(CancellationError()))
-            return
-        }
         generation += 1
         let generation = generation
         isActive = true
         activeKey = track.ratingKey
-        activeDuration = song.duration ?? 0
+        activeDuration = track.durationSeconds ?? 0
         wantsPlaying = autoPlay
         endHandled = false
         currentTime = startAt
@@ -153,10 +118,16 @@ final class AppleMusicEngine {
         endTimer = nil
         loadedAt = .now
         logNowPlaying("before load")
-        log.notice("load \(song.title, privacy: .public) autoPlay=\(autoPlay) startAt=\(startAt, format: .fixed(precision: 1))")
+        log.notice("load \(track.title, privacy: .public) autoPlay=\(autoPlay) startAt=\(startAt, format: .fixed(precision: 1))")
         startPolling()
         Task {
             do {
+                // The song a screen already loaded, else asked of the
+                // catalog by id: an entry from a queue restored at launch
+                // is only its key.
+                let song = try await AppleMusic.shared.song(for: track)
+                guard generation == self.generation else { return }
+                if let duration = song.duration { activeDuration = duration }
                 if Self.holdsMixableSession {
                     Self.holdMixableSession(log: log)
                 } else if Self.releasesSession {
