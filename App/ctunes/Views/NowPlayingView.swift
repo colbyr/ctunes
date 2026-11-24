@@ -129,12 +129,7 @@ struct NowPlayingView: View {
                             fitStripArt()
                         }
                         .artworkBackground(artworkURL)
-                        .background {
-                            HiddenRoutePicker(handle: routePicker)
-                                .frame(width: 1, height: 1)
-                                .opacity(0.01)
-                                .accessibilityHidden(true)
-                        }
+                        .hostsRoutePicker(routePicker, when: true)
                         .toolbar { stripItems }
                         .navigationBarTitleDisplayMode(.inline)
                 }
@@ -621,41 +616,11 @@ struct NowPlayingView: View {
 
     /// The heart, AirPlay, repeat and shuffle as the strip's items, for
     /// the closed Duo's sheet.
-    @ToolbarContentBuilder private var stripItems: some ToolbarContent {
-        // The heart and AirPlay are buttons of their own; repeat and
-        // shuffle, which both act on the queue, share a group.
-        ToolbarItem(placement: .topBarTrailing) {
-            let track = player.currentTrack
-            let favorite = track.map { model.isFavorite($0) } ?? false
-            Button(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.fill" : "heart") {
-                guard let track else { return }
-                Task { await model.toggleFavorite(track) }
-            }
-            .tint(favorite ? Color.heart : nil)
-            .disabled(track == nil || model.library?.isConnected == false)
-        }
-        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-        ToolbarItem(placement: .topBarTrailing) {
-            AirPlayStripButton(picker: routePicker)
-        }
-        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-        ToolbarItem(placement: .topBarTrailing) {
-            Button(repeatLabel, systemImage: player.repeatMode == .one ? "repeat.1" : "repeat") { player.cycleRepeat() }
-                .tint(player.repeatMode != .off ? Color.accentText : nil)
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button(player.isShuffled ? "Shuffle on" : "Shuffle off", systemImage: "shuffle") { player.toggleShuffle() }
-                .tint(player.isShuffled ? Color.accentText : nil)
-        }
+    private var stripItems: some ToolbarContent {
+        NowPlayingStripItems(model: model, picker: routePicker)
     }
 
-    private var repeatLabel: String {
-        switch player.repeatMode {
-        case .off: "Repeat off"
-        case .all: "Repeat all"
-        case .one: "Repeat one"
-        }
-    }
+    private var repeatLabel: String { player.repeatMode.label }
 
     /// Repeat and shuffle: tinted while on, dimmed while off, with a
     /// generous hit area since the glyphs are small.
@@ -808,5 +773,54 @@ private struct SplitAxisProbe: View {
 
     var body: some View {
         Color.clear.onChange(of: axis, initial: true) { _, axis in report(axis) }
+    }
+}
+
+/// Now Playing's controls as strip items, under a vertical bar (the Duo
+/// closed, or split): the heart and AirPlay as buttons of their own,
+/// repeat and shuffle, which both act on the queue, in a group. The
+/// player's sheet and its idle state (a restored queue) share them, so
+/// the strip doesn't change as the one turns into the other. The page
+/// hosts the picker (`hostsRoutePicker`).
+struct NowPlayingStripItems: ToolbarContent {
+    let model: AppModel
+    let picker: RoutePickerHandle
+    @Environment(AudioPlayer.self) private var player
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            let track = player.currentTrack
+            let favorite = track.map { model.isFavorite($0) } ?? false
+            Button(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "heart.fill" : "heart") {
+                guard let track else { return }
+                Task { await model.toggleFavorite(track) }
+            }
+            .tint(favorite ? Color.heart : nil)
+            .disabled(track == nil || model.library?.isConnected == false)
+        }
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        ToolbarItem(placement: .topBarTrailing) {
+            AirPlayStripButton(picker: picker)
+        }
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(player.repeatMode.label, systemImage: player.repeatMode == .one ? "repeat.1" : "repeat") { player.cycleRepeat() }
+                .tint(player.repeatMode != .off ? Color.accentText : nil)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(player.isShuffled ? "Shuffle on" : "Shuffle off", systemImage: "shuffle") { player.toggleShuffle() }
+                .tint(player.isShuffled ? Color.accentText : nil)
+        }
+    }
+}
+
+extension RepeatMode {
+    /// What the repeat button says it is.
+    var label: String {
+        switch self {
+        case .off: "Repeat off"
+        case .all: "Repeat all"
+        case .one: "Repeat one"
+        }
     }
 }

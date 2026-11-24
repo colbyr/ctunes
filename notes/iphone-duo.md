@@ -183,6 +183,27 @@ had none of those, so this note is about the layout.
   and a 128pt tile floor to keep four across) but didn't feel right
   beside the system's own strip; those poses keep the top bar.
 
+## The strip on the left (2026-11-23)
+
+Split with the app on the left, the strip runs down the window's left
+edge, where there is no hardware inset, and three things assumed it was
+always trailing:
+
+- **The bottom bar ran under it.** The window's safe area carries the
+  strip only on the side with the camera; the pages inside the stack
+  get it either way. Every page reports its side insets
+  (`reportsPageInsets`, into `LibraryNavigator.pageInsets`) and the bar
+  pads each side by what the pages have beyond its own.
+- **The band of mixes mirrors** on `verticalBarEdge`: rounded and
+  shaded at the grid's left edge, running off the right.
+- **The root's large title sat flush on the strip**, as it does on the
+  Now Playing column, 17pt left of the content. Drawn by hand as a
+  `.largeTitle` item there, padded to the content's margin.
+
+Not yet seen on the device. Also unchecked: whether the Duo open in
+landscape the other way round puts the strip on the left, beside the
+Now Playing column at the crease.
+
 ## Measured
 
 - With `.split.axes(.vertical)` a cover wider than tall showed the

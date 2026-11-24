@@ -490,31 +490,40 @@ struct LibraryView: View {
                     SectionPicker(model: model)
                 }
             }
+            // Every page reports its side insets, so the bottom bar can
+            // stop short of a strip on whichever side it runs.
+            .reportsPageInsets()
             // Declared at the stack root so a seeded path can reach it.
             .navigationDestination(for: PlexAlbum.self) { album in
                 TracksView(model: model, album: album, path: $path)
+                    .reportsPageInsets()
             }
             .navigationDestination(for: ArtistRoute.self) { route in
                 if let section = model.selectedSection {
                     ArtistView(model: model, section: section, route: route, path: $path)
+                        .reportsPageInsets()
                 }
             }
             .navigationDestination(for: MixRoute.self) { route in
                 if let section = model.selectedSection {
                     MixBuilderView(model: model, section: section, route: route, query: $query)
+                        .reportsPageInsets()
                 }
             }
             .navigationDestination(for: FavoritesRoute.self) { _ in
                 if let section = model.selectedSection {
                     FavoritesView(model: model, section: section)
+                        .reportsPageInsets()
                 }
             }
             .navigationDestination(for: PlexPlaylist.self) { playlist in
                 PlaylistView(model: model, playlist: playlist)
+                    .reportsPageInsets()
             }
             .navigationDestination(for: SearchRoute.self) { _ in
                 if let section = model.selectedSection {
                     SearchView(model: model, section: section, catalog: catalog, query: $query, path: $path)
+                        .reportsPageInsets()
                 }
             }
         }

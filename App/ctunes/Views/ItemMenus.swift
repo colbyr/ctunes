@@ -24,6 +24,9 @@ final class LibraryNavigator {
     var hasVerticalBar = false
     /// Which side that strip runs down.
     var verticalBarEdge: HorizontalEdge?
+    /// The pages' safe-area insets on each side, strip included
+    /// (`reportsPageInsets`). Set by the pages.
+    var pageInsets = HorizontalInsets()
     /// The window is wider than tall. Set by the host.
     var isLandscape = false
     /// The window has a fold, placed even while flat: the iPhone Duo's

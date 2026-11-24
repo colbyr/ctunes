@@ -323,7 +323,7 @@ struct MusicView: View {
                     MixesRow(model: model, items: mixes, margin: Self.margin, open: open)
                         .padding(.vertical, 18)
                         .frame(maxWidth: .infinity)
-                        .mixBand(endsAt: stripBand ? Self.margin : nil)
+                        .mixBand(endsAt: stripBand ? Self.margin : nil, on: navigator.verticalBarEdge ?? .trailing)
                         .padding(.top, 8)
                 }
                 // The browser starts here: the chips with the arrange
@@ -385,6 +385,22 @@ struct MusicView: View {
         // on the divider with no margin; the inline title is centred.
         .navigationBarTitleDisplayMode(nowPlaying.isColumn ? .inline : .automatic)
         .toolbar {
+            // With the strip down the left edge (the Duo split, the app on
+            // the left) the bar's large title sits flush on the strip
+            // with no margin, as it does on the Now Playing column, while
+            // the page's content keeps its own; drawn by hand there, it
+            // is padded in line with the content.
+            if navigator.verticalBarEdge == .leading, !nowPlaying.isColumn {
+                ToolbarItem(placement: .largeTitle) {
+                    Text("Infinite Disc Changer")
+                        .font(.largeTitle.bold())
+                        .foregroundStyle(Color.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.leading, Self.margin)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
             // Under a vertical strip the strip stacks it at its head.
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Settings", systemImage: "gearshape") { showingSettings = true }
@@ -681,25 +697,31 @@ struct BrowseInputs: Equatable {
 
 private extension View {
     /// The band behind the mixes: the screen's width, or with `endsAt`,
-    /// stopping that far short of the trailing edge with its trailing
-    /// corners rounded and what scrolls past cut off there. Full width it
-    /// is a plain color, which runs into the safe area as a clip can't.
-    /// The end is shaded inward so it reads as an edge, not a cut.
-    @ViewBuilder func mixBand(endsAt inset: CGFloat?) -> some View {
+    /// stopping that far short of the strip's edge (`on`, the trailing
+    /// one where there is no strip) with those corners rounded and what
+    /// scrolls past cut off there; the other end runs off the window.
+    /// Full width it is a plain color, which runs into the safe area as a
+    /// clip can't. The end is shaded inward so it reads as an edge, not a
+    /// cut.
+    @ViewBuilder func mixBand(endsAt inset: CGFloat?, on edge: HorizontalEdge) -> some View {
         if let inset {
-            let band = UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24)
+            let leading = edge == .leading
+            let band = leading
+                ? UnevenRoundedRectangle(topLeadingRadius: 24, bottomLeadingRadius: 24)
+                : UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24)
+            let shade = [Color.columnEdge.opacity(0), Color.columnEdge]
             background(Color.band, in: band)
                 // An inset shadow along the rounded end, the Now Playing
                 // column's soft edge turned inward, so the cards slip
                 // under it rather than being sliced off.
-                .overlay(alignment: .trailing) {
-                    LinearGradient(colors: [Color.columnEdge.opacity(0), Color.columnEdge],
+                .overlay(alignment: leading ? .leading : .trailing) {
+                    LinearGradient(colors: leading ? shade.reversed() : shade,
                                    startPoint: .leading, endPoint: .trailing)
                         .frame(width: 28)
                         .allowsHitTesting(false)
                 }
                 .clipShape(band)
-                .padding(.trailing, inset)
+                .padding(leading ? .leading : .trailing, inset)
         } else {
             background(Color.band)
         }

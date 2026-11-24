@@ -162,3 +162,34 @@ struct BarTitle: View {
         .multilineTextAlignment(alignment == .leading ? .leading : .center)
     }
 }
+
+extension View {
+    /// Reports how far the page's safe area runs in from each side to
+    /// `LibraryNavigator.pageInsets`. A vertical strip insets the pages
+    /// inside the stack, but on a side with no hardware inset (the Duo
+    /// split with the app on the left, the strip down its left edge) the
+    /// window's safe area doesn't carry it, so the bottom bar, which sits
+    /// outside the stack, can't see it there without this.
+    func reportsPageInsets() -> some View { modifier(PageInsetsReporter()) }
+}
+
+private struct PageInsetsReporter: ViewModifier {
+    @Environment(LibraryNavigator.self) private var navigator
+
+    func body(content: Content) -> some View {
+        content.background {
+            Color.clear
+                .ignoresSafeArea()
+                .onGeometryChange(for: HorizontalInsets.self) { proxy in
+                    HorizontalInsets(leading: proxy.safeAreaInsets.leading,
+                                     trailing: proxy.safeAreaInsets.trailing)
+                } action: { navigator.pageInsets = $0 }
+        }
+    }
+}
+
+/// A view's safe-area insets on its two sides.
+struct HorizontalInsets: Equatable {
+    var leading: CGFloat = 0
+    var trailing: CGFloat = 0
+}

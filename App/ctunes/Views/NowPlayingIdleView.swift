@@ -294,6 +294,8 @@ struct PresentedNowPlaying: View {
     let style: NowPlayingStyle
     @Environment(AudioPlayer.self) private var player
     @Environment(NowPlayingPresentation.self) private var presentation
+    @Environment(LibraryNavigator.self) private var navigator
+    @State private var routePicker = RoutePickerHandle()
 
     var body: some View {
         Group {
@@ -322,6 +324,18 @@ struct PresentedNowPlaying: View {
             }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
                 if NowPlayingPresentation.wantsColumn(size) { presentation.isShown = false }
+            }
+        } else if navigator.hasVerticalBar {
+            // Under a vertical strip, AirPlay as a strip item, from a
+            // stack of its own as the player's sheet has: without it the
+            // strip stood empty and there was no AirPlay at all. Nothing
+            // plays yet, so the heart, repeat and shuffle wait for the
+            // player.
+            NavigationStack {
+                NowPlayingIdleView(model: model, catalog: catalog)
+                    .hostsRoutePicker(routePicker, when: true)
+                    .toolbar { StripAirPlayItem(picker: routePicker, shown: true, leading: false) }
+                    .navigationBarTitleDisplayMode(.inline)
             }
         } else {
             NowPlayingIdleView(model: model, catalog: catalog)

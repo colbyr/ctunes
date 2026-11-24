@@ -30,6 +30,18 @@ struct BottomBar: View {
     /// The home indicator inset under the bar. The stack ignores the
     /// keyboard's safe area, so this never includes it.
     @State private var bottomInset: CGFloat = 0
+    /// The bar's own safe-area insets on each side. Measured against the
+    /// pages' (`LibraryNavigator.pageInsets`): what a page has more of is
+    /// a vertical strip the window's safe area doesn't carry.
+    @State private var sideInsets = HorizontalInsets()
+    /// The margin on one side: the usual gap, plus whatever strip the
+    /// pages are inset by and the bar isn't, so the pills stop short of
+    /// the strip on either side as the page's content does.
+    private func margin(_ edge: HorizontalEdge) -> CGFloat {
+        let page = edge == .leading ? navigator.pageInsets.leading : navigator.pageInsets.trailing
+        let bar = edge == .leading ? sideInsets.leading : sideInsets.trailing
+        return (keyboardUp ? 12 : 20) + max(0, page - bar)
+    }
     /// How much of the screen the keyboard covers, from its own
     /// notifications, so the bar tracks it whatever screen was on top.
     @Environment(KeyboardInset.self) private var keyboard
@@ -85,7 +97,8 @@ struct BottomBar: View {
         // Beside a vertical strip they stop short of it like the page's
         // content: run under it, the × met the back button the keyboard
         // pushes down, and the pills read as part of the strip.
-        .padding(.horizontal, keyboardUp ? 12 : 20)
+        .padding(.leading, margin(.leading))
+        .padding(.trailing, margin(.trailing))
         // Pulled into the home-indicator inset so the gap below the pills is
         // a little more than the 20pt at their sides. With the keyboard up
         // the pills sit a fixed gap above its top edge instead.
@@ -97,6 +110,14 @@ struct BottomBar: View {
                         bottomInset = inset
                     }
             }
+        }
+        .background {
+            Color.clear
+                .ignoresSafeArea()
+                .onGeometryChange(for: HorizontalInsets.self) { proxy in
+                    HorizontalInsets(leading: proxy.safeAreaInsets.leading,
+                                     trailing: proxy.safeAreaInsets.trailing)
+                } action: { sideInsets = $0 }
         }
         .background { WindowReader { window = $0 } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
