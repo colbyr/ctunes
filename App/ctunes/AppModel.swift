@@ -1065,8 +1065,32 @@ final class AppModel {
     /// be filed under (`seedDevelopmentVetoes`). Compiled out of release.
     private func seedDevelopmentListeners() {
         #if DEBUG
+        // `CTUNES_DEV_LISTENING=Me,The Kids`: exactly those listening.
+        if let names = ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENING"]?
+            .split(separator: ",").map(String.init) {
+            let wanted = roster.allListeners.filter { names.contains($0.name) }
+            if let first = wanted.first {
+                listenAlone(first.id)
+                for listener in wanted.dropFirst() { toggleListening(listener.id) }
+            }
+        }
         guard let value = ProcessInfo.processInfo.environment["CTUNES_DEV_LISTENERS"],
-              !value.isEmpty, roster.listeners.count <= 1 else { return }
+              !value.isEmpty else { return }
+        // `Name=<artistKey>:<title>,…` adds one named listener, listening,
+        // with titled artist vetoes, for screenshots; once per name.
+        if let equals = value.firstIndex(of: "=") {
+            let name = String(value[..<equals])
+            guard !roster.allListeners.contains(where: { $0.name == name }) else { return }
+            let listener = addListener(name: name)
+            toggleListening(listener.id)
+            developmentVetoes = value[value.index(after: equals)...].split(separator: ",").map { entry in
+                let parts = entry.split(separator: ":", maxSplits: 1).map(String.init)
+                return Veto(artistKey: parts[0], title: parts.count > 1 ? parts[1] : "")
+            }
+            developmentVetoer = listener.id
+            return
+        }
+        guard roster.listeners.count <= 1 else { return }
         let laura = addListener(name: "Laura")
         _ = addListener(name: "Kids")
         toggleListening(laura.id)

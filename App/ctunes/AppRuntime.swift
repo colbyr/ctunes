@@ -103,6 +103,16 @@ final class AppRuntime {
                 guard player.queue.isEmpty || player.isRestored else { continue }
                 if let snapshot {
                     player.restore(snapshot, key: key, library: library)
+                    #if DEBUG
+                    // `CTUNES_DEV_RESUME=1` plays the restored queue once
+                    // the server answers, so a screen shows a track playing.
+                    if ProcessInfo.processInfo.environment["CTUNES_DEV_RESUME"] == "1" {
+                        for _ in 0..<40 where model.library?.isConnected != true {
+                            try? await Task.sleep(for: .milliseconds(500))
+                        }
+                        if player.isRestored { player.resume() }
+                    }
+                    #endif
                 } else {
                     player.forgetRestored()
                 }

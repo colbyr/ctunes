@@ -372,6 +372,11 @@ struct MixBuilderView: View {
                 draft.picks = ids.compactMap(developmentPick)
                 draft.reviewing = ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_REVIEW"] != nil && !draft.picks.isEmpty
                 if ProcessInfo.processInfo.environment["CTUNES_DEV_AUTOPLAY"] != nil {
+                    // The pool opens from disk before the server answers;
+                    // playing then reads as offline.
+                    for _ in 0..<40 where model.library?.isConnected != true {
+                        try? await Task.sleep(for: .milliseconds(500))
+                    }
                     draft.play(ProcessInfo.processInfo.environment["CTUNES_DEV_MIX_MODE"] == "albums" ? .mixAlbums : .shuffle,
                                actions: actions)
                 }

@@ -874,7 +874,9 @@ there is no way to tap. Pass via `SIMCTL_CHILD_<VAR>` to `simctl launch`.
 | `CTUNES_DEV_FAVORITES` | `1` pushes the Favorites page |
 | `CTUNES_DEV_ENQUEUE` | `1` appends the album to the queue again, so Up Next has duplicates |
 | `CTUNES_DEV_SEARCH` | `1` activates the search pill a few seconds after launch; any other text also seeds it as the query |
-| `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura, as does `album:<ratingKey>` or `track:<ratingKey>`, comma-separated for several (seeded with no title, so the listener page reads "Unknown track"; filed under the first library opened) |
+| `CTUNES_DEV_LISTENERS` | seeds "Laura" (listening) and "Kids" onto an empty roster; an artist ratingKey instead of `1` also vetoes it for Laura, as does `album:<ratingKey>` or `track:<ratingKey>`, comma-separated for several (seeded with no title, so the listener page reads "Unknown track"; filed under the first library opened); `Name=<artistKey>:<title>,…` instead adds that one listener, listening, with those titled artist vetoes, once per name (the App Store shots' "The Kids") |
+| `CTUNES_DEV_LISTENING` | comma-separated listener names: exactly those are listening, every other one off |
+| `CTUNES_DEV_RESUME` | `1` plays the queue restored from the last session once the server answers, so every screen shows a track playing (the App Store shots) |
 | `CTUNES_DEV_LISTENERS_SHEET` | `1` opens the Listeners sheet once albums load; `detail` opens the page of the first listener with a veto, else the first listener's |
 | `CTUNES_DEV_SETTINGS` | `1` opens the Settings sheet once albums load; `storage` opens it on the Storage page |
 | `CTUNES_DEV_SCROLL` | a point offset, scrolls the browse root, album, artist or Favorites page there once it loads, to see the collapsed title over artwork and the toolbar icons |
