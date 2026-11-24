@@ -6,8 +6,9 @@
 
 Screenshots and crash logs are saved under build/feedback/<submission id>/.
 The API key lives in 1Password (the .p8 as an attachment, the key id as
-`username`, the issuer id as `Issuer`); it is piped from `op` into `openssl`
-and never written to disk. Override the item with ASC_OP_ITEM.
+`username`, the issuer id as `Issuer`), read through scripts/op-read.sh and
+piped into `openssl`;
+it is never written to disk. Override the item with ASC_OP_ITEM.
 """
 import argparse
 import base64
@@ -22,9 +23,9 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-VAULT = os.environ.get("OP_VAULT", "Private")
-# "Apple App Store Connect (Developer)", by UUID so a rename doesn't break it.
-ITEM = os.environ.get("ASC_OP_ITEM", "schb6jmus3gptj36srkqxjh7vm")
+# "Apple App Store Connect (Developer)" in the Apple Developer vault.
+ITEM = os.environ.get("ASC_OP_ITEM", "tjgyzignkkffu5uu6kr6aa6mjq")
+OP_READ = Path(__file__).resolve().parent / "op-read.sh"
 BUNDLE_ID = "com.colbyr.ctunes"
 API = "https://api.appstoreconnect.apple.com"
 OUT = Path(__file__).resolve().parent.parent / "build" / "feedback"
@@ -32,10 +33,10 @@ OUT = Path(__file__).resolve().parent.parent / "build" / "feedback"
 
 def op_read(field):
     result = subprocess.run(
-        ["op", "read", f"op://{VAULT}/{ITEM}/{field}"], capture_output=True
+        [str(OP_READ), ITEM, field], capture_output=True
     )
     if result.returncode != 0:
-        sys.exit(f"Couldn't read op://{VAULT}/{ITEM}/{field}: {result.stderr.decode().strip()}")
+        sys.exit(result.stderr.decode().strip())
     return result.stdout
 
 

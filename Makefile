@@ -24,17 +24,17 @@ test:
 	swift test
 
 ## Also run the live tests against the real server, using the token in
-## 1Password. Prompts for unlock once a day; the token is cached in the keychain.
+## 1Password (read through the vault's service account, no prompt).
 live-test:
 	@PLEX_LIVE=1 \
 	 PLEX_DEV_TOKEN="$$(scripts/plex-token.sh)" \
 	 PLEX_DEV_CLIENT_ID="$$(scripts/plex-token.sh clientIdentifier)" \
 	 swift test
 
-## Store a fresh dev token in 1Password (and drop the day-long local cache)
+## Store a fresh dev token in 1Password (your own session: the service account
+## is read-only)
 token:
 	python3 scripts/plex-dev-login.py
-	scripts/plex-token.sh --clear
 
 ## TestFlight feedback (comments, screenshots, crash logs) from App Store
 ## Connect, saved under build/feedback/. FEEDBACK_ARGS='--days 7' narrows it.

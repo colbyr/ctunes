@@ -4,40 +4,25 @@
 # Xcode's Accounts settings, whose session expires and fails the export with
 # "App Store Connect access for … is required".
 #
-# The key is an Admin team key in 1Password (the .p8 attached,
-# the key id as `username`, the issuer id as `Issuer`). xcodebuild only takes
-# the key as a file, so it is written to a private temp directory for the
-# length of the run and removed on exit. Override with ASC_UPLOAD_OP_ITEM.
+# The key is an Admin team key in 1Password's Apple Developer vault (the .p8
+# attached, the key id as `username`, the issuer id as `Issuer`), read through
+# scripts/op-read.sh. xcodebuild only takes the key as a file, so it is written
+# to a private temp directory for the length of the run and removed on exit.
+# Override the item with ASC_UPLOAD_OP_ITEM.
 set -euo pipefail
 
-VAULT="${OP_VAULT:-Private}"
 # "Apple App Store Connect (Admin)": cloud signing needs the Admin role, which
-# the feedback key lacks. Referenced by UUID so a rename doesn't break it.
-ITEM="${ASC_UPLOAD_OP_ITEM:-dv4cxt2phfxmp5i2rhxsofuozi}"
-# "Apple App Store Connect (Developer)", the feedback key. The issuer id is
-# the team's, the same for every key, so it answers when ITEM has none.
-ISSUER_ITEM="${ASC_OP_ITEM:-schb6jmus3gptj36srkqxjh7vm}"
+# the feedback key lacks.
+ITEM="${ASC_UPLOAD_OP_ITEM:-pvymsahqhzxz6eqyq6v6f3cg3u}"
 PROJECT=App/ctunes.xcodeproj
 SCHEME=ctunes
 DD=build/DerivedData
 ARCHIVE=build/ctunes.xcarchive
 
-if ! command -v op >/dev/null 2>&1; then
-  echo "1Password CLI (op) not found. brew install 1password-cli" >&2
-  exit 1
-fi
-
-op_read() {
-  local item="${2:-$ITEM}"
-  op read "op://${VAULT}/${item}/$1" || {
-    echo "Couldn't read op://${VAULT}/${item}/$1." >&2
-    exit 1
-  }
-}
+op_read() { "$(dirname "$0")/op-read.sh" "$ITEM" "$1"; }
 
 KEY_ID="$(op_read username | tr -d '[:space:]')"
 ISSUER="$(op_read Issuer | tr -d '[:space:]')"
-[[ -n "$ISSUER" ]] || ISSUER="$(op_read Issuer "$ISSUER_ITEM" | tr -d '[:space:]')"
 
 KEY_DIR="$(mktemp -d)"
 chmod 700 "$KEY_DIR"

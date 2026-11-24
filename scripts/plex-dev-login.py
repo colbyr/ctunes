@@ -17,7 +17,7 @@ import time
 import urllib.parse
 import urllib.request
 
-VAULT = os.environ.get("OP_VAULT", "Private")
+VAULT = os.environ.get("OP_VAULT", "wlsoejymgzbclrj4a3euqwn6me")  # Apple Developer
 ITEM = os.environ.get("OP_ITEM", "ctunes dev token")
 CLIENT_ID = "ctunes-dev-cli"
 HEADERS = {
